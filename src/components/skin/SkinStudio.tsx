@@ -19,20 +19,7 @@ import {
 import type { Account, GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
-import {
-  STEVE_SKIN_BASE64,
-  ALEX_SKIN_BASE64,
-  KNIGHT_SKIN_BASE64,
-  CYBER_SKIN_BASE64,
-  DIAMOND_MINER_SKIN_BASE64,
-  CRIMSON_HUNTER_SKIN_BASE64,
-  NETHER_WANDERER_SKIN_BASE64,
-  EMERALD_SCOUT_SKIN_BASE64,
-  GOLDEN_PALADIN_SKIN_BASE64,
-  ARCTIC_EXPLORER_SKIN_BASE64,
-  SHADOW_NINJA_SKIN_BASE64,
-  STEAMPUNK_ENGINEER_SKIN_BASE64,
-} from './presetSkins';
+import { STEVE_SKIN_BASE64, ALEX_SKIN_BASE64 } from './presetSkins';
 import * as THREE from 'three';
 
 const applyShaderMaterial = (viewer: any) => {
@@ -88,76 +75,6 @@ const DEFAULT_SKIN_PRESETS: SkinLibraryItem[] = [
     name: 'Modern Alex',
     skinUrl: ALEX_SKIN_BASE64,
     model: 'slim',
-    isDefault: true,
-  },
-  {
-    id: 'preset_knight',
-    name: 'Knight Warrior',
-    skinUrl: KNIGHT_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_cyber',
-    name: 'Cyber Hero',
-    skinUrl: CYBER_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_diamond',
-    name: 'Diamond Miner',
-    skinUrl: DIAMOND_MINER_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_crimson',
-    name: 'Crimson Hunter',
-    skinUrl: CRIMSON_HUNTER_SKIN_BASE64,
-    model: 'slim',
-    isDefault: true,
-  },
-  {
-    id: 'preset_nether',
-    name: 'Nether Wanderer',
-    skinUrl: NETHER_WANDERER_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_emerald',
-    name: 'Emerald Scout',
-    skinUrl: EMERALD_SCOUT_SKIN_BASE64,
-    model: 'slim',
-    isDefault: true,
-  },
-  {
-    id: 'preset_paladin',
-    name: 'Golden Paladin',
-    skinUrl: GOLDEN_PALADIN_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_arctic',
-    name: 'Arctic Explorer',
-    skinUrl: ARCTIC_EXPLORER_SKIN_BASE64,
-    model: 'slim',
-    isDefault: true,
-  },
-  {
-    id: 'preset_ninja',
-    name: 'Shadow Ninja',
-    skinUrl: SHADOW_NINJA_SKIN_BASE64,
-    model: 'classic',
-    isDefault: true,
-  },
-  {
-    id: 'preset_steampunk',
-    name: 'Steampunk Engineer',
-    skinUrl: STEAMPUNK_ENGINEER_SKIN_BASE64,
-    model: 'classic',
     isDefault: true,
   },
 ];
