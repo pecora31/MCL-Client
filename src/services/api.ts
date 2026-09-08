@@ -794,6 +794,18 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
         { fileName: 'appleskin-fabric-mc1.21.4-3.0.5.jar', name: 'AppleSkin', version: '3.0.5', enabled: false, sizeBytes: 310000 },
       ] as unknown as T;
 
+    case 'get_game_data_dir':
+      return 'C:\\Users\\Player\\AppData\\Roaming\\mclv2' as unknown as T;
+
+    case 'set_game_data_dir':
+      console.log('Mock set game data dir:', args);
+      return undefined as unknown as T;
+
+    case 'select_folder':
+    case 'select_file':
+      // No native picker in browser mode, so behave as if the user cancelled
+      return null as unknown as T;
+
     case 'select_mrpack_file':
       return 'C:\\Downloads\\Fabulously-Optimized-1.21.4.mrpack' as unknown as T;
 
@@ -823,6 +835,8 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
       } as unknown as T;
 
     default:
-      return {} as unknown as T;
+      throw new Error(
+        `No browser mock for Tauri command "${cmd}". Add a case to mockCommand() in src/services/api.ts.`
+      );
   }
 }
