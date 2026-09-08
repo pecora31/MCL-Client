@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HardDrive, Trash2, CheckCircle2, RefreshCw, X, Folder, AlertCircle, BrushCleaning } from 'lucide-react';
+import { HardDrive, Trash2, CheckCircle2, RefreshCw, X, Folder, AlertCircle, BrushCleaning, Sparkles, Check } from 'lucide-react';
 import type { StorageCleanupScanResult, StorageCleanupReport } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
@@ -94,36 +94,44 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
       scanResult.tempCacheBytes > 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="glass-panel w-full max-w-xl rounded-3xl border border-amber-500/20 shadow-2xl overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+      <div
+        className="w-full max-w-xl rounded-3xl border-2 border-white/[0.08] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp"
+        style={{ background: 'rgba(12,12,14,0.96)', fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="p-6 border-b border-white/5 flex items-center justify-between bg-amber-500/[0.02]">
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+        <div className="px-6 py-5 flex items-start justify-between border-b border-white/[0.04]">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] shrink-0 mt-0.5">
               <BrushCleaning className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold font-riot text-white tracking-wide">{t.cleanStorageModalTitle}</h2>
-              <p className="text-xs text-slate-400 mt-0.5">{t.cleanStorageModalSub}</p>
+              <h2 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
+                {t.cleanStorageModalTitle || 'Clean Unused Versions & Cache'}
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                {t.cleanStorageModalSub || 'Reclaim disk space by safely removing unused resources and temporary files'}
+              </p>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+            className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer active:scale-95 shrink-0"
             title="Close"
           >
-            <X className="w-4 h-4 text-white" strokeWidth={3} />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-5 custom-scrollbar flex-1">
+        <div className="px-6 py-4 overflow-y-auto space-y-4 custom-scrollbar flex-1">
           {/* Storage Root Information */}
           {scanResult && (
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.02] border border-white/5 text-[11px] text-slate-400 font-mono truncate">
-              <Folder className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs text-slate-400 font-mono truncate">
+              <Folder className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
               <span className="truncate">{scanResult.storageRoot}</span>
             </div>
           )}
@@ -142,12 +150,12 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
           {/* Scan Loading State */}
           {isScanning ? (
             <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-400">
-              <RefreshCw className="w-8 h-8 text-amber-400 animate-spin" />
+              <RefreshCw className="w-8 h-8 text-[var(--accent-color)] animate-spin" />
               <p className="text-xs font-semibold">{t.scanningStorage}</p>
             </div>
           ) : !hasAnyCleanable && !report ? (
             <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+              <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-emerald-400">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
               <div>
@@ -156,36 +164,36 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               {/* Category 1: Unused Versions */}
               <div
-                className={`p-4 rounded-2xl border transition ${
-                  cleanVersions ? 'bg-white/[0.02] border-white/10' : 'bg-black/20 border-white/5 opacity-60'
+                className={`p-4 rounded-2xl border transition-all duration-150 ${
+                  cleanVersions ? 'bg-white/[0.03] border-white/10' : 'bg-white/[0.01] border-white/[0.04] opacity-50'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <label className="flex items-start gap-3 cursor-pointer select-none min-w-0">
+                  <label className="flex items-start gap-3 cursor-pointer select-none min-w-0 flex-1">
                     <input
                       type="checkbox"
                       checked={cleanVersions}
                       onChange={(e) => setCleanVersions(e.target.checked)}
                       disabled={!scanResult || scanResult.unusedVersions.length === 0}
-                      className="w-4 h-4 mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500/20 bg-slate-900 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded border-white/20 text-[var(--accent-color)] focus:ring-0 bg-black/40 cursor-pointer accent-[var(--accent-color)]"
                     />
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                      <div className="text-xs font-bold text-white flex items-center gap-2">
                         <span>{t.cleanUnusedVersionsTitle}</span>
                         {scanResult && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-mono font-bold">
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-mono font-bold">
                             {scanResult.unusedVersions.length} {t.versionsUnit || 'versions'}
                           </span>
                         )}
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{t.cleanUnusedVersionsDesc}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{t.cleanUnusedVersionsDesc}</p>
                     </div>
                   </label>
 
-                  <span className="text-xs font-mono font-bold text-amber-400 shrink-0">
+                  <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
                     {formatBytes(scanResult ? scanResult.unusedVersions.reduce((acc, v) => acc + v.sizeBytes, 0) : 0)}
                   </span>
                 </div>
@@ -196,7 +204,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                     {scanResult.unusedVersions.map((v) => (
                       <div
                         key={v.version}
-                        className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-black/30 text-slate-300 font-mono"
+                        className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 text-slate-300 font-mono"
                       >
                         <span>Minecraft {v.version}</span>
                         <span className="text-slate-400">{formatBytes(v.sizeBytes)}</span>
@@ -209,30 +217,30 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
               {/* Category 2: Orphaned Instances */}
               {scanResult && scanResult.orphanedInstances.length > 0 && (
                 <div
-                  className={`p-4 rounded-2xl border transition ${
-                    cleanOrphans ? 'bg-white/[0.02] border-white/10' : 'bg-black/20 border-white/5 opacity-60'
+                  className={`p-4 rounded-2xl border transition-all duration-150 ${
+                    cleanOrphans ? 'bg-white/[0.03] border-white/10' : 'bg-white/[0.01] border-white/[0.04] opacity-50'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <label className="flex items-start gap-3 cursor-pointer select-none min-w-0">
+                    <label className="flex items-start gap-3 cursor-pointer select-none min-w-0 flex-1">
                       <input
                         type="checkbox"
                         checked={cleanOrphans}
                         onChange={(e) => setCleanOrphans(e.target.checked)}
-                        className="w-4 h-4 mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500/20 bg-slate-900 cursor-pointer"
+                        className="w-4 h-4 mt-0.5 rounded border-white/20 text-[var(--accent-color)] focus:ring-0 bg-black/40 cursor-pointer accent-[var(--accent-color)]"
                       />
                       <div className="min-w-0">
-                        <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                        <div className="text-xs font-bold text-white flex items-center gap-2">
                           <span>{t.cleanOrphanedInstancesTitle}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 font-mono font-bold">
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-mono font-bold">
                             {scanResult.orphanedInstances.length} {t.foldersUnit || 'folders'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5">{t.cleanOrphanedInstancesDesc}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{t.cleanOrphanedInstancesDesc}</p>
                       </div>
                     </label>
 
-                    <span className="text-xs font-mono font-bold text-amber-400 shrink-0">
+                    <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
                       {formatBytes(scanResult.orphanedInstancesBytes)}
                     </span>
                   </div>
@@ -241,28 +249,28 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
 
               {/* Category 3: Temporary Cache and Logs */}
               <div
-                className={`p-4 rounded-2xl border transition ${
-                  cleanCache ? 'bg-white/[0.02] border-white/10' : 'bg-black/20 border-white/5 opacity-60'
+                className={`p-4 rounded-2xl border transition-all duration-150 ${
+                  cleanCache ? 'bg-white/[0.03] border-white/10' : 'bg-white/[0.01] border-white/[0.04] opacity-50'
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <label className="flex items-start gap-3 cursor-pointer select-none min-w-0">
+                  <label className="flex items-start gap-3 cursor-pointer select-none min-w-0 flex-1">
                     <input
                       type="checkbox"
                       checked={cleanCache}
                       onChange={(e) => setCleanCache(e.target.checked)}
                       disabled={!scanResult || scanResult.tempCacheBytes === 0}
-                      className="w-4 h-4 mt-0.5 rounded border-slate-700 text-amber-500 focus:ring-amber-500/20 bg-slate-900 cursor-pointer"
+                      className="w-4 h-4 mt-0.5 rounded border-white/20 text-[var(--accent-color)] focus:ring-0 bg-black/40 cursor-pointer accent-[var(--accent-color)]"
                     />
                     <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-200">
+                      <div className="text-xs font-bold text-white">
                         <span>{t.cleanTempCacheTitle}</span>
                       </div>
-                      <p className="text-[11px] text-slate-400 mt-0.5">{t.cleanTempCacheDesc}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">{t.cleanTempCacheDesc}</p>
                     </div>
                   </label>
 
-                  <span className="text-xs font-mono font-bold text-amber-400 shrink-0">
+                  <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
                     {formatBytes(scanResult ? scanResult.tempCacheBytes : 0)}
                   </span>
                 </div>
@@ -272,10 +280,10 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-6 border-t border-white/5 flex items-center justify-between gap-4 bg-white/[0.01]">
+        <div className="px-6 py-4 border-t border-white/[0.04] flex items-center justify-between gap-4">
           <div className="text-xs text-slate-400 flex items-center gap-2">
             <span>{t.reclaimableEstimate || 'Estimated reclaimable space:'}</span>
-            <span className="font-mono font-bold text-white text-sm">{formatBytes(totalSelectedBytes)}</span>
+            <span className="font-mono font-bold text-[var(--accent-light)] text-sm">{formatBytes(totalSelectedBytes)}</span>
           </div>
 
           <div className="flex items-center gap-2.5">
@@ -283,17 +291,17 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
               type="button"
               onClick={handleScan}
               disabled={isScanning || isCleaning}
-              className="p-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-slate-300 transition"
+              className="w-9 h-9 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-40"
               title={t.rescanBtn || 'Rescan'}
             >
-              <RefreshCw className={`w-4 h-4 ${isScanning ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isScanning ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
             </button>
 
             <button
               type="button"
               onClick={handleExecuteClean}
               disabled={isCleaning || isScanning || totalSelectedBytes === 0}
-              className="btn-primary py-2.5 px-5 rounded-xl font-riot font-bold text-xs flex items-center gap-2 shadow-lg disabled:opacity-40 cursor-pointer tracking-wide"
+              className="px-5 py-2.5 rounded-xl font-bold text-xs bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-slate-950 flex items-center gap-2 transition cursor-pointer active:scale-95 disabled:opacity-40"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span>{isCleaning ? t.cleaning : t.btnStartClean}</span>
