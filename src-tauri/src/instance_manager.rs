@@ -10,6 +10,47 @@ pub struct LauncherConfig {
     pub game_data_dir: Option<String>,
 }
 
+#[cfg(test)]
+mod safe_join_tests {
+    use super::safe_join;
+    use std::path::Path;
+
+    #[test]
+    fn accepts_contained_paths() {
+        let base = Path::new("C:\\mcl\\instance");
+        assert_eq!(safe_join(base, "mods/sodium.jar"), Some(base.join("mods").join("sodium.jar")));
+        assert_eq!(safe_join(base, "./config/a.toml"), Some(base.join("config").join("a.toml")));
+    }
+
+    #[test]
+    fn rejects_escaping_paths() {
+        let base = Path::new("C:\\mcl\\instance");
+        assert_eq!(safe_join(base, "../evil.bat"), None);
+        assert_eq!(safe_join(base, "mods/../../../evil.bat"), None);
+        assert_eq!(safe_join(base, "..\\..\\evil.bat"), None);
+        assert_eq!(safe_join(base, "C:\\Windows\\System32\\evil.dll"), None);
+        assert_eq!(safe_join(base, "/etc/passwd"), None);
+        assert_eq!(safe_join(base, ""), None);
+    }
+}
+
+/// Joins an untrusted relative path (zip entry name, modpack manifest path) onto `base`.
+/// Returns None if the result would escape `base`, so callers can skip hostile entries.
+pub fn safe_join(base: &Path, relative: &str) -> Option<PathBuf> {
+    let mut out = base.to_path_buf();
+    for component in Path::new(relative).components() {
+        match component {
+            std::path::Component::Normal(part) => out.push(part),
+            std::path::Component::CurDir => {}
+            _ => return None,
+        }
+    }
+    if out == base {
+        return None;
+    }
+    Some(out)
+}
+
 pub fn get_app_config_dir() -> PathBuf {
     if let Some(app_data) = dirs::data_dir() {
         app_data.join("MCLv2")

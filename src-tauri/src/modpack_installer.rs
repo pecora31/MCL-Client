@@ -7,7 +7,7 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 use zip::ZipArchive;
 
-use crate::instance_manager::{get_launcher_dir, load_instances, save_instances};
+use crate::instance_manager::{get_launcher_dir, load_instances, safe_join, save_instances};
 use crate::minecraft_core::downloader::{
     download_files_concurrently, DownloadProgressPayload, DownloadTask,
 };
@@ -228,7 +228,13 @@ pub async fn install_mrpack(
             continue;
         }
 
-        let out_path = instance_dir.join(relative_path);
+        let out_path = match safe_join(&instance_dir, relative_path) {
+            Some(path) => path,
+            None => {
+                log::warn!("Skipped modpack entry with unsafe path: {}", entry_name);
+                continue;
+            }
+        };
         if let Some(parent) = out_path.parent() {
             let _ = fs::create_dir_all(parent);
         }
@@ -253,7 +259,13 @@ pub async fn install_mrpack(
             continue;
         }
 
-        let dest = instance_dir.join(&item.path);
+        let dest = match safe_join(&instance_dir, &item.path) {
+            Some(path) => path,
+            None => {
+                log::warn!("Skipped modpack file with unsafe path: {}", item.path);
+                continue;
+            }
+        };
         let sha1 = item.hashes.get("sha1").cloned();
 
         download_tasks.push(DownloadTask {

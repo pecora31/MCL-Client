@@ -513,7 +513,13 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
                                     .unwrap_or(&name)
                                     .to_string();
 
-                                let dest = natives_dir.join(&file_name);
+                                let dest = match crate::instance_manager::safe_join(
+                                    natives_dir,
+                                    &file_name,
+                                ) {
+                                    Some(path) => path,
+                                    None => continue,
+                                };
                                 if let Ok(mut outfile) = fs::File::create(&dest) {
                                     let _ = std::io::copy(&mut file_in_zip, &mut outfile);
                                     extracted_count += 1;
