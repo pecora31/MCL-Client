@@ -374,7 +374,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
             {/* Description */}
             <p className="text-base text-slate-200 leading-relaxed max-w-xl drop-shadow-md font-normal tracking-wide">
-              {t.heroSub || 'Next-generation Minecraft launcher with high-performance optimization, direct server connection, and unified profile management.'}
+              {t.heroSub || 'Custom Minecraft Launcher with high performance optimization, direct server connection, and unified profile management.'}
             </p>
 
             {/* Action Zone: Fixed-Size Play Button & Profile Box */}
