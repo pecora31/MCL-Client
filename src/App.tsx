@@ -219,7 +219,7 @@ export const App: React.FC = () => {
   const [instances, setInstances] = useState<GameInstance[]>(() =>
     readStoredJson('mcl_instances', DEFAULT_INSTANCES)
   );
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string>(instances[0]?.id || 'server-instance-01');
+  const [selectedInstanceId, setSelectedInstanceId] = useState<string>(instances[0]?.id || '');
 
   // Multi-server state
   const [savedServers, setSavedServers] = useState<SavedServer[]>(() =>

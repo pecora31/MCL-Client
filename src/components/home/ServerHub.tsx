@@ -187,22 +187,19 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
-    ip: currentSavedServer?.ip || 'play.ourserver.mc',
+    ip: currentSavedServer?.ip || '',
     port: currentSavedServer?.port || 25565,
-    online: true,
-    playersOnline: 4,
-    playersMax: 20,
-    version: 'Fabric 1.21.4',
-    motd: 'MCL Community Server',
-    pingMs: 24,
+    online: false,
   });
 
   const handleRefreshPing = async () => {
+    if (!currentSavedServer) {
+      setServerStatus({ ip: '', port: 25565, online: false });
+      return;
+    }
     setIsPinging(true);
-    const targetIp = currentSavedServer?.ip || 'play.ourserver.mc';
-    const targetPort = currentSavedServer?.port || 25565;
     try {
-      const status = await pingServer(targetIp, targetPort);
+      const status = await pingServer(currentSavedServer.ip, currentSavedServer.port);
       setServerStatus(status);
     } catch {
       // Keep existing

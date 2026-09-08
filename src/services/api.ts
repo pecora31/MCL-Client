@@ -738,7 +738,7 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
         version: data.version ?? 'Paper 1.21.4',
         playersOnline: data.players?.online ?? 0,
         playersMax: data.players?.max ?? 20,
-        motd: data.motd?.clean?.[0] || 'Minecraft Friends Server',
+        motd: data.motd?.clean?.[0] || '',
         pingMs: 24,
         favicon: data.icon,
       };
@@ -747,65 +747,16 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
     // ignore
   }
 
-  return {
-    ip: host,
-    port,
-    online: true,
-    version: '1.21.4 (Fabric)',
-    playersOnline: 4,
-    playersMax: 20,
-    motd: '§aFriends Server §7| §bReady to play!',
-    pingMs: 18,
-  };
+  // Reachability is unknown in web mode, so report offline rather than inventing a status
+  return { ip: host, port, online: false };
 }
 
 // Browser Mock Handlers
 async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>): Promise<T> {
   switch (cmd) {
     case 'get_instances':
-      return [
-        {
-          id: 'server-instance-01',
-          name: 'Friends Server',
-          gameVersion: '1.21.4',
-          loader: 'fabric',
-          loaderVersion: '0.16.10',
-          minRam: 2048,
-          maxRam: 4096,
-          jvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled',
-          icon: 'server',
-          serverIp: 'play.ourserver.mc',
-          serverPort: 25565,
-          enableSkinInGame: true,
-          lastPlayed: 'Today, 21:30',
-          totalPlayTime: 1420,
-        },
-        {
-          id: 'instance-vanilla-latest',
-          name: 'Latest Vanilla 1.21.4',
-          gameVersion: '1.21.4',
-          loader: 'vanilla',
-          minRam: 2048,
-          maxRam: 4096,
-          icon: 'grass',
-          enableSkinInGame: true,
-          lastPlayed: 'Yesterday',
-          totalPlayTime: 320,
-        },
-        {
-          id: 'instance-forge-1201',
-          name: 'Survival Modpack 1.20.1',
-          gameVersion: '1.20.1',
-          loader: 'forge',
-          loaderVersion: '47.3.0',
-          minRam: 4096,
-          maxRam: 8192,
-          icon: 'sword',
-          enableSkinInGame: true,
-          lastPlayed: '3 days ago',
-          totalPlayTime: 2540,
-        },
-      ] as unknown as T;
+      // Matches the Rust backend, which starts with no instances
+      return [] as unknown as T;
 
     case 'detect_java':
       return [
