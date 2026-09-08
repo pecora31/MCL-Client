@@ -15,8 +15,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      - name: Typecheck
-        run: npx tsc -b
+      # Typechecks and bundles, so a missing asset or bad import fails here
+      - name: Build
+        run: npm run build
       - name: Lint
         run: npx oxlint
 
