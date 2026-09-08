@@ -50,7 +50,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <img
           src={mclLogo}
           alt="MCL"
-          className="w-12 h-auto object-contain opacity-85 hover:opacity-100 transition-opacity drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+          className="w-10 h-auto object-contain opacity-85 hover:opacity-100 transition-opacity drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
         />
       </div>
 

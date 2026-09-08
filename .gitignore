@@ -31,3 +31,6 @@ conf/
 *.bak
 HANDOFF.md
 
+
+# Claude Code local tooling
+.claude/
