@@ -45,8 +45,8 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
   }, [isOpen]);
 
   const handleScan = async () => {
+    if (isScanning) return;
     setIsScanning(true);
-    setReport(null);
     try {
       const result = await invokeCommand<StorageCleanupScanResult>('scan_storage_cleanup');
       setScanResult(result);
@@ -96,7 +96,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
       <div
-        className="w-full max-w-xl rounded-3xl border-2 border-white/[0.08] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp"
+        className="w-full max-w-xl rounded-3xl border-2 border-white/[0.08] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col min-h-[500px] max-h-[90vh] animate-scaleUp"
         style={{ background: 'rgba(12,12,14,0.96)', fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -127,7 +127,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="px-6 py-4 overflow-y-auto space-y-4 custom-scrollbar flex-1">
+        <div className="px-6 py-4 overflow-y-auto space-y-4 custom-scrollbar flex-1 min-h-[320px]">
           {/* Storage Root Information */}
           {scanResult && (
             <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs text-slate-400 font-mono truncate">
@@ -147,14 +147,14 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
             </div>
           )}
 
-          {/* Scan Loading State */}
-          {isScanning ? (
-            <div className="py-12 flex flex-col items-center justify-center space-y-3 text-slate-400">
+          {/* Initial Scan Loading State (only when there's no data at all yet) */}
+          {!scanResult && isScanning ? (
+            <div className="min-h-[260px] flex flex-col items-center justify-center space-y-3 text-slate-400">
               <RefreshCw className="w-8 h-8 text-[var(--accent-color)] animate-spin" />
               <p className="text-xs font-semibold">{t.scanningStorage}</p>
             </div>
           ) : !hasAnyCleanable && !report ? (
-            <div className="py-12 flex flex-col items-center justify-center space-y-3 text-center">
+            <div className="min-h-[260px] flex flex-col items-center justify-center space-y-3 text-center">
               <div className="w-12 h-12 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-center text-emerald-400">
                 <CheckCircle2 className="w-6 h-6" />
               </div>
