@@ -16,8 +16,42 @@ export const isTauri = () => {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 };
 
+// Must mirror tauri::generate_handler! in src-tauri/src/lib.rs. Typing the command
+// names here turns a call to a command the backend does not expose into a build error.
+export const TAURI_COMMANDS = [
+  'get_instances',
+  'save_instances',
+  'delete_instance',
+  'open_instance_dir',
+  'get_game_data_dir',
+  'set_game_data_dir',
+  'select_folder',
+  'select_file',
+  'scan_storage_cleanup',
+  'execute_storage_cleanup',
+  'detect_java',
+  'find_best_java',
+  'ping_minecraft_server',
+  'get_local_mods',
+  'get_installed_addons',
+  'toggle_addon',
+  'delete_addon',
+  'download_and_install_addon',
+  'launch_instance',
+  'cancel_download',
+  'kill_game',
+  'select_mrpack_file',
+  'inspect_mrpack',
+  'install_mrpack',
+  'app_minimize',
+  'app_close',
+  'set_window_size',
+] as const;
+
+export type TauriCommand = (typeof TAURI_COMMANDS)[number];
+
 // Safe invoke wrapper for Tauri commands
-export async function invokeCommand<T>(cmd: string, args: Record<string, unknown> = {}): Promise<T> {
+export async function invokeCommand<T>(cmd: TauriCommand, args: Record<string, unknown> = {}): Promise<T> {
   if (isTauri()) {
     try {
       return await invoke<T>(cmd, args);
@@ -726,7 +760,7 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
 }
 
 // Browser Mock Handlers
-async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promise<T> {
+async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>): Promise<T> {
   switch (cmd) {
     case 'get_instances':
       return [
@@ -798,8 +832,28 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
       return 'C:\\Users\\Player\\AppData\\Roaming\\mclv2' as unknown as T;
 
     case 'set_game_data_dir':
-      console.log('Mock set game data dir:', args);
+    case 'set_window_size':
+      console.log(`Mock ${cmd}:`, args);
       return undefined as unknown as T;
+
+    case 'scan_storage_cleanup':
+      return {
+        unusedVersions: [{ version: '1.20.1', sizeBytes: 184320000 }],
+        orphanedInstances: [],
+        orphanedInstancesBytes: 0,
+        tempCacheBytes: 52428800,
+        totalReclaimableBytes: 236748800,
+        storageRoot: 'C:\\Users\\Player\\AppData\\Roaming\\mclv2',
+      } as unknown as T;
+
+    case 'execute_storage_cleanup':
+      return {
+        bytesFreed: 236748800,
+        versionsDeleted: 1,
+        cacheCleaned: true,
+        orphanedInstancesDeleted: 0,
+        message: 'Mock cleanup complete',
+      } as unknown as T;
 
     case 'select_folder':
     case 'select_file':
