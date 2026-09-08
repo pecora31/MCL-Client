@@ -30,27 +30,64 @@ interface ErrorBoundaryProps {
 interface ErrorBoundaryState {
   hasError: boolean;
   error?: Error;
+  componentStack?: string;
+  confirmingReset: boolean;
+  copied: boolean;
 }
 
 export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
-    this.state = { hasError: false };
+    this.state = { hasError: false, confirmingReset: false, copied: false };
   }
 
   static getDerivedStateFromError(error: Error) {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: any) {
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('MCL ErrorBoundary caught error:', error, info);
+    this.setState({ componentStack: info.componentStack || undefined });
   }
+
+  private buildReport() {
+    return [
+      this.state.error?.message || 'Unknown error',
+      this.state.error?.stack || '',
+      '--- Component stack ---',
+      this.state.componentStack || '(unavailable)',
+    ].join('\n');
+  }
+
+  private handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(this.buildReport());
+      this.setState({ copied: true });
+    } catch (err) {
+      console.warn('Clipboard unavailable:', err);
+    }
+  };
+
+  private handleResetData = () => {
+    if (!this.state.confirmingReset) {
+      this.setState({ confirmingReset: true });
+      return;
+    }
+    try {
+      Object.keys(localStorage)
+        .filter((key) => key.startsWith('mcl_'))
+        .forEach((key) => localStorage.removeItem(key));
+    } catch (err) {
+      console.warn('Failed to clear local data:', err);
+    }
+    window.location.reload();
+  };
 
   render() {
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center h-screen w-screen bg-[#0a0a0a] text-white p-8 select-none">
-          <div className="max-w-md w-full minimal-panel p-8 rounded-2xl border border-white/10 text-center space-y-4 shadow-2xl">
+          <div className="max-w-lg w-full minimal-panel p-8 rounded-2xl border border-white/10 text-center space-y-4 shadow-2xl">
             <div className="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto text-xl font-bold">
               ⚠️
             </div>
@@ -58,7 +95,12 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
             <p className="text-xs text-slate-400 leading-relaxed">
               Encountered issue: <span className="font-mono text-amber-300">{this.state.error?.message}</span>
             </p>
-            <div className="flex items-center justify-center gap-3 pt-2">
+
+            <pre className="text-left text-[10px] leading-relaxed font-mono text-slate-500 bg-black/40 border border-white/5 rounded-xl p-3 max-h-44 overflow-auto whitespace-pre-wrap select-text">
+              {this.buildReport()}
+            </pre>
+
+            <div className="flex items-center justify-center gap-3 pt-1">
               <button
                 onClick={() => {
                   this.setState({ hasError: false });
@@ -68,12 +110,52 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               >
                 Reload App
               </button>
+              <button
+                onClick={this.handleCopy}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/10 text-white transition cursor-pointer"
+              >
+                {this.state.copied ? 'Copied' : 'Copy Details'}
+              </button>
+            </div>
+
+            <div className="pt-1 space-y-2">
+              <button
+                onClick={this.handleResetData}
+                className="px-4 py-2 rounded-xl text-[11px] font-bold bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-300 transition cursor-pointer"
+              >
+                {this.state.confirmingReset ? 'Confirm: Erase Local Data' : 'Reset Local Data'}
+              </button>
+              {this.state.confirmingReset && (
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  Deletes saved profiles, servers, skins and settings stored by this launcher, then restarts it.
+                  Downloaded game files are not affected.
+                </p>
+              )}
             </div>
           </div>
         </div>
       );
     }
     return this.props.children;
+  }
+}
+
+function readStoredJson<T>(key: string, fallback: T): T {
+  try {
+    const saved = localStorage.getItem(key);
+    return saved ? (JSON.parse(saved) as T) : fallback;
+  } catch (err) {
+    console.warn(`Discarding corrupted localStorage entry "${key}":`, err);
+    return fallback;
+  }
+}
+
+// Custom backgrounds are stored inline as data URIs, so writes can exceed the storage quota
+function writeStoredJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (err) {
+    console.warn(`Failed to persist localStorage entry "${key}":`, err);
   }
 }
 
@@ -110,17 +192,15 @@ const DEFAULT_SETTINGS: LauncherSettings = {
 
 export const App: React.FC = () => {
   const [currentTab, setCurrentTab] = useState<NavigationTab>('home');
-  const [instances, setInstances] = useState<GameInstance[]>(() => {
-    const saved = localStorage.getItem('mcl_instances');
-    return saved ? JSON.parse(saved) : DEFAULT_INSTANCES;
-  });
+  const [instances, setInstances] = useState<GameInstance[]>(() =>
+    readStoredJson('mcl_instances', DEFAULT_INSTANCES)
+  );
   const [selectedInstanceId, setSelectedInstanceId] = useState<string>(instances[0]?.id || 'server-instance-01');
 
   // Multi-server state
-  const [savedServers, setSavedServers] = useState<SavedServer[]>(() => {
-    const saved = localStorage.getItem('mcl_servers');
-    return saved ? JSON.parse(saved) : DEFAULT_SERVERS;
-  });
+  const [savedServers, setSavedServers] = useState<SavedServer[]>(() =>
+    readStoredJson('mcl_servers', DEFAULT_SERVERS)
+  );
   const [activeServerId, setActiveServerId] = useState<string>(() => {
     return localStorage.getItem('mcl_active_server') || savedServers[0]?.id || 'srv-01';
   });
@@ -129,8 +209,7 @@ export const App: React.FC = () => {
   });
 
   const [account, setAccount] = useState<Account>(() => {
-    const saved = localStorage.getItem('mcl_account');
-    const acc = saved ? JSON.parse(saved) : DEFAULT_ACCOUNT;
+    const acc = readStoredJson('mcl_account', DEFAULT_ACCOUNT);
     if (
       acc &&
       (!acc.skinUrl ||
@@ -142,8 +221,7 @@ export const App: React.FC = () => {
     return acc;
   });
   const [settings, setSettings] = useState<LauncherSettings>(() => {
-    const saved = localStorage.getItem('mcl_settings');
-    const parsed = saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
+    const parsed = readStoredJson('mcl_settings', DEFAULT_SETTINGS);
     const bgOpacity =
       parsed.bgOpacity !== undefined && parsed.bgOpacity !== 0.5 && parsed.bgOpacity !== 0.55
         ? parsed.bgOpacity
@@ -218,7 +296,7 @@ export const App: React.FC = () => {
   }, [account]);
 
   useEffect(() => {
-    localStorage.setItem('mcl_settings', JSON.stringify(settings));
+    writeStoredJson('mcl_settings', settings);
   }, [settings]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -421,6 +499,7 @@ export const App: React.FC = () => {
     let unlistenLogs: (() => void) | undefined;
     let unlistenStarted: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
+    let unlistenCrash: (() => void) | undefined;
 
     const setupListeners = async () => {
       try {
@@ -447,7 +526,6 @@ export const App: React.FC = () => {
         });
 
         // Auto-open console when game crashes
-        let unlistenCrash: (() => void) | undefined;
         unlistenCrash = await listen<number>('game-crash', () => {
           setIsConsoleOpen(true);
         });
@@ -473,6 +551,7 @@ export const App: React.FC = () => {
       unlistenLogs?.();
       unlistenStarted?.();
       unlistenExit?.();
+      unlistenCrash?.();
     };
   }, []);
 
@@ -584,7 +663,7 @@ export const App: React.FC = () => {
   const handleUpdateBackground = (patch: Partial<LauncherSettings>) => {
     setSettings((s) => {
       const next = { ...s, ...patch };
-      localStorage.setItem('mcl_settings', JSON.stringify(next));
+      writeStoredJson('mcl_settings', next);
       return next;
     });
   };
