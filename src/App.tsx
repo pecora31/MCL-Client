@@ -10,6 +10,7 @@ import { DeleteProfileModal } from './components/instances/DeleteProfileModal';
 import { StorageCleanupModal } from './components/settings/StorageCleanupModal';
 import { SkinStudio } from './components/skin/SkinStudio';
 import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
+import defaultBgImage from './assets/1834105-final.png';
 import { ModStore } from './components/mods/ModStore';
 import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
 import { ConsoleModal } from './components/common/ConsoleModal';
@@ -76,64 +77,9 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   }
 }
 
-const DEFAULT_INSTANCES: GameInstance[] = [
-  {
-    id: 'server-instance-01',
-    name: 'Community Server',
-    gameVersion: '1.21.4',
-    loader: 'fabric',
-    loaderVersion: '0.16.10',
-    minRam: 2048,
-    maxRam: 4096,
-    jvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled',
-    icon: 'server',
-    serverIp: 'play.ourserver.mc',
-    serverPort: 25565,
-    enableSkinInGame: true,
-    lastPlayed: 'Today, 21:30',
-    totalPlayTime: 1420,
-  },
-  {
-    id: 'instance-vanilla-latest',
-    name: 'Vanilla 1.21.4',
-    gameVersion: '1.21.4',
-    loader: 'vanilla',
-    minRam: 2048,
-    maxRam: 4096,
-    icon: 'grass',
-    enableSkinInGame: true,
-    lastPlayed: 'Yesterday',
-    totalPlayTime: 320,
-  },
-  {
-    id: 'instance-forge-1201',
-    name: 'Survival Forge 1.20.1',
-    gameVersion: '1.20.1',
-    loader: 'forge',
-    loaderVersion: '47.3.0',
-    minRam: 4096,
-    maxRam: 8192,
-    icon: 'sword',
-    enableSkinInGame: true,
-    lastPlayed: '3 days ago',
-    totalPlayTime: 2540,
-  },
-];
+const DEFAULT_INSTANCES: GameInstance[] = [];
 
-const DEFAULT_SERVERS: SavedServer[] = [
-  {
-    id: 'srv-01',
-    name: 'Friends Community Server',
-    ip: 'play.ourserver.mc',
-    port: 25565,
-  },
-  {
-    id: 'srv-02',
-    name: 'Hypixel Network',
-    ip: 'mc.hypixel.net',
-    port: 25565,
-  },
-];
+const DEFAULT_SERVERS: SavedServer[] = [];
 
 const DEFAULT_ACCOUNT: Account = {
   id: 'acc-01',
@@ -151,14 +97,15 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   defaultJvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
   language: 'en',
   uiStyle: 'riot',
-  colorPalette: 'amber',
-  bgType: 'video',
+  colorPalette: 'rose',
+  bgType: 'image',
+  customBgImage: defaultBgImage,
   bgOpacity: 0.3,
   closeOnLaunch: false,
   enableDiscordRpc: true,
-  serverHost: 'play.ourserver.mc',
+  serverHost: '',
   serverPort: 25565,
-  serverName: 'Friends Community Server',
+  serverName: '',
 };
 
 export const App: React.FC = () => {
@@ -202,7 +149,7 @@ export const App: React.FC = () => {
         ? parsed.bgOpacity
         : 0.3;
     const validPalettes = ['indigo', 'emerald', 'amber', 'rose', 'cyan', 'slate'];
-    const colorPalette = validPalettes.includes(parsed.colorPalette) ? parsed.colorPalette : 'amber';
+    const colorPalette = validPalettes.includes(parsed.colorPalette) ? parsed.colorPalette : 'rose';
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
