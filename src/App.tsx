@@ -6,11 +6,15 @@ import { ServerHub } from './components/home/ServerHub';
 import { InstanceList } from './components/instances/InstanceList';
 import { CreateInstanceModal } from './components/instances/CreateInstanceModal';
 import { EditInstanceModal } from './components/instances/EditInstanceModal';
+import { DeleteProfileModal } from './components/instances/DeleteProfileModal';
+import { StorageCleanupModal } from './components/settings/StorageCleanupModal';
 import { SkinStudio } from './components/skin/SkinStudio';
+import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
 import { ModStore } from './components/mods/ModStore';
 import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
-import { ProfileView } from './components/profile/ProfileView';
 import { ConsoleModal } from './components/common/ConsoleModal';
+import { OnboardingModal } from './components/onboarding/OnboardingModal';
+import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer } from './types';
 import { invokeCommand, isTauri } from './services/api';
 import { listen } from '@tauri-apps/api/event';
@@ -135,7 +139,7 @@ const DEFAULT_ACCOUNT: Account = {
   id: 'acc-01',
   username: 'Player_Hero',
   type: 'offline',
-  skinUrl: 'https://textures.minecraft.net/texture/292009a4925b58f02c77d692f0085a5392652a6549aa018e69fa89e4ecbe5677',
+  skinUrl: STEVE_SKIN_BASE64,
   skinModel: 'classic',
   uuid: '8667ba71-b85a-4004-af54-457a9734eed7',
   active: true,
@@ -179,7 +183,16 @@ export const App: React.FC = () => {
 
   const [account, setAccount] = useState<Account>(() => {
     const saved = localStorage.getItem('mcl_account');
-    return saved ? JSON.parse(saved) : DEFAULT_ACCOUNT;
+    const acc = saved ? JSON.parse(saved) : DEFAULT_ACCOUNT;
+    if (
+      acc &&
+      (!acc.skinUrl ||
+        acc.skinUrl.includes('textures.minecraft.net') ||
+        acc.skinUrl === '/skins/steve.png')
+    ) {
+      acc.skinUrl = STEVE_SKIN_BASE64;
+    }
+    return acc;
   });
   const [settings, setSettings] = useState<LauncherSettings>(() => {
     const saved = localStorage.getItem('mcl_settings');
@@ -188,9 +201,12 @@ export const App: React.FC = () => {
       parsed.bgOpacity !== undefined && parsed.bgOpacity !== 0.5 && parsed.bgOpacity !== 0.55
         ? parsed.bgOpacity
         : 0.3;
+    const validPalettes = ['indigo', 'emerald', 'amber', 'rose', 'cyan', 'slate'];
+    const colorPalette = validPalettes.includes(parsed.colorPalette) ? parsed.colorPalette : 'amber';
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      colorPalette,
       bgOpacity,
       language: 'en',
       bgType: parsed.bgType || (parsed.customBgImage ? 'image' : 'video'),
@@ -202,11 +218,19 @@ export const App: React.FC = () => {
     return saved || 'en';
   });
 
+  const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
+    return localStorage.getItem('mcl_onboarding_completed') === 'true';
+  });
+  const [defaultGameDir, setDefaultGameDir] = useState<string>('');
+
   // Modal states
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingInstance, setEditingInstance] = useState<GameInstance | null>(null);
+  const [deleteTargetInstance, setDeleteTargetInstance] = useState<GameInstance | null>(null);
+  const [isStorageCleanupModalOpen, setIsStorageCleanupModalOpen] = useState(false);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
+  const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
 
   // Runtime states
   const [isRunning, setIsRunning] = useState(false);
@@ -239,7 +263,11 @@ export const App: React.FC = () => {
   }, [directConnectServer]);
 
   useEffect(() => {
-    localStorage.setItem('mcl_account', JSON.stringify(account));
+    try {
+      localStorage.setItem('mcl_account', JSON.stringify(account));
+    } catch (err) {
+      console.warn('Failed to save account to localStorage:', err);
+    }
   }, [account]);
 
   useEffect(() => {
@@ -262,22 +290,21 @@ export const App: React.FC = () => {
     }
   }, [settings.bgType, settings.customVideoUrl]);
 
-  // Apply 1600x900 dimensions, disable shadow and center window
+  // Apply configured window dimensions, disable shadow and center window
   useEffect(() => {
     if (isTauri()) {
       const configureWindow = async () => {
         try {
-          const win = getCurrentWindow();
-          await win.setSize(new LogicalSize(1600, 900));
-          await win.setResizable(false);
-          await win.center();
+          const targetRes = settings.windowResolution || '1600x900';
+          const [w, h] = targetRes.split('x').map(Number);
+          await invokeCommand('set_window_size', { width: w || 1600, height: h || 900 });
         } catch (err) {
           console.warn('Error applying window settings:', err);
         }
       };
       configureWindow();
     }
-  }, []);
+  }, [settings.windowResolution]);
 
   // Load instances from backend if in Tauri & pre-warm Java detection in background
   useEffect(() => {
@@ -300,6 +327,13 @@ export const App: React.FC = () => {
             }
           })
           .catch(() => {});
+
+        // Fetch current default game data directory
+        invokeCommand<string>('get_game_data_dir')
+          .then((dir) => {
+            if (dir) setDefaultGameDir(dir);
+          })
+          .catch(console.warn);
       }
     };
     initBackend();
@@ -320,6 +354,7 @@ export const App: React.FC = () => {
       enableSkinInGame: newInstData.enableSkinInGame ?? true,
       lastPlayed: 'Just created',
       totalPlayTime: 0,
+      customDir: newInstData.customDir,
     };
 
     const updated = [newInstance, ...instances];
@@ -329,6 +364,41 @@ export const App: React.FC = () => {
     if (isTauri()) {
       invokeCommand('save_instances', { instances: updated }).catch(console.warn);
     }
+  };
+
+  const handleChangeDefaultGameDir = async () => {
+    if (!isTauri()) return;
+    try {
+      const chosen = await invokeCommand<string | null>('select_folder', {
+        defaultPath: defaultGameDir || undefined,
+      });
+      if (chosen) {
+        await invokeCommand('set_game_data_dir', { path: chosen });
+        setDefaultGameDir(chosen);
+        setSettings((s) => ({ ...s, gameDataDir: chosen }));
+      }
+    } catch (err) {
+      console.error('Failed to change default game dir:', err);
+    }
+  };
+
+  const handleOpenDefaultGameDir = () => {
+    if (isTauri()) {
+      invokeCommand('open_instance_dir', { instanceId: '' }).catch(console.warn);
+    }
+  };
+
+  const handleCompleteOnboarding = (updatedSettings: Partial<LauncherSettings>) => {
+    setHasCompletedOnboarding(true);
+    localStorage.setItem('mcl_onboarding_completed', 'true');
+    if (updatedSettings.gameDataDir) {
+      setDefaultGameDir(updatedSettings.gameDataDir);
+    }
+    setSettings((s) => ({
+      ...s,
+      ...updatedSettings,
+      hasCompletedOnboarding: true,
+    }));
   };
 
   const handleEditInstance = (inst: GameInstance) => {
@@ -344,14 +414,24 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleDeleteInstance = (id: string) => {
-    const remaining = instances.filter((i) => i.id !== id);
+  const handleConfirmDeleteInstance = async (instanceId: string, deleteVersionFiles: boolean) => {
+    if (isTauri()) {
+      try {
+        await invokeCommand('delete_instance', { instanceId, deleteVersionFiles });
+      } catch (err) {
+        console.error('Error deleting instance:', err);
+      }
+    }
+    const remaining = instances.filter((i) => i.id !== instanceId);
     setInstances(remaining);
-    if (selectedInstanceId === id) {
+    if (selectedInstanceId === instanceId) {
       setSelectedInstanceId(remaining[0]?.id || '');
     }
+  };
+
+  const handleOpenInstanceDir = (id: string) => {
     if (isTauri()) {
-      invokeCommand('save_instances', { instances: remaining }).catch(console.warn);
+      invokeCommand('open_instance_dir', { instanceId: id }).catch(console.warn);
     }
   };
 
@@ -417,6 +497,12 @@ export const App: React.FC = () => {
         unlistenStarted = await listen<number>('game-started', () => {
           setIsRunning(true);
           setIsPreparing(false);
+        });
+
+        // Auto-open console when game crashes
+        let unlistenCrash: (() => void) | undefined;
+        unlistenCrash = await listen<number>('game-crash', () => {
+          setIsConsoleOpen(true);
         });
 
         unlistenExit = await listen('game-exit', () => {
@@ -542,11 +628,26 @@ export const App: React.FC = () => {
     ]);
   };
 
-  const handleToggleLanguage = () => {
-    const next: Language = language === 'en' ? 'vi' : 'en';
-    setLanguage(next);
-    localStorage.setItem('mcl_lang', next);
-    setSettings((s) => ({ ...s, language: next }));
+  const handleChangeLanguage = (lang: Language) => {
+    setLanguage(lang);
+    localStorage.setItem('mcl_lang', lang);
+    setSettings((s) => ({ ...s, language: lang }));
+  };
+
+  const handleUpdateBackground = (patch: Partial<LauncherSettings>) => {
+    setSettings((s) => {
+      const next = { ...s, ...patch };
+      localStorage.setItem('mcl_settings', JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleSaveSettings = (newSettings: LauncherSettings) => {
+    setSettings(newSettings);
+    if (newSettings.language && newSettings.language !== language) {
+      setLanguage(newSettings.language);
+      localStorage.setItem('mcl_lang', newSettings.language);
+    }
   };
 
   const activeInstance = instances.find((i) => i.id === selectedInstanceId) || instances[0];
@@ -554,7 +655,7 @@ export const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <div
-        className={`relative flex flex-col h-screen w-screen overflow-hidden font-sans select-none bg-[#0a0a0a] text-slate-100 style-riot palette-${settings.colorPalette || 'amber'} window-shell`}
+        className={`relative flex flex-col h-screen w-screen overflow-hidden font-sans select-none theme-dark bg-[#0a0a0a] text-slate-100 style-riot palette-${settings.colorPalette || 'amber'} ${settings.reduceMotion ? 'reduce-motion' : ''} window-shell`}
       >
         {/* Dynamic Background Media: Persistent across all modals for seamless cinematic look */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -565,6 +666,7 @@ export const App: React.FC = () => {
               src={settings.customBgImage}
               alt="Launcher Background"
               className="w-full h-full object-cover select-none relative z-1"
+              style={{ filter: settings.bgBlur ? `blur(${settings.bgBlur}px)` : undefined, transform: settings.bgBlur ? 'scale(1.04)' : undefined }}
             />
           ) : (
             <video
@@ -575,12 +677,13 @@ export const App: React.FC = () => {
               muted
               playsInline
               className="w-full h-full object-cover select-none relative z-1"
+              style={{ filter: settings.bgBlur ? `blur(${settings.bgBlur}px)` : undefined, transform: settings.bgBlur ? 'scale(1.04)' : undefined }}
             />
           )}
 
           {/* Contrast & Tint Overlays */}
           <div
-            className="absolute inset-0 bg-black z-2 pointer-events-none transition-opacity duration-300"
+            className="absolute inset-0 bg-black z-2 pointer-events-none"
             style={{ opacity: settings.bgOpacity ?? 0.3 }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-3 pointer-events-none" />
@@ -594,6 +697,7 @@ export const App: React.FC = () => {
             onTabChange={(tab) => setCurrentTab(tab)}
             account={account}
             onUpdateUsername={handleUpdateUsername}
+            onUpdateAccount={setAccount}
             language={language}
           />
 
@@ -604,7 +708,7 @@ export const App: React.FC = () => {
               onOpenConsole={() => setIsConsoleOpen(true)}
               isRunning={isRunning}
               language={language}
-              onToggleLanguage={handleToggleLanguage}
+              onChangeLanguage={handleChangeLanguage}
             />
 
             {/* Persistent Home Screen Canvas */}
@@ -621,6 +725,7 @@ export const App: React.FC = () => {
                 isPreparing={isPreparing}
                 language={language}
                 onOpenCreateModal={() => setIsCreateModalOpen(true)}
+                onOpenBackgroundModal={() => setIsBackgroundModalOpen(true)}
                 savedServers={savedServers}
                 activeServerId={activeServerId}
                 onSelectActiveServer={setActiveServerId}
@@ -640,29 +745,18 @@ export const App: React.FC = () => {
                 onClick={() => setCurrentTab('home')}
               >
                 <div
-                  className="w-full max-w-6xl h-[92vh] rounded-3xl bg-[#111111]/92 border border-white/10 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-modalScale"
+                  className="w-full max-w-6xl h-[92vh] rounded-3xl bg-[#111111]/95 border border-white/10 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-modalScale relative modal-popup-window"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  {/* Overlay Window Header Bar */}
-                  <div className="flex items-center justify-between px-8 py-3.5 border-b border-white/[0.08] bg-[#141414]/90 shrink-0">
-                    <div className="flex items-center gap-3">
-                      <span className="w-2 h-2 rounded-full bg-amber-400 shadow-accent-glow" />
-                      <span className="text-xs font-bold font-riot text-slate-300 uppercase tracking-widest transition-all duration-200">
-                        {currentTab === 'instances' && 'Instance Profiles'}
-                        {currentTab === 'mods' && 'Mods & Shaders'}
-                        {currentTab === 'skin' && '3D Skin Studio'}
-                        {currentTab === 'profile' && 'Player Profile'}
-                        {currentTab === 'settings' && 'Settings'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={() => setCurrentTab('home')}
-                      title="Close Window (Return to Home)"
-                      className="w-8 h-8 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition cursor-pointer"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
+                  {/* Floating Close Button - Styled as requested: rounded dark square with bold white X */}
+                  <button
+                    onClick={() => setCurrentTab('home')}
+                    title="Close Window (Return to Home)"
+                    aria-label="Close"
+                    className="absolute top-5 right-6 z-30 w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+                  >
+                    <X className="w-4 h-4 text-white" strokeWidth={3} />
+                  </button>
 
                   {/* Overlay Window Body Content with Smooth Tab Transition */}
                   <div className="flex-1 flex overflow-hidden relative">
@@ -678,16 +772,31 @@ export const App: React.FC = () => {
                             handleLaunch();
                           }}
                           onEditInstance={handleEditInstance}
-                          onDeleteInstance={handleDeleteInstance}
+                          onRequestDeleteInstance={(inst) => setDeleteTargetInstance(inst)}
+                          onOpenInstanceDir={handleOpenInstanceDir}
                           onOpenCreateModal={() => setIsCreateModalOpen(true)}
+                          onOpenCleanStorageModal={() => setIsStorageCleanupModalOpen(true)}
                           isRunning={isRunning}
+                          defaultGameDir={defaultGameDir}
+                          onChangeDefaultGameDir={handleChangeDefaultGameDir}
+                          onOpenDefaultGameDir={handleOpenDefaultGameDir}
+                          language={language}
                         />
                       )}
 
                       {currentTab === 'mods' && (
                         <ModStore
                           activeInstance={activeInstance}
+                          instances={instances}
+                          onSelectInstance={(id) => setSelectedInstanceId(id)}
                           onOpenCreateModal={() => setIsCreateModalOpen(true)}
+                          onOpenInstanceDir={handleOpenInstanceDir}
+                          onModpackInstalled={(newInstance) => {
+                            setInstances((prev) => [newInstance, ...prev.filter((i) => i.id !== newInstance.id)]);
+                            setSelectedInstanceId(newInstance.id);
+                          }}
+                          language={language}
+                          curseForgeApiKey={settings.curseForgeApiKey}
                         />
                       )}
 
@@ -696,15 +805,6 @@ export const App: React.FC = () => {
                           account={account}
                           onUpdateSkin={handleUpdateSkin}
                           instances={instances}
-                        />
-                      )}
-
-                      {currentTab === 'profile' && (
-                        <ProfileView
-                          account={account}
-                          onUpdateAccount={setAccount}
-                          onNavigateSkin={() => setCurrentTab('skin')}
-                          instances={instances}
                           language={language}
                         />
                       )}
@@ -712,7 +812,7 @@ export const App: React.FC = () => {
                       {currentTab === 'settings' && (
                         <SettingsView
                           settings={settings}
-                          onSaveSettings={setSettings}
+                          onSaveSettings={handleSaveSettings}
                           language={language}
                         />
                       )}
@@ -728,6 +828,8 @@ export const App: React.FC = () => {
             isOpen={isCreateModalOpen}
             onClose={() => setIsCreateModalOpen(false)}
             onCreate={handleCreateInstance}
+            defaultGameDir={defaultGameDir}
+            language={language}
           />
 
           <EditInstanceModal
@@ -735,6 +837,8 @@ export const App: React.FC = () => {
             onClose={() => setIsEditModalOpen(false)}
             instance={editingInstance}
             onSave={handleSaveEditedInstance}
+            onOpenDir={handleOpenInstanceDir}
+            language={language}
           />
 
           <ConsoleModal
@@ -742,6 +846,41 @@ export const App: React.FC = () => {
             onClose={() => setIsConsoleOpen(false)}
             logs={consoleLogs}
             onClearLogs={() => setConsoleLogs([])}
+            language={language}
+          />
+
+          <DeleteProfileModal
+            isOpen={!!deleteTargetInstance}
+            instance={deleteTargetInstance}
+            allInstances={instances}
+            onClose={() => setDeleteTargetInstance(null)}
+            onConfirmDelete={handleConfirmDeleteInstance}
+            language={language}
+          />
+
+          <StorageCleanupModal
+            isOpen={isStorageCleanupModalOpen}
+            onClose={() => setIsStorageCleanupModalOpen(false)}
+            language={language}
+          />
+
+          <BackgroundCustomizerModal
+            isOpen={isBackgroundModalOpen}
+            onClose={() => setIsBackgroundModalOpen(false)}
+            settings={settings}
+            onUpdateSettings={handleUpdateBackground}
+            language={language}
+          />
+
+          <OnboardingModal
+            isOpen={!hasCompletedOnboarding}
+            onComplete={handleCompleteOnboarding}
+            currentLanguage={language}
+            onLanguageChange={(lang) => {
+              setLanguage(lang);
+              localStorage.setItem('mcl_lang', lang);
+              setSettings((s) => ({ ...s, language: lang }));
+            }}
           />
         </div>
       </div>

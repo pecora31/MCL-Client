@@ -26,6 +26,8 @@ pub struct GameInstance {
     pub skin_model: Option<String>,
     pub enable_skin_in_game: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub custom_dir: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_played: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_play_time: Option<u32>,
@@ -69,4 +71,35 @@ pub struct LocalMod {
     pub version: Option<String>,
     pub enabled: bool,
     pub size_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub addon_type: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionCleanupInfo {
+    pub version: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageCleanupScanResult {
+    pub unused_versions: Vec<VersionCleanupInfo>,
+    pub orphaned_instances: Vec<String>,
+    pub orphaned_instances_bytes: u64,
+    pub temp_cache_bytes: u64,
+    pub total_reclaimable_bytes: u64,
+    pub storage_root: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StorageCleanupReport {
+    pub bytes_freed: u64,
+    pub versions_deleted: usize,
+    pub cache_cleaned: bool,
+    pub orphaned_instances_deleted: usize,
+    pub message: String,
+}
+

@@ -24,3 +24,10 @@ dist-ssr
 # Tauri / Rust
 src-tauri/target/
 **/target/
+
+# Dev & temporary artifacts
+.agents/
+conf/
+*.bak
+HANDOFF.md
+

@@ -1,8 +1,10 @@
+import React, { useState } from 'react';
 import mclLogo from '../../assets/logo.png';
 import { Home, Layers, Package, Shirt, Settings, User } from 'lucide-react';
 import type { Account } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { MINECRAFT_AVATAR_ICONS } from '../profile/ProfileView';
+import { ProfileCard } from '../profile/ProfileCard';
 
 export type NavigationTab = 'home' | 'instances' | 'mods' | 'skin' | 'settings' | 'profile';
 
@@ -11,6 +13,7 @@ interface SidebarProps {
   onTabChange: (tab: NavigationTab) => void;
   account: Account;
   onUpdateUsername: (newName: string) => void;
+  onUpdateAccount?: (updated: Account) => void;
   language: Language;
 }
 
@@ -18,9 +21,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onTabChange,
   account,
+  onUpdateUsername,
+  onUpdateAccount,
   language,
 }) => {
   const t = getTranslation(language);
+  const [isProfileCardOpen, setIsProfileCardOpen] = useState(false);
 
   const navItems = [
     { id: 'home', label: t.navHome, icon: Home },
@@ -38,8 +44,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const activeNavIndex = navItems.findIndex((item) => item.id === currentTab);
 
   return (
-    <aside className="w-20 bg-[#121318]/70 backdrop-blur-xl flex flex-col justify-between items-center py-5 select-none z-50 shrink-0 h-full border-r border-white/[0.08] shadow-[4px_0_24px_rgba(0,0,0,0.35)]">
-      {/* Top MCL Logo - Subdued (chìm), Unclickable */}
+    <aside className="w-20 bg-[#111111]/[0.86] flex flex-col justify-between items-center py-5 select-none z-50 shrink-0 h-full border-none shadow-none">
+      {/* Top MCL Logo - Subdued, Unclickable */}
       <div className="w-full flex items-center justify-center pt-1 select-none pointer-events-none">
         <img
           src={mclLogo}
@@ -53,7 +59,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="relative flex flex-col items-center gap-7 w-full">
           {/* Smooth Sliding Active Indicator Bar along Left Edge */}
           <div
-            className="absolute left-0 w-1.5 rounded-r bg-amber-400 shadow-accent-glow transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
+            className="absolute left-0 w-1.5 rounded-r bg-[var(--accent-color)] shadow-accent-glow transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
             style={{
               transform: `translateY(${activeNavIndex !== -1 ? activeNavIndex * 76 + 6 : 6}px)`,
               height: '36px',
@@ -78,10 +84,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return (
               <div key={item.id} className="relative group flex items-center justify-center w-full h-12">
                 <button
-                  onClick={() => onTabChange(item.id as NavigationTab)}
+                  onClick={() => {
+                    setIsProfileCardOpen(false);
+                    onTabChange(item.id as NavigationTab);
+                  }}
                   className={`relative z-10 w-12 h-12 rounded-xl flex items-center justify-center transition-colors duration-150 border-none outline-none cursor-pointer ${
                     isActive
-                      ? 'text-amber-400'
+                      ? 'text-[var(--accent-color)]'
                       : 'text-slate-400 hover:text-white hover:bg-white/[0.05]'
                   }`}
                 >
@@ -98,21 +107,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Account Avatar at Bottom -> Opens Full Profile Page (Circular, No Online Dot) */}
+      {/* Account Avatar at Bottom -> Opens Discord-Style Compact Profile Card */}
       <div className="relative group flex flex-col items-center px-2 pb-1 w-full">
         {/* Left Edge Active Indicator Bar for Profile */}
         <span
-          className={`absolute left-0 top-2 bottom-2 w-1.5 rounded-r bg-amber-400 shadow-accent-glow transition-opacity duration-200 pointer-events-none ${
-            currentTab === 'profile' ? 'opacity-100' : 'opacity-0'
+          className={`absolute left-0 top-2 bottom-2 w-1.5 rounded-r bg-[var(--accent-color)] shadow-accent-glow transition-opacity duration-200 pointer-events-none ${
+            isProfileCardOpen ? 'opacity-100' : 'opacity-0'
           }`}
         />
 
         <button
-          onClick={() => onTabChange('profile')}
-          className={`relative w-12 h-12 rounded-full overflow-hidden bg-[#171717]/80 border transition-all duration-150 flex items-center justify-center outline-none ${
-            currentTab === 'profile'
-              ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-[0_0_12px_rgba(251,191,36,0.3)]'
-              : 'border-white/10 hover:border-amber-400/60 hover:scale-105'
+          onClick={() => setIsProfileCardOpen((prev) => !prev)}
+          title={account.username}
+          aria-label="User Profile"
+          className={`relative w-12 h-12 rounded-full overflow-hidden bg-[#171717]/80 border transition-all duration-150 flex items-center justify-center outline-none cursor-pointer ${
+            isProfileCardOpen
+              ? 'border-[var(--accent-color)] ring-2 ring-[var(--accent-color)]/40 shadow-[0_0_12px_var(--accent-glow)] scale-105'
+              : 'border-white/10 hover:border-[var(--accent-color)]/60 hover:scale-105'
           }`}
         >
           {account.avatarCustom ? (
@@ -132,15 +143,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="w-full h-full object-cover rendering-pixelated"
             />
           ) : (
-            <User className="w-6 h-6 text-amber-400" />
+            <User className="w-6 h-6 text-[var(--accent-color)]" />
           )}
         </button>
 
-        {/* Pure CSS Tooltip for profile */}
-        <div className="absolute left-[88px] bottom-2 px-3.5 py-2 rounded-lg bg-[#161616] border border-white/10 text-xs text-white shadow-2xl whitespace-nowrap z-[60] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-100">
-          <div className="font-bold text-amber-300 text-sm">{account.username}</div>
-          <div className="text-xs text-slate-400">View Profile & Customize Skin</div>
-        </div>
+        {/* Pure CSS Tooltip for profile (hidden when card is open) */}
+        {!isProfileCardOpen && (
+          <div className="absolute left-[88px] bottom-2 px-3.5 py-2 rounded-lg bg-[#161616] border border-white/10 text-xs text-white shadow-2xl whitespace-nowrap z-[60] pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-100">
+            <div className="font-bold text-[var(--accent-color)] text-sm">{account.username}</div>
+            <div className="text-xs text-slate-400">
+              {t.playerProfileTitle || 'Player Profile'}
+            </div>
+          </div>
+        )}
+
+        {/* Discord-Style Compact Profile Card Popout */}
+        <ProfileCard
+          isOpen={isProfileCardOpen}
+          onClose={() => setIsProfileCardOpen(false)}
+          account={account}
+          onUpdateAccount={(updated) => {
+            if (onUpdateAccount) onUpdateAccount(updated);
+          }}
+          onNavigateSkin={() => {
+            setIsProfileCardOpen(false);
+            onTabChange('skin');
+          }}
+          language={language}
+        />
       </div>
     </aside>
   );

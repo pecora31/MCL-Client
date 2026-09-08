@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
+use sha1::{Digest, Sha1};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::Semaphore;
 
 pub static CANCEL_DOWNLOAD: AtomicBool = AtomicBool::new(false);
@@ -37,6 +39,26 @@ pub struct DownloadTask {
     pub sha1: Option<String>,
 }
 
+/// Helper: Kiểm tra checksum SHA1 của một file cục bộ
+fn verify_file_sha1(path: &Path, expected_hex: &str) -> bool {
+    let mut file = match fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return false,
+    };
+    let mut hasher = Sha1::new();
+    let mut buffer = [0u8; 65536]; // 64KB buffer for high throughput
+    loop {
+        match std::io::Read::read(&mut file, &mut buffer) {
+            Ok(0) => break,
+            Ok(n) => hasher.update(&buffer[..n]),
+            Err(_) => return false,
+        }
+    }
+    let result = hasher.finalize();
+    let computed = format!("{:x}", result);
+    computed.eq_ignore_ascii_case(expected_hex.trim())
+}
+
 pub async fn download_files_concurrently(
     app_handle: &AppHandle,
     stage_name: &str,
@@ -49,18 +71,30 @@ pub async fn download_files_concurrently(
         return Ok(());
     }
 
+    // HTTP Client with network timeouts
     let client = reqwest::Client::builder()
         .user_agent("MCLv2-Downloader/1.0")
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
         .build()
         .map_err(|e| e.to_string())?;
 
-    // Filter tasks that already exist with non-zero size
+    // Filter tasks with smart SHA1 checksum & size caching
     let mut tasks_to_download = Vec::new();
     for task in tasks {
         if task.destination.exists() {
             if let Ok(metadata) = fs::metadata(&task.destination) {
+                // If size matches and sha1 matches (or no sha1 specified), reuse cached file
                 if task.size > 0 && metadata.len() == task.size {
-                    continue; // Skip already downloaded file
+                    if let Some(expected_sha1) = &task.sha1 {
+                        if verify_file_sha1(&task.destination, expected_sha1) {
+                            continue; // Valid cached file
+                        } else {
+                            let _ = fs::remove_file(&task.destination); // Corrupted cache, remove to re-download
+                        }
+                    } else {
+                        continue; // No SHA1, valid size match
+                    }
                 }
             }
         }
@@ -85,6 +119,7 @@ pub async fn download_files_concurrently(
 
     let completed_count = Arc::new(AtomicU64::new(0));
     let downloaded_bytes = Arc::new(AtomicU64::new(0));
+    let failed_count = Arc::new(AtomicU64::new(0));
     let total_bytes: u64 = tasks_to_download.iter().map(|t| t.size).sum();
 
     let semaphore = Arc::new(Semaphore::new(max_concurrent));
@@ -99,7 +134,7 @@ pub async fn download_files_concurrently(
 
     for task in tasks_to_download {
         if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
-            return Err("Tải tài nguyên đã bị hủy".to_string());
+            return Err("Tải tài nguyên đã bị hủy bởi người dùng".to_string());
         }
 
         let permit = semaphore.clone().acquire_owned().await.unwrap();
@@ -108,6 +143,7 @@ pub async fn download_files_concurrently(
         let stage = stage_name.to_string();
         let completed = completed_count.clone();
         let downloaded = downloaded_bytes.clone();
+        let failed = failed_count.clone();
 
         let handle = tokio::spawn(async move {
             let _permit = permit; // holds permit until task finishes
@@ -127,22 +163,87 @@ pub async fn download_files_concurrently(
                 .unwrap_or("file")
                 .to_string();
 
-            let resp = client.get(&task.url).send().await;
-            if let Ok(mut response) = resp {
-                if response.status().is_success() {
-                    let mut file = match tokio::fs::File::create(&task.destination).await {
-                        Ok(f) => f,
-                        Err(_) => return,
-                    };
+            // Temporary file path (.mclpart) for atomic write
+            let part_path = PathBuf::from(format!("{}.mclpart", task.destination.display()));
 
-                    while let Some(chunk) = response.chunk().await.ok().flatten() {
-                        if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
-                            break;
+            // Retry loop up to 3 attempts with backoff
+            let mut download_succeeded = false;
+            for attempt in 1..=3 {
+                if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
+                    break;
+                }
+
+                // If previous attempt left a part file, remove it
+                if part_path.exists() {
+                    let _ = tokio::fs::remove_file(&part_path).await;
+                }
+
+                let req = client.get(&task.url).send().await;
+                match req {
+                    Ok(mut response) if response.status().is_success() => {
+                        let mut part_file = match tokio::fs::File::create(&part_path).await {
+                            Ok(f) => f,
+                            Err(_) => {
+                                tokio::time::sleep(Duration::from_millis(300 * attempt)).await;
+                                continue;
+                            }
+                        };
+
+                        let mut stream_ok = true;
+                        let mut task_bytes = 0u64;
+
+                        while let Some(chunk_res) = response.chunk().await.ok().flatten() {
+                            if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
+                                stream_ok = false;
+                                break;
+                            }
+                            if let Err(_) = part_file.write_all(&chunk_res).await {
+                                stream_ok = false;
+                                break;
+                            }
+                            let chunk_len = chunk_res.len() as u64;
+                            task_bytes += chunk_len;
+                            downloaded.fetch_add(chunk_len, Ordering::Relaxed);
                         }
-                        use tokio::io::AsyncWriteExt;
-                        let _ = file.write_all(&chunk).await;
-                        downloaded.fetch_add(chunk.len() as u64, Ordering::Relaxed);
+
+                        let _ = part_file.flush().await;
+                        drop(part_file);
+
+                        if stream_ok && !CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
+                            // Check SHA1 if required
+                            let sha1_valid = if let Some(expected_sha1) = &task.sha1 {
+                                verify_file_sha1(&part_path, expected_sha1)
+                            } else {
+                                true
+                            };
+
+                            if sha1_valid {
+                                // Atomic move part file to final destination
+                                if tokio::fs::rename(&part_path, &task.destination).await.is_ok() {
+                                    download_succeeded = true;
+                                    break;
+                                }
+                            } else {
+                                // SHA1 mismatch: rollback downloaded bytes count for this attempt
+                                downloaded.fetch_sub(task_bytes, Ordering::Relaxed);
+                                let _ = tokio::fs::remove_file(&part_path).await;
+                            }
+                        } else {
+                            downloaded.fetch_sub(task_bytes, Ordering::Relaxed);
+                        }
                     }
+                    _ => {
+                        // Network/HTTP error: wait before retry
+                        tokio::time::sleep(Duration::from_millis(400 * attempt)).await;
+                    }
+                }
+            }
+
+            // Cleanup leftover part file if download failed
+            if !download_succeeded {
+                failed.fetch_add(1, Ordering::Relaxed);
+                if part_path.exists() {
+                    let _ = tokio::fs::remove_file(&part_path).await;
                 }
             }
 
@@ -174,6 +275,23 @@ pub async fn download_files_concurrently(
 
     for handle in handles {
         let _ = handle.await;
+    }
+
+    if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
+        return Err("Tải tài nguyên đã bị hủy".to_string());
+    }
+
+    let total_failed = failed_count.load(Ordering::Relaxed);
+    if total_failed > 0 {
+        // If critical percentage of files failed, notify or log
+        let _ = app_handle.emit(
+            "mc-log",
+            format!(
+                "[{}] [MCLv2/WARN] Có {} tệp không tải thành công sau 3 lần thử lại.",
+                chrono::Local::now().format("%H:%M:%S"),
+                total_failed
+            ),
+        );
     }
 
     Ok(())

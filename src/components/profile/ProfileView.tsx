@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Shield, Clock, HardDrive, Edit3, Check, Upload, Shirt, Sparkles, Trash2, Award, Zap, Heart } from 'lucide-react';
+import { Shield, Clock, HardDrive, Edit3, Check, Upload, Shirt, Trash2, Award, Zap, Heart } from 'lucide-react';
 import type { Account, GameInstance } from '../../types';
-import type { Language } from '../../locales/i18n';
+import { getTranslation, type Language } from '../../locales/i18n';
 
 interface ProfileViewProps {
   account: Account;
@@ -32,7 +32,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUpdateAccount,
   onNavigateSkin,
   instances,
+  language,
 }) => {
+  const t = getTranslation(language);
   const [usernameInput, setUsernameInput] = useState(account.username);
   const [isEditingName, setIsEditingName] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
@@ -92,7 +94,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const currentPreset = MINECRAFT_AVATAR_ICONS.find((i) => i.id === (account.avatarIcon || 'creeper')) || MINECRAFT_AVATAR_ICONS[0];
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto p-8 space-y-6 animate-fadeIn custom-scrollbar">
+    <div className="flex-1 flex flex-col overflow-y-auto p-10 space-y-7 animate-fadeIn custom-scrollbar">
+      {/* Top Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-12">
+        <div>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold mb-2 tracking-wide">
+            <Shield className="w-4 h-4" />
+            <span>{t.badgeProfile || 'Player Profile'}</span>
+          </div>
+          <h1 className="text-3xl font-extrabold font-riot text-white tracking-normal">
+            {t.playerProfileTitle || 'Player Profile'}
+          </h1>
+          <p className="text-base text-slate-300 mt-1 tracking-wide">
+            {t.playerProfileSub || 'Manage account identity, player badge and custom avatar'}
+          </p>
+        </div>
+      </div>
+
       {/* Top Banner & Player Identity Card */}
       <div className="minimal-panel rounded-2xl p-6 border border-white/[0.06] shadow-2xl relative overflow-hidden">
         <div className="absolute top-0 right-0 w-96 h-96 bg-gradient-to-bl from-amber-500/10 via-indigo-500/5 to-transparent rounded-full blur-3xl pointer-events-none" />
@@ -102,7 +120,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex items-center gap-5">
             {/* Big Avatar Frame */}
             <div className="relative group">
-              <div className="w-24 h-24 rounded-2xl overflow-hidden bg-slate-900 border-2 border-amber-400/50 shadow-[0_0_25px_rgba(245,158,11,0.3)] flex items-center justify-center text-4xl">
+              <div className="w-24 h-24 rounded-2xl overflow-hidden bg-slate-900 border-[2.5px] border-[var(--accent-color)] shadow-lg shadow-black/40 flex items-center justify-center text-4xl">
                 {account.avatarCustom ? (
                   <img src={account.avatarCustom} alt={account.username} className="w-full h-full object-cover" />
                 ) : (
@@ -193,7 +211,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/5 pb-4">
             <div>
               <h2 className="text-base font-bold text-white font-riot tracking-wide flex items-center gap-2">
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Award className="w-4 h-4 text-amber-400" />
                 <span>Player Avatar Icons</span>
               </h2>
               <p className="text-xs text-slate-400">Select a signature Minecraft avatar or upload a custom image</p>
@@ -227,13 +245,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   key={item.id}
                   onClick={() => handleSelectPresetIcon(item.id)}
-                  className={`p-3.5 rounded-xl border text-left transition flex items-center gap-3 group relative ${
+                  className={`p-3.5 rounded-xl border-2 text-left transition-all duration-150 flex items-center gap-3 group relative cursor-pointer ${
                     isSelected
-                      ? 'bg-amber-500/20 border-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.3)]'
-                      : 'bg-[#141414] border-white/[0.06] text-slate-300 hover:border-white/10 hover:bg-[#1c1c1c]'
+                      ? 'bg-theme-selected border-[var(--accent-color)] text-white shadow-md shadow-black/30 -translate-y-0.5'
+                      : 'bg-[#141414] border-white/[0.06] text-slate-300 hover:border-white/20 hover:bg-[#1c1c1c] hover:-translate-y-0.5'
                   }`}
                 >
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br ${item.color} shadow-md transition shrink-0`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center text-2xl bg-gradient-to-br ${item.color} shadow-sm transition shrink-0`}>
                     <span className="select-none">{item.icon}</span>
                   </div>
                   <div className="min-w-0">
@@ -241,7 +259,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     <div className="text-xs text-slate-400 truncate mt-0.5">{item.desc}</div>
                   </div>
                   {isSelected && (
-                    <div className="absolute top-2 right-2 w-2 h-2 rounded-full bg-amber-400 shadow-[0_0_6px_#fbbf24]" />
+                    <div className="absolute top-2.5 right-2.5 w-2 h-2 rounded-full bg-[var(--accent-color)]" />
                   )}
                 </button>
               );

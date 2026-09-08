@@ -226,25 +226,41 @@ pub async fn prepare_and_launch(
         .join(";");
 
     // 7. Extract Natives (.dll) to natives directory
-    extract_natives_from_libraries(&libraries_dir, &natives_dir);
+    let _ = app_handle.emit(
+        "mc-log",
+        format!(
+            "[{}] [MCLv2] Đang giải nén thư viện native (LWJGL, OpenAL)...",
+            chrono::Local::now().format("%H:%M:%S")
+        ),
+    );
+    extract_natives_from_libraries(app_handle, &libraries_dir, &natives_dir);
 
-    // 8. Execute Java
-    let java_bin = if let Some(custom_path) = &instance.java_path {
+    // 8. Smart Java Auto-Matching based on Minecraft version
+    let (java_bin, java_major, java_reason) = if let Some(custom_path) = &instance.java_path {
         if !custom_path.is_empty() && Path::new(custom_path).exists() {
-            custom_path.clone()
+            (custom_path.clone(), 0u32, format!("Sử dụng Java tùy chỉnh: {}", custom_path))
         } else {
-            crate::java_detector::find_system_javaw()
+            crate::java_detector::find_best_java_for_version(&instance.game_version)
         }
     } else {
-        crate::java_detector::find_system_javaw()
+        crate::java_detector::find_best_java_for_version(&instance.game_version)
     };
 
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Khởi chạy tiến trình Minecraft với Java: {}",
+            "[{}] [MCLv2/Java] {}",
             chrono::Local::now().format("%H:%M:%S"),
-            java_bin
+            java_reason
+        ),
+    );
+    let _ = app_handle.emit(
+        "mc-log",
+        format!(
+            "[{}] [MCLv2] Khởi chạy tiến trình Minecraft với Java: {} (v{})",
+            chrono::Local::now().format("%H:%M:%S"),
+            java_bin,
+            if java_major > 0 { java_major.to_string() } else { "custom".to_string() }
         ),
     );
     let _ = app_handle.emit(
@@ -348,20 +364,60 @@ pub async fn prepare_and_launch(
         });
     }
 
-    // Watch for game exit to notify frontend immediately
+    // Watch for game exit to notify frontend immediately — with crash detection
     let app_exit = app_handle.clone();
+    let game_version_for_exit = instance.game_version.clone();
+    let instance_name_for_exit = instance.name.clone();
     std::thread::spawn(move || {
         let status = child.wait();
         CURRENT_GAME_PID.store(0, Ordering::SeqCst);
 
-        let _ = app_exit.emit(
-            "mc-log",
-            format!(
-                "[{}] [MCLv2/INFO] Tiến trình Minecraft đã thoát (Exit status: {:?})",
-                chrono::Local::now().format("%H:%M:%S"),
-                status
-            ),
-        );
+        match &status {
+            Ok(exit_status) => {
+                let code = exit_status.code().unwrap_or(-1);
+                if code == 0 {
+                    // Normal exit
+                    let _ = app_exit.emit(
+                        "mc-log",
+                        format!(
+                            "[{}] [MCLv2/INFO] Minecraft '{}' (MC {}) đã thoát bình thường.",
+                            chrono::Local::now().format("%H:%M:%S"),
+                            instance_name_for_exit,
+                            game_version_for_exit
+                        ),
+                    );
+                } else {
+                    // Crash detected
+                    let crash_hint = match code {
+                        -1 => "Tiến trình bị kill hoặc lỗi hệ thống.".to_string(),
+                        1 => "Lỗi chung — có thể do mod xung đột hoặc file game bị hỏng.".to_string(),
+                        -805306369 => "Out of Memory! Hãy tăng RAM tối đa trong cài đặt profile.".to_string(),
+                        _ => format!("Mã lỗi: {}. Kiểm tra log console để biết chi tiết.", code),
+                    };
+                    let _ = app_exit.emit(
+                        "mc-log",
+                        format!(
+                            "[{}] [MCLv2/ERROR] ⚠ Minecraft đã CRASH! Exit code: {}. {}",
+                            chrono::Local::now().format("%H:%M:%S"),
+                            code,
+                            crash_hint
+                        ),
+                    );
+                    // Notify frontend to auto-open console on crash
+                    let _ = app_exit.emit("game-crash", code);
+                }
+            }
+            Err(e) => {
+                let _ = app_exit.emit(
+                    "mc-log",
+                    format!(
+                        "[{}] [MCLv2/ERROR] Lỗi khi chờ tiến trình Minecraft: {}",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        e
+                    ),
+                );
+            }
+        }
         let _ = app_exit.emit("game-exit", ());
     });
 
@@ -406,11 +462,26 @@ fn get_library_path_from_name(name: &str) -> PathBuf {
     PathBuf::from(group).join(artifact).join(version).join(file_name)
 }
 
-fn extract_natives_from_libraries(libraries_dir: &Path, natives_dir: &Path) {
+fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, natives_dir: &Path) {
     let natives_jars_dir = libraries_dir.join("natives");
     if !natives_jars_dir.exists() {
         return;
     }
+
+    // Clean old native files to avoid stale/locked DLLs from previous sessions
+    if let Ok(entries) = fs::read_dir(natives_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let path = entry.path();
+            if path.is_file() {
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                if ext == "dll" || ext == "so" || ext == "dylib" {
+                    let _ = fs::remove_file(&path);
+                }
+            }
+        }
+    }
+
+    let mut extracted_count = 0u32;
 
     if let Ok(entries) = fs::read_dir(&natives_jars_dir) {
         for entry in entries.filter_map(|e| e.ok()) {
@@ -421,11 +492,31 @@ fn extract_natives_from_libraries(libraries_dir: &Path, natives_dir: &Path) {
                         for i in 0..archive.len() {
                             if let Ok(mut file_in_zip) = archive.by_index(i) {
                                 let name = file_in_zip.name().to_string();
-                                if name.ends_with(".dll") {
-                                    let dest = natives_dir.join(&name);
-                                    if let Ok(mut outfile) = fs::File::create(&dest) {
-                                        let _ = std::io::copy(&mut file_in_zip, &mut outfile);
-                                    }
+
+                                // Skip META-INF and directories
+                                if name.starts_with("META-INF") || name.ends_with('/') {
+                                    continue;
+                                }
+
+                                // Only extract native library files
+                                let is_native = name.ends_with(".dll")
+                                    || name.ends_with(".so")
+                                    || name.ends_with(".dylib");
+                                if !is_native {
+                                    continue;
+                                }
+
+                                // Flatten nested paths: "org/lwjgl/glfw.dll" → "glfw.dll"
+                                let file_name = name
+                                    .rsplit('/')
+                                    .next()
+                                    .unwrap_or(&name)
+                                    .to_string();
+
+                                let dest = natives_dir.join(&file_name);
+                                if let Ok(mut outfile) = fs::File::create(&dest) {
+                                    let _ = std::io::copy(&mut file_in_zip, &mut outfile);
+                                    extracted_count += 1;
                                 }
                             }
                         }
@@ -433,5 +524,16 @@ fn extract_natives_from_libraries(libraries_dir: &Path, natives_dir: &Path) {
                 }
             }
         }
+    }
+
+    if extracted_count > 0 {
+        let _ = app_handle.emit(
+            "mc-log",
+            format!(
+                "[{}] [MCLv2] Đã giải nén {} file native (DLL/SO) vào thư mục natives/",
+                chrono::Local::now().format("%H:%M:%S"),
+                extracted_count
+            ),
+        );
     }
 }

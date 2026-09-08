@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Server, Plus, Trash2, Edit2, Check, Wifi, Globe } from 'lucide-react';
 import type { SavedServer } from '../../types';
+import { getTranslation, type Language } from '../../locales/i18n';
 
 interface ServerManagerModalProps {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface ServerManagerModalProps {
   onAddServer: (server: Omit<SavedServer, 'id'>) => void;
   onUpdateServer: (server: SavedServer) => void;
   onDeleteServer: (id: string) => void;
+  language?: Language;
 }
 
 export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
@@ -22,7 +24,9 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
   onAddServer,
   onUpdateServer,
   onDeleteServer,
+  language = 'en',
 }) => {
+  const t = getTranslation(language);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
@@ -81,8 +85,8 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
               <Server className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white font-riot tracking-wide">Quản Lý Danh Sách Máy Chủ</h2>
-              <p className="text-xs text-slate-400">Thêm, sửa, xóa và chọn máy chủ để kết nối trực tiếp trong game</p>
+              <h2 className="text-base font-bold text-white font-riot tracking-wide">{t.manageServersTitle || 'Manage Game Servers'}</h2>
+              <p className="text-xs text-slate-400">{t.manageServersSub || 'Add, edit, remove, and select servers for direct in-game connection'}</p>
             </div>
           </div>
           <button
@@ -98,7 +102,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
           {/* Top Actions */}
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-              Máy chủ đã lưu ({servers.length})
+              {t.savedServersCountLabel || 'Saved Servers'} ({servers.length})
             </span>
             {!isAddingNew && !editingId && (
               <button
@@ -106,7 +110,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                 className="btn-primary py-2 px-4 rounded-xl text-xs font-riot font-bold flex items-center gap-2 shadow-md"
               >
                 <Plus className="w-4 h-4" />
-                <span>Thêm Máy Chủ Mới</span>
+                <span>{t.addNewServerBtn || 'Add New Server'}</span>
               </button>
             )}
           </div>
@@ -116,24 +120,24 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
             <form onSubmit={handleSaveForm} className="p-4 rounded-2xl bg-white/[0.03] border border-amber-500/30 space-y-4 animate-fadeIn">
               <div className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
                 <Globe className="w-4 h-4 text-amber-400" />
-                <span>{isAddingNew ? 'Thêm máy chủ mới' : 'Chỉnh sửa thông tin máy chủ'}</span>
+                <span>{isAddingNew ? (t.addNewServerHeading || 'Add New Server') : (t.editServerHeading || 'Edit Server Details')}</span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">Tên hiển thị</label>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverDisplayName || 'Display Name'}</label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="VD: Máy Chủ Bạn Bè"
+                    placeholder={t.serverDisplayNamePlaceholder || 'e.g. Friends Server'}
                     required
                     className="w-full px-3 py-2 rounded-xl bg-[#181818] border border-white/10 text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                 </div>
                 <div className="grid grid-cols-3 gap-2">
                   <div className="col-span-2">
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Địa chỉ IP / Hostname</label>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverAddressLabel || 'IP Address / Hostname'}</label>
                     <input
                       type="text"
                       value={ip}
@@ -144,7 +148,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">Cổng (Port)</label>
+                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverPortLabel || 'Port'}</label>
                     <input
                       type="number"
                       value={port}
@@ -164,13 +168,13 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                   }}
                   className="px-3.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white transition"
                 >
-                  Hủy
+                  {t.cancel || 'Cancel'}
                 </button>
                 <button
                   type="submit"
                   className="btn-primary px-4 py-1.5 rounded-xl text-xs font-bold font-riot shadow"
                 >
-                  {isAddingNew ? 'Lưu Máy Chủ' : 'Cập Nhật'}
+                  {isAddingNew ? (t.saveServer || 'Save Server') : (t.updateBtn || 'Update')}
                 </button>
               </div>
             </form>
@@ -206,7 +210,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                         <span className="font-bold text-white text-sm truncate">{srv.name}</span>
                         {isActive && (
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40 font-mono tracking-wider">
-                            ĐANG CHỌN
+                            {t.activeServerTag || 'ACTIVE'}
                           </span>
                         )}
                       </div>
@@ -220,7 +224,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                     <button
                       onClick={() => handleStartEdit(srv)}
                       className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition"
-                      title="Chỉnh sửa máy chủ"
+                      title={t.editServerTooltip || 'Edit server'}
                     >
                       <Edit2 className="w-4 h-4" />
                     </button>
@@ -228,7 +232,7 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
                       <button
                         onClick={() => onDeleteServer(srv.id)}
                         className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
-                        title="Xóa máy chủ"
+                        title={t.deleteServerTooltip || 'Delete server'}
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -242,12 +246,12 @@ export const ServerManagerModal: React.FC<ServerManagerModalProps> = ({
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-white/[0.08] bg-[#161616] flex justify-between items-center text-xs text-slate-400">
-          <span>* Bật tùy chọn "Vào thẳng Server" ở màn hình chính để tự động kết nối khi ấn Chơi.</span>
+          <span>{t.directConnectTip || '* Enable "Connect on Play" on the home screen to automatically connect when clicking PLAY.'}</span>
           <button
             onClick={onClose}
             className="btn-primary px-5 py-2 rounded-xl font-riot font-bold text-xs"
           >
-            Hoàn Tất
+            {t.completeBtn || 'Done'}
           </button>
         </div>
       </div>

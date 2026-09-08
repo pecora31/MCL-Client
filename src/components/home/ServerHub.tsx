@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Globe, Pause, Trash2, Edit3, Save, X } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Globe, Pause, Trash2, Edit3, Save, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { GameInstance, ServerStatus, LaunchProgress, SavedServer } from '../../types';
 import { pingServer } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
+import { ToggleSwitch } from '../common/ToggleSwitch';
 
 interface ServerHubProps {
   instances: GameInstance[];
@@ -24,6 +25,7 @@ interface ServerHubProps {
   onDeleteServer: (id: string) => void;
   directConnectServer: boolean;
   onToggleDirectConnectServer: (enabled: boolean) => void;
+  onOpenBackgroundModal?: () => void;
 }
 
 export const ServerHub: React.FC<ServerHubProps> = ({
@@ -46,6 +48,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   onDeleteServer,
   directConnectServer,
   onToggleDirectConnectServer,
+  onOpenBackgroundModal,
 }) => {
   const t = getTranslation(language);
   const selectedInstance = instances.find((i) => i.id === selectedInstanceId) || instances[0];
@@ -54,7 +57,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'server'>('overview');
   const overviewTabRef = React.useRef<HTMLButtonElement>(null);
   const serverTabRef = React.useRef<HTMLButtonElement>(null);
-  const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 6, width: 96 });
+  const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 4, width: 92 });
 
   React.useLayoutEffect(() => {
     const target = activeTab === 'overview' ? overviewTabRef.current : serverTabRef.current;
@@ -73,12 +76,115 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   const [isProfileDropdownOpen, setIsProfileDropdownOpen] = useState(false);
   const [isServerDropdownOpen, setIsServerDropdownOpen] = useState(false);
 
-  // Server management states inside Server Info tab
-  const [isAddingServer, setIsAddingServer] = useState(false);
+  // Server management: Search, Sort & Pagination
+  const [serverSearch, setServerSearch] = useState('');
+  const [serverSort, setServerSort] = useState<'default' | 'az' | 'za' | 'pingAsc' | 'pingDesc' | 'playersDesc'>('default');
+  const [isServerSortOpen, setIsServerSortOpen] = useState(false);
+  const [serverPage, setServerPage] = useState(1);
+  const SERVERS_PER_PAGE = 5;
+
+  // Per-server ping cache: Record<serverId, ServerStatus>
+  const [serverPingMap, setServerPingMap] = useState<Record<string, ServerStatus>>({});
+
+  const serverSortRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (serverSortRef.current && !serverSortRef.current.contains(e.target as Node)) {
+        setIsServerSortOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Background-ping ALL saved servers so chips are always populated
+  useEffect(() => {
+    let cancelled = false;
+    const pingAll = async () => {
+      for (const srv of savedServers) {
+        if (cancelled) break;
+        try {
+          const status = await pingServer(srv.ip, srv.port || 25565);
+          if (!cancelled) {
+            setServerPingMap((prev) => ({ ...prev, [srv.id]: status }));
+          }
+        } catch {
+          // ignore individual errors
+        }
+      }
+    };
+    pingAll();
+    const interval = setInterval(pingAll, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [savedServers]);
+
+
+  // Filtered and sorted servers
+  const filteredAndSortedServers = useMemo(() => {
+    let list = [...savedServers];
+    if (serverSearch.trim()) {
+      const q = serverSearch.toLowerCase().trim();
+      list = list.filter(
+        (s) =>
+          s.name.toLowerCase().includes(q) ||
+          s.ip.toLowerCase().includes(q) ||
+          String(s.port).includes(q)
+      );
+    }
+    if (serverSort === 'az') {
+      list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    } else if (serverSort === 'za') {
+      list.sort((a, b) => b.name.localeCompare(a.name, undefined, { sensitivity: 'base' }));
+    } else if (serverSort === 'pingAsc') {
+      list.sort((a, b) => (serverPingMap[a.id]?.pingMs ?? 9999) - (serverPingMap[b.id]?.pingMs ?? 9999));
+    } else if (serverSort === 'pingDesc') {
+      list.sort((a, b) => (serverPingMap[b.id]?.pingMs ?? 0) - (serverPingMap[a.id]?.pingMs ?? 0));
+    } else if (serverSort === 'playersDesc') {
+      list.sort((a, b) => (serverPingMap[b.id]?.playersOnline ?? 0) - (serverPingMap[a.id]?.playersOnline ?? 0));
+    }
+    return list;
+  }, [savedServers, serverSearch, serverSort, serverPingMap]);
+
+
+  const totalServerPages = Math.max(1, Math.ceil(filteredAndSortedServers.length / SERVERS_PER_PAGE));
+
+  useEffect(() => {
+    if (serverPage > totalServerPages) {
+      setServerPage(totalServerPages);
+    }
+  }, [totalServerPages, serverPage]);
+
+  useEffect(() => {
+    setServerPage(1);
+  }, [serverSearch, serverSort]);
+
+  const paginatedServers = useMemo(() => {
+    const start = (serverPage - 1) * SERVERS_PER_PAGE;
+    return filteredAndSortedServers.slice(start, start + SERVERS_PER_PAGE);
+  }, [filteredAndSortedServers, serverPage]);
+
+  // Modal Dialog states (Add / Edit Server)
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isEditingServer, setIsEditingServer] = useState(false);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [serverNameInput, setServerNameInput] = useState('');
   const [serverIpInput, setServerIpInput] = useState('');
   const [serverPortInput, setServerPortInput] = useState(25565);
+
+  // Test ping in modal
+  const [isTestingPing, setIsTestingPing] = useState(false);
+  const [testPingResult, setTestPingResult] = useState<{
+    tested: boolean;
+    online: boolean;
+    pingMs?: number;
+    motd?: string;
+  } | null>(null);
+
+  // Quick delete confirmation state
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     ip: currentSavedServer?.ip || 'play.ourserver.mc',
@@ -121,41 +227,78 @@ export const ServerHub: React.FC<ServerHubProps> = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const handleStartAddServer = () => {
+  const handleOpenAddServerModal = () => {
     setServerNameInput('');
     setServerIpInput('');
     setServerPortInput(25565);
-    setIsAddingServer(true);
+    setIsEditingServer(false);
     setEditingServerId(null);
+    setTestPingResult(null);
+    setIsServerModalOpen(true);
   };
 
-  const handleStartEditServer = (srv: SavedServer) => {
+  const handleOpenEditServerModal = (srv: SavedServer, e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setServerNameInput(srv.name);
     setServerIpInput(srv.ip);
     setServerPortInput(srv.port);
+    setIsEditingServer(true);
     setEditingServerId(srv.id);
-    setIsAddingServer(false);
+    setTestPingResult(null);
+    setIsServerModalOpen(true);
   };
 
-  const handleSaveServerForm = (e: React.FormEvent) => {
+  const handleTestPingInModal = async () => {
+    if (!serverIpInput.trim()) return;
+    setIsTestingPing(true);
+    setTestPingResult(null);
+    try {
+      const status = await pingServer(serverIpInput.trim(), serverPortInput || 25565);
+      setTestPingResult({
+        tested: true,
+        online: status.online,
+        pingMs: status.pingMs,
+        motd: status.motd,
+      });
+    } catch {
+      setTestPingResult({
+        tested: true,
+        online: false,
+      });
+    } finally {
+      setIsTestingPing(false);
+    }
+  };
+
+  const handleSaveServerModal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!serverNameInput.trim() || !serverIpInput.trim()) return;
 
-    if (isAddingServer) {
-      onAddServer({
-        name: serverNameInput.trim(),
-        ip: serverIpInput.trim(),
-        port: serverPortInput || 25565,
-      });
-      setIsAddingServer(false);
-    } else if (editingServerId) {
+    if (isEditingServer && editingServerId) {
       onUpdateServer({
         id: editingServerId,
         name: serverNameInput.trim(),
         ip: serverIpInput.trim(),
         port: serverPortInput || 25565,
       });
-      setEditingServerId(null);
+    } else {
+      onAddServer({
+        name: serverNameInput.trim(),
+        ip: serverIpInput.trim(),
+        port: serverPortInput || 25565,
+      });
+    }
+    setIsServerModalOpen(false);
+  };
+
+  const handleDeleteServerWithConfirm = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deleteConfirmId === id) {
+      onDeleteServer(id);
+      setDeleteConfirmId(null);
+    } else {
+      setDeleteConfirmId(id);
+      setTimeout(() => setDeleteConfirmId(null), 3500);
     }
   };
 
@@ -173,38 +316,40 @@ export const ServerHub: React.FC<ServerHubProps> = ({
     <div className="flex-1 flex flex-col justify-between overflow-hidden relative select-none bg-transparent">
       {/* Top Header Capsule Bar */}
       <div className="px-10 pt-4 pb-2 flex items-center justify-between z-10 bg-transparent">
-        {/* Center Capsule Tabs with Smooth Sliding Pill */}
-        <div className="relative p-1.5 rounded-full bg-[#141414]/90 border border-white/[0.08] flex items-center shadow-lg">
-          {/* Smooth Sliding Pill Indicator */}
+        {/* Center Capsule Tabs with Smooth Sliding Pill (ModStore Style) */}
+        <div className="relative inline-flex items-center p-1 rounded-2xl bg-[#141414]/90 border border-white/10 shadow-lg select-none">
+          {/* Smooth Sliding Pill Indicator with theme accent color */}
           <div
-            className="absolute top-1.5 bottom-1.5 rounded-full bg-amber-500/25 border border-amber-500/40 shadow-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
+            aria-hidden="true"
+            className="absolute top-1 bottom-1 rounded-xl bg-[var(--accent-color)] shadow-md shadow-[var(--accent-subtle)] pointer-events-none transition-all duration-300"
             style={{
               left: `${tabPillStyle.left}px`,
               width: `${tabPillStyle.width}px`,
+              transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
             }}
           />
 
           <button
             ref={overviewTabRef}
             onClick={() => setActiveTab('overview')}
-            className={`relative z-10 px-6 py-2 rounded-full text-sm font-semibold tracking-wide transition-colors duration-200 border-none outline-none cursor-pointer ${
+            className={`relative z-10 px-5 py-2 rounded-xl text-sm font-bold font-sans tracking-wide transition-colors duration-200 border-none outline-none cursor-pointer ${
               activeTab === 'overview'
-                ? 'text-amber-300'
-                : 'text-slate-400 hover:text-white'
+                ? 'text-[#070a12]'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
-            Overview
+            {t.tabOverview || 'Overview'}
           </button>
           <button
             ref={serverTabRef}
             onClick={() => setActiveTab('server')}
-            className={`relative z-10 px-6 py-2 rounded-full text-sm font-semibold tracking-wide transition-colors duration-200 border-none outline-none cursor-pointer ${
+            className={`relative z-10 px-5 py-2 rounded-xl text-sm font-bold font-sans tracking-wide transition-colors duration-200 border-none outline-none cursor-pointer ${
               activeTab === 'server'
-                ? 'text-amber-300'
-                : 'text-slate-400 hover:text-white'
+                ? 'text-[#070a12]'
+                : 'text-slate-300 hover:text-white'
             }`}
           >
-            Server Info & Hub
+            {t.tabServerInfo || 'Server Info & Hub'}
           </button>
         </div>
 
@@ -224,12 +369,12 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
             {/* Headline */}
             <h1 className="text-5xl md:text-6xl font-black text-white tracking-normal leading-tight drop-shadow-[0_4px_16px_rgba(0,0,0,0.8)]">
-              MCL Client
+              {t.heroTitle || 'MCL Client'}
             </h1>
 
             {/* Description */}
             <p className="text-base text-slate-200 leading-relaxed max-w-xl drop-shadow-md font-normal tracking-wide">
-              Next-generation Minecraft launcher with high-performance optimization, direct server connection, and unified profile management.
+              {t.heroSub || 'Next-generation Minecraft launcher with high-performance optimization, direct server connection, and unified profile management.'}
             </p>
 
             {/* Action Zone: Fixed-Size Play Button & Profile Box */}
@@ -247,24 +392,34 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       {isHoveringStop ? (
                         <>
                           <Square className="w-5 h-5 fill-current" />
-                          <span className="tracking-wider text-2xl font-black">STOP</span>
+                          <span className="tracking-wider text-2xl font-black">{t.btnStopGame || 'STOP'}</span>
                         </>
                       ) : (
                         <>
                           <span className="w-2.5 h-2.5 rounded-full bg-slate-300 animate-pulse" />
-                          <span className="tracking-wider text-2xl font-black">RUNNING</span>
+                          <span className="tracking-wider text-2xl font-black">{t.btnInGame || 'RUNNING'}</span>
                         </>
                       )}
                     </button>
                   ) : isPreparingOrDownloading ? (
-                    /* Circular Loading Inside Play Button with Hover Pause/Cancel */
+                    /* Enhanced Loading Button with Speed + File Info */
                     <button
                       onClick={onCancelDownload}
                       onMouseEnter={() => setIsHoveringLoadingButton(true)}
                       onMouseLeave={() => setIsHoveringLoadingButton(false)}
                       title="Click to cancel download"
-                      className="w-[220px] h-[64px] px-4 rounded-2xl bg-[#161616] border border-amber-500/50 hover:border-red-500/60 transition-colors shadow-2xl flex items-center justify-center gap-3 group cursor-pointer shrink-0 outline-none"
+                      className={`w-[220px] h-[64px] px-4 rounded-2xl border transition-colors shadow-2xl flex items-center justify-center gap-3 group cursor-pointer shrink-0 outline-none relative overflow-hidden ${
+                        launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                          ? 'bg-red-950/80 border-red-500/60'
+                          : 'bg-[#161616] border-[var(--accent-color)]/50 hover:border-red-500/60'
+                      }`}
                     >
+                      {/* Linear Progress Bar at bottom edge */}
+                      <div
+                        className="absolute bottom-0 left-0 h-[3px] bg-[var(--accent-color)] group-hover:bg-red-400 transition-all duration-300 rounded-b-2xl"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+
                       {/* Circular Progress Ring */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center">
                         <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
@@ -283,7 +438,11 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                             cx="18"
                             cy="18"
                             r={circleRadius}
-                            className="text-amber-400 group-hover:text-red-400 transition-all duration-300"
+                            className={`transition-all duration-300 ${
+                              launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                                ? 'text-red-400'
+                                : 'text-[var(--accent-color)] group-hover:text-red-400'
+                            }`}
                             strokeWidth="3"
                             strokeDasharray={circleCircumference}
                             strokeDashoffset={strokeOffset}
@@ -297,18 +456,39 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                         <div className="absolute inset-0 flex items-center justify-center">
                           {isHoveringLoadingButton ? (
                             <Pause className="w-3.5 h-3.5 text-red-400 fill-current animate-pulse" />
+                          ) : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error' ? (
+                            <AlertCircle className="w-4 h-4 text-red-400" />
                           ) : (
-                            <span className="text-[9px] font-mono font-bold text-amber-300">
+                            <span className="text-[9px] font-mono font-bold text-[var(--accent-color)]">
                               {progressPercent}%
                             </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Unified App Typography: Well-balanced font size */}
-                      <span className="tracking-wider text-sm font-black text-white group-hover:text-red-300 transition-colors uppercase">
-                        {isHoveringLoadingButton ? 'CANCEL' : 'DOWNLOADING'}
-                      </span>
+                      {/* Right side: Status text + Speed */}
+                      <div className="flex flex-col items-start min-w-0">
+                        <span className={`tracking-wider text-sm font-black uppercase transition-colors ${
+                          isHoveringLoadingButton
+                            ? 'text-red-300'
+                            : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                            ? 'text-red-400'
+                            : 'text-white'
+                        }`}>
+                          {isHoveringLoadingButton
+                            ? (t.btnCancel || 'CANCEL')
+                            : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                            ? (t.error || 'ERROR')
+                            : progressPercent >= 95
+                            ? (t.startingGame || 'STARTING')
+                            : (t.loadingState || 'LOADING')}
+                        </span>
+                        {!isHoveringLoadingButton && launchProgress.speedBps > 0 && (
+                          <span className="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+                            {(launchProgress.speedBps / 1024 / 1024).toFixed(1)} MB/s
+                          </span>
+                        )}
+                      </div>
                     </button>
                   ) : (
                     <button
@@ -318,12 +498,12 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       {selectedInstance ? (
                         <>
                           <Play className="w-5 h-5 fill-current" />
-                          <span className="tracking-wider text-2xl font-black">PLAY</span>
+                          <span className="tracking-wider text-2xl font-black">{t.btnLaunch || 'PLAY'}</span>
                         </>
                       ) : (
                         <>
                           <Plus className="w-5 h-5" />
-                          <span className="tracking-wide text-base">New Profile</span>
+                          <span className="tracking-wide text-base">{t.btnNewInstance || 'New Profile'}</span>
                         </>
                       )}
                     </button>
@@ -336,10 +516,10 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                     onClick={selectedInstance ? () => setIsProfileDropdownOpen((prev) => !prev) : onOpenCreateModal}
                     disabled={isRunning || isPreparingOrDownloading}
                     title={selectedInstance ? 'Click to select profile' : 'Click to create profile'}
-                    className={`w-[280px] h-[64px] px-4 rounded-2xl bg-[#141414] hover:bg-[#1a1a1a] border transition-colors shadow-lg flex items-center justify-between cursor-pointer shrink-0 outline-none ${
+                    className={`w-[280px] h-[64px] px-4 rounded-2xl border-2 transition-all duration-150 shadow-lg flex items-center justify-between cursor-pointer shrink-0 outline-none ${
                       isProfileDropdownOpen
-                        ? 'border-amber-400 bg-[#1c1c1c] ring-1 ring-amber-400/40 shadow-sm'
-                        : 'border-white/[0.08] hover:border-white/20'
+                        ? 'border-[var(--accent-color)] bg-theme-selected -translate-y-0.5'
+                        : 'border-white/[0.08] bg-[#141414] hover:bg-[#1a1a1a] hover:border-white/20'
                     }`}
                   >
                     <div className="flex flex-col text-left flex-1 min-w-0 pr-2">
@@ -370,7 +550,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
                   {/* Profile Dropdown Popover */}
                   {isProfileDropdownOpen && (
-                    <div className="absolute left-0 top-[calc(100%+8px)] w-72 rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-fadeIn">
+                    <div className="absolute left-0 top-[calc(100%+8px)] w-[280px] rounded-2xl bg-[#141414] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown">
                       <div className="px-3 py-1.5 text-xs font-bold text-slate-400 uppercase tracking-wider">
                         Select Profile
                       </div>
@@ -382,9 +562,9 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                               onSelectInstance(inst.id);
                               setIsProfileDropdownOpen(false);
                             }}
-                            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between transition-colors border ${
+                            className={`w-full text-left px-3.5 py-2.5 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
                               inst.id === selectedInstanceId
-                                ? 'bg-amber-500/20 text-amber-300 font-bold border-amber-500/30'
+                                ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
                                 : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
                             }`}
                           >
@@ -420,7 +600,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
                       {/* Dropdown Menu */}
                       {isServerDropdownOpen && (
-                        <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#181818] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-fadeIn">
+                        <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#181818] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown">
                           <div className="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                             Saved Servers
                           </div>
@@ -431,9 +611,9 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                                 onSelectActiveServer(srv.id);
                                 setIsServerDropdownOpen(false);
                               }}
-                              className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition border ${
+                              className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
                                 srv.id === activeServerId
-                                  ? 'bg-amber-500/20 text-amber-300 font-bold border-amber-500/30'
+                                  ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
                                   : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
                               }`}
                             >
@@ -450,7 +630,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                               className="w-full text-left px-3 py-1.5 rounded-xl text-xs text-amber-400 font-semibold hover:bg-amber-500/10 transition flex items-center gap-1.5"
                             >
                               <Server className="w-3.5 h-3.5" />
-                              <span>Manage Servers</span>
+                              <span>{t.manageServersTitle || 'Manage Servers'}</span>
                             </button>
                           </div>
                         </div>
@@ -460,7 +640,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
                   {/* Live Ping & Player Count */}
                   <div className="flex items-center gap-2 text-xs font-mono">
-                    <span className="text-slate-300 font-semibold">{serverStatus.playersOnline}/{serverStatus.playersMax} Online</span>
+                    <span className="text-slate-300 font-semibold">{serverStatus.playersOnline}/{serverStatus.playersMax} {t.online || 'Online'}</span>
                     <span className="text-slate-600">•</span>
                     <span className="text-emerald-400 font-bold">{serverStatus.pingMs ?? '--'} ms</span>
                   </div>
@@ -479,28 +659,22 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                   >
                     {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
                     <span className="font-semibold truncate max-w-[160px]">{currentSavedServer?.ip || serverStatus.ip}</span>
-                    <span className="text-[10px] opacity-75">{copied ? '(Copied!)' : '(Copy)'}</span>
+                    <span className="text-[10px] opacity-75">{copied ? `(${t.copied || 'Copied!'})` : `(${t.copyAction || 'Copy'})`}</span>
                   </button>
 
                   {/* Switch Toggle for Direct Connect */}
                   <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={directConnectServer}
+                    <ToggleSwitch
+                      checked={directConnectServer}
+                      onChange={onToggleDirectConnectServer}
+                      size="sm"
+                      title={t.connectOnPlay || 'Connect on Play'}
+                    />
+                    <span
                       onClick={() => onToggleDirectConnectServer(!directConnectServer)}
-                      className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
-                        directConnectServer ? 'bg-amber-500' : 'bg-white/20'
-                      }`}
+                      className="text-xs font-semibold text-slate-300 hover:text-white select-none cursor-pointer transition-colors"
                     >
-                      <span
-                        className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-lg ring-0 transition duration-200 ease-in-out ${
-                          directConnectServer ? 'translate-x-4' : 'translate-x-0'
-                        }`}
-                      />
-                    </button>
-                    <span className="text-xs font-semibold text-slate-300 select-none">
-                      Connect on Play
+                      {t.connectOnPlay || 'Connect on Play'}
                     </span>
                   </div>
                 </div>
@@ -508,210 +682,455 @@ export const ServerHub: React.FC<ServerHubProps> = ({
             </div>
           </div>
         ) : (
-          /* Server Info & Hub Tab: Integrated with Multi-Server Management */
-          <div className="max-w-3xl space-y-4 animate-fadeIn overflow-y-auto max-h-[75vh] custom-scrollbar pr-2">
-            <div className="minimal-panel rounded-2xl p-6 border border-white/[0.06] space-y-5 shadow-2xl">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-white/[0.04] text-amber-400 flex items-center justify-center border border-white/10">
-                    <Server className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h2 className="text-base font-bold text-white font-riot tracking-wide">{currentSavedServer?.name || 'Active Server'}</h2>
-                    <p className="text-xs text-slate-400">Manage connections, view live status, and configure saved servers</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleStartAddServer}
-                    className="btn-primary px-3.5 py-1.5 rounded-xl text-xs font-bold font-riot flex items-center gap-1.5 shadow"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Add Server</span>
-                  </button>
-                  <button
-                    onClick={handleRefreshPing}
-                    disabled={isPinging}
-                    className="px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* MOTD Banner */}
-              <div className="p-4 rounded-xl bg-black/50 border border-white/5 font-mono text-sm text-amber-200 shadow-inner">
-                {serverStatus.motd?.replace(/§[0-9a-fk-or]/g, '') || 'MCL Community Minecraft Server'}
-              </div>
-
-              {/* Metrics */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="text-slate-400 text-xs mb-1 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-amber-400" />
-                    <span>Online Players</span>
-                  </div>
-                  <div className="text-xl font-bold text-white font-mono">
-                    {serverStatus.playersOnline} <span className="text-xs text-slate-500 font-normal">/ {serverStatus.playersMax}</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5">
-                  <div className="text-slate-400 text-xs mb-1 flex items-center gap-1.5">
-                    <Wifi className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Ping Latency</span>
-                  </div>
-                  <div className="text-xl font-bold text-emerald-400 font-mono">
-                    {serverStatus.pingMs ?? '--'} <span className="text-xs font-normal">ms</span>
-                  </div>
-                </div>
-
-                <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 flex flex-col justify-between">
-                  <div className="text-slate-400 text-xs mb-1">Server Address</div>
-                  <button
-                    onClick={handleCopyIp}
-                    className="flex items-center justify-between text-xs font-mono text-amber-300 hover:text-amber-200 transition"
-                  >
-                    <span className="truncate">{currentSavedServer?.ip || serverStatus.ip}</span>
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Inline Add / Edit Server Form */}
-              {(isAddingServer || editingServerId) && (
-                <form onSubmit={handleSaveServerForm} className="p-4 rounded-2xl bg-white/[0.03] border border-amber-500/30 space-y-4 animate-fadeIn">
-                  <div className="text-xs font-bold text-amber-300 uppercase tracking-wider flex items-center gap-2">
-                    <Globe className="w-4 h-4 text-amber-400" />
-                    <span>{isAddingServer ? 'Add New Minecraft Server' : 'Edit Server Connection'}</span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-400 mb-1">Server Name</label>
-                      <input
-                        type="text"
-                        value={serverNameInput}
-                        onChange={(e) => setServerNameInput(e.target.value)}
-                        placeholder="e.g. Friends Survival"
-                        required
-                        className="w-full px-3 py-2 rounded-xl bg-[#181818] border border-white/10 text-xs text-white focus:outline-none focus:border-amber-400"
-                      />
-                    </div>
-                    <div className="grid grid-cols-3 gap-2">
-                      <div className="col-span-2">
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">IP / Hostname</label>
-                        <input
-                          type="text"
-                          value={serverIpInput}
-                          onChange={(e) => setServerIpInput(e.target.value)}
-                          placeholder="play.server.com"
-                          required
-                          className="w-full px-3 py-2 rounded-xl bg-[#181818] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
-                        />
+          /* Server Info & Hub Tab: High-Scale 2-Column Dashboard */
+          <div className="max-w-6xl w-full mx-auto animate-fadeIn pb-2">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+              {/* ================= LEFT COLUMN: Server Browser & Search/Sort (7 cols) ================= */}
+              <div className="lg:col-span-7 flex flex-col gap-3">
+                {/* Search, Sort and Add Server Header */}
+                <div className="glass-panel rounded-2xl p-4 border border-white/[0.08] shadow-xl space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] shrink-0">
+                        <Server className="w-4 h-4" />
                       </div>
                       <div>
-                        <label className="block text-[11px] font-semibold text-slate-400 mb-1">Port</label>
-                        <input
-                          type="number"
-                          value={serverPortInput}
-                          onChange={(e) => setServerPortInput(Number(e.target.value))}
-                          className="w-full px-2.5 py-2 rounded-xl bg-[#181818] border border-white/10 text-xs text-white font-mono focus:outline-none focus:border-amber-400"
-                        />
+                        <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+                          <span>{t.savedServersCount}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-white/5 border border-white/10 text-slate-300">
+                            {filteredAndSortedServers.length === savedServers.length
+                              ? savedServers.length
+                              : `${filteredAndSortedServers.length}/${savedServers.length}`}
+                          </span>
+                        </h2>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenAddServerModal}
+                      className="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-none hover:shadow-none cursor-pointer shrink-0 active:scale-95 transition-all"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{t.addServer}</span>
+                    </button>
+                  </div>
+
+                  {/* Search and Sort Toolbar */}
+                  <div className="flex items-center gap-2">
+                    {/* Search Bar */}
+                    <div className="relative flex-1">
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={serverSearch}
+                        onChange={(e) => setServerSearch(e.target.value)}
+                        placeholder={t.searchServerPlaceholder}
+                        className="w-full glass-input pl-9 pr-7 py-2 rounded-xl text-xs text-white placeholder-slate-400 focus:outline-none focus:border-[var(--accent-color)] transition shadow-inner"
+                      />
+                      {serverSearch && (
+                        <button
+                          type="button"
+                          onClick={() => setServerSearch('')}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                          title={t.clearSearch || 'Clear search'}
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Sort Dropdown */}
+                    <div className="relative shrink-0" ref={serverSortRef}>
+                      <button
+                        type="button"
+                        onClick={() => setIsServerSortOpen((prev) => !prev)}
+                        className={`h-9 px-3 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-sm active:scale-95 ${
+                          serverSort !== 'default'
+                            ? 'bg-[var(--accent-subtle)] border-[var(--accent-border)] text-[var(--accent-light)]'
+                            : isServerSortOpen
+                            ? 'bg-white/[0.08] border-white/20 text-white'
+                            : 'bg-white/[0.03] hover:bg-white/[0.06] border-white/10 text-slate-300 hover:text-white'
+                        }`}
+                        title={t.sortLabel || 'Sort servers'}
+                      >
+                        {serverSort === 'az' ? (
+                          <ArrowDownAZ className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                        ) : serverSort === 'za' ? (
+                          <ArrowUpZA className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                        ) : (
+                          <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
+                        )}
+                        <span className="hidden sm:inline">
+                          {serverSort === 'az' ? t.sortAZ : serverSort === 'za' ? t.sortZA : t.sortDefault}
+                        </span>
+                        <ChevronDown className={`w-3 h-3 opacity-60 transition-transform ${isServerSortOpen ? 'rotate-180 text-white' : ''}`} />
+                      </button>
+
+                      {isServerSortOpen && (
+                        <div className="absolute right-0 mt-1.5 w-44 rounded-xl bg-[#141416] border border-white/10 shadow-2xl p-1 z-40 space-y-0.5 animate-dropdown backdrop-blur-md">
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('default'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'default' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{t.sortDefault}</span>
+                            {serverSort === 'default' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('az'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'az' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{t.sortAZ}</span>
+                            {serverSort === 'az' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('za'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'za' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{t.sortZA}</span>
+                            {serverSort === 'za' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                          {/* Divider */}
+                          <div className="my-1 mx-2 h-px bg-white/[0.06]" />
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('pingAsc'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'pingAsc' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{(t as any).sortPingAsc || 'Ping: Low → High'}</span>
+                            {serverSort === 'pingAsc' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('pingDesc'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'pingDesc' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{(t as any).sortPingDesc || 'Ping: High → Low'}</span>
+                            {serverSort === 'pingDesc' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setServerSort('playersDesc'); setIsServerSortOpen(false); }}
+                            className={`w-full px-3 py-2 text-xs text-left rounded-lg flex items-center justify-between transition cursor-pointer ${
+                              serverSort === 'playersDesc' ? 'text-[var(--accent-light)] font-bold bg-[var(--accent-subtle)]' : 'text-slate-300 hover:bg-white/5 hover:text-white'
+                            }`}
+                          >
+                            <span>{(t as any).sortPlayersDesc || 'Players: Most First'}</span>
+                            {serverSort === 'playersDesc' && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" />}
+                          </button>
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+                </div>
+
+                {/* Server Cards List Container with Background */}
+                <div className="glass-panel rounded-2xl p-3.5 border border-white/[0.08] shadow-xl space-y-3">
+                  {/* Server Cards List */}
+                  <div className="space-y-2">
+                    {paginatedServers.length === 0 ? (
+                      <div className="py-8 text-center space-y-3">
+                        <div className="w-10 h-10 rounded-2xl bg-white/5 text-slate-400 flex items-center justify-center mx-auto">
+                          <Search className="w-4 h-4" />
+                        </div>
+                        <p className="text-xs text-slate-400">{t.noServersFound}</p>
+                        {serverSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setServerSearch('')}
+                            className="px-3 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-xs text-white transition cursor-pointer"
+                          >
+                            {t.clearSearch}
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      paginatedServers.map((srv) => {
+                        const isActive = srv.id === activeServerId;
+                        const isConfirmingDelete = deleteConfirmId === srv.id;
+
+                        return (
+                          <div
+                            key={srv.id}
+                            onClick={() => onSelectActiveServer(srv.id)}
+                            className={`p-3 rounded-xl border-2 transition-all duration-150 cursor-pointer flex items-center justify-between gap-3 ${
+                              isActive
+                                ? 'bg-theme-selected border-[var(--accent-color)] shadow-md shadow-black/40 -translate-y-0.5'
+                                : 'bg-[#161618]/90 hover:bg-[#1c1d24] border-white/[0.06] hover:border-white/15 hover:-translate-y-0.5'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                              <div
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${
+                                  isActive
+                                    ? 'bg-[var(--accent-color)]/15 text-[var(--accent-color)] border-[var(--accent-color)]/30'
+                                    : 'bg-white/[0.03] text-slate-400 border-white/10'
+                                }`}
+                              >
+                                <Wifi className="w-4 h-4" />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-white text-sm truncate">{srv.name}</span>
+                                  {isActive && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent-color)]/15 text-[var(--accent-light)] border border-[var(--accent-color)]/30 tracking-wide uppercase shrink-0">
+                                      {t.activeServerTag}
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-slate-400 mt-0.5 truncate">
+                                  {srv.ip}{srv.port && srv.port !== 25565 ? `:${srv.port}` : ''}
+                                </div>
+                              </div>
+
+                              {/* Ping & players chips — clear, readable, stylish badge pill */}
+                              {(() => {
+                                const ps = serverPingMap[srv.id];
+                                const pingMs = ps?.pingMs;
+                                const online = ps?.playersOnline;
+                                const max = ps?.playersMax;
+                                return (
+                                  <div className="px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] flex items-center gap-2.5 shrink-0 ml-auto mr-1">
+                                    <span className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+                                      <Users className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                                      <span>
+                                        {online ?? '--'}
+                                        <span className="text-slate-500 font-normal">/{max ?? '--'}</span>
+                                      </span>
+                                    </span>
+                                    <span className="w-px h-3 bg-white/15" />
+                                    <span className={`flex items-center gap-1.5 text-xs font-mono font-bold ${
+                                      pingMs === undefined ? 'text-slate-500'
+                                        : pingMs < 80 ? 'text-emerald-400'
+                                        : pingMs < 150 ? 'text-amber-400'
+                                        : 'text-rose-400'
+                                    }`}>
+                                      <Wifi className="w-3.5 h-3.5" />
+                                      <span>{pingMs !== undefined ? `${pingMs} ms` : '--'}</span>
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenEditServerModal(srv, e)}
+                                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer active:scale-95"
+                                title={t.editServer}
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+
+                              {savedServers.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteServerWithConfirm(srv.id, e)}
+                                  className={`px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 active:scale-95 ${
+                                    isConfirmingDelete
+                                      ? 'bg-red-500/20 border border-red-500/40 text-red-400 animate-pulse'
+                                      : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
+                                  }`}
+                                  title={isConfirmingDelete ? 'Click again to delete' : 'Delete server'}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  {isConfirmingDelete && <span className="text-[10px]">{t.deleteConfirmShort}</span>}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {totalServerPages > 1 && (
+                    <div className="flex items-center justify-between px-1 pt-2.5 border-t border-white/5">
+                      <div className="text-[11px] text-slate-400">
+                        {t.page} {serverPage} / {totalServerPages}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setServerPage((prev) => Math.max(1, prev - 1))}
+                          disabled={serverPage === 1}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none border border-white/10 text-slate-300 flex items-center justify-center transition cursor-pointer active:scale-95"
+                          title="Previous page"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+
+                        {/* Interactive page dots */}
+                        <div className="flex items-center gap-1 px-1">
+                          {Array.from({ length: totalServerPages }, (_, i) => i + 1).map((p) => (
+                            <button
+                              key={p}
+                              type="button"
+                              onClick={() => setServerPage(p)}
+                              className={`h-2 rounded-full transition-all duration-200 cursor-pointer ${
+                                serverPage === p
+                                  ? 'w-5 bg-[var(--accent-color)]'
+                                  : 'w-2 bg-white/20 hover:bg-white/40'
+                              }`}
+                              title={`Page ${p}`}
+                            />
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setServerPage((prev) => Math.min(totalServerPages, prev + 1))}
+                          disabled={serverPage === totalServerPages}
+                          className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 disabled:pointer-events-none border border-white/10 text-slate-300 flex items-center justify-center transition cursor-pointer active:scale-95"
+                          title="Next page"
+                        >
+                          <ChevronRight className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ================= RIGHT COLUMN: Active Server Live Inspector (5 cols) ================= */}
+              <div className="lg:col-span-5 flex flex-col gap-4">
+                {/* Fixed height to encompass all content smoothly with zero jitter */}
+                <div className="glass-panel rounded-2xl p-5 border border-white/[0.08] shadow-2xl space-y-4 min-h-[485px] overflow-hidden flex flex-col justify-between">
+
+                  {/* Top Bar: Active Server Name & Refresh button */}
+                  <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-3">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 text-[var(--accent-color)] flex items-center justify-center shrink-0">
+                        <Activity className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-slate-400 font-semibold tracking-wider uppercase">{t.serverStatus}</div>
+                        <h3 className="text-base font-bold text-white tracking-wide truncate">
+                          {currentSavedServer?.name || 'Minecraft Server'}
+                        </h3>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleRefreshPing}
+                      disabled={isPinging}
+                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                      title="Refresh status"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
+                      <span className="hidden sm:inline">{t.refreshPing}</span>
+                    </button>
+                  </div>
+
+                  {/* MOTD Banner — Fixed height, clean, no scrollbar */}
+                  <div>
+                    <div className="text-[11px] font-semibold text-slate-400 mb-1.5">{t.serverMotd}</div>
+                    <div className="px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs text-slate-200 shadow-inner h-[56px] overflow-hidden flex items-center leading-relaxed select-text">
+                      <span className="w-full line-clamp-2">{serverStatus.motd?.replace(/§[0-9a-fk-or]/g, '') || 'MCL Community Minecraft Server'}</span>
+                    </div>
+                  </div>
+
+                  {/* Metrics Tiles */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Players Online */}
+                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div className="text-slate-400 text-[11px] mb-1 flex items-center gap-1.5">
+                        <Users className="w-4 h-4 text-[var(--accent-color)]" />
+                        <span>{t.players}</span>
+                      </div>
+                      <div className="text-base font-bold text-white">
+                        {serverStatus.playersOnline}{' '}
+                        <span className="text-xs text-slate-500 font-normal">/ {serverStatus.playersMax}</span>
+                      </div>
+                    </div>
+
+                    {/* Ping Latency */}
+                    <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div className="text-slate-400 text-[11px] mb-1 flex items-center gap-1.5">
+                        <Wifi className="w-4 h-4 text-emerald-400" />
+                        <span>{t.latency}</span>
+                      </div>
+                      <div
+                        className={`text-base font-bold ${
+                          (serverStatus.pingMs ?? 999) < 80
+                            ? 'text-emerald-400'
+                            : (serverStatus.pingMs ?? 999) < 150
+                            ? 'text-amber-400'
+                            : 'text-rose-400'
+                        }`}
+                      >
+                        {serverStatus.pingMs ?? '--'} <span className="text-xs font-normal text-slate-400">ms</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-end gap-2 pt-1">
+                  {/* Server Address with 1-click copy */}
+                  <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">{t.serverIp}</div>
+                      <div className="text-xs font-semibold text-white truncate">
+                        {currentSavedServer
+                          ? `${currentSavedServer.ip}${currentSavedServer.port !== 25565 ? `:${currentSavedServer.port}` : ''}`
+                          : `${serverStatus.ip}:${serverStatus.port}`}
+                      </div>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => {
-                        setIsAddingServer(false);
-                        setEditingServerId(null);
-                      }}
-                      className="px-3.5 py-1.5 rounded-xl text-xs text-slate-400 hover:text-white transition"
+                      onClick={handleCopyIp}
+                      className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-200 flex items-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                      title="Copy address"
                     >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="btn-primary px-4 py-1.5 rounded-xl text-xs font-bold font-riot shadow"
-                    >
-                      {isAddingServer ? 'Save Server' : 'Update Server'}
+                      {copied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-semibold">{t.copied}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>Copy</span>
+                        </>
+                      )}
                     </button>
                   </div>
-                </form>
-              )}
 
-              {/* Saved Servers List */}
-              <div className="space-y-3 pt-2">
-                <div className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center justify-between">
-                  <span>Saved Servers ({savedServers.length})</span>
-                  <span className="text-[11px] text-slate-500 font-normal">Click any server to set as active</span>
-                </div>
-
-                <div className="space-y-2">
-                  {savedServers.map((srv) => {
-                    const isActive = srv.id === activeServerId;
-
-                    return (
-                      <div
-                        key={srv.id}
-                        onClick={() => onSelectActiveServer(srv.id)}
-                        className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-4 ${
-                          isActive
-                            ? 'bg-amber-500/10 border-amber-500/40 shadow-lg'
-                            : 'bg-[#161616] hover:bg-[#1a1a1a] border-white/[0.06] hover:border-white/15'
-                        }`}
-                      >
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          <div
-                            className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                              isActive
-                                ? 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                                : 'bg-white/[0.04] text-slate-400 border-white/10'
-                            }`}
-                          >
-                            <Wifi className="w-4 h-4" />
-                          </div>
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-white text-sm truncate">{srv.name}</span>
-                              {isActive && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/25 text-amber-300 border border-amber-500/40 font-mono tracking-wider">
-                                  ACTIVE
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-slate-400 font-mono mt-0.5 truncate">
-                              {srv.ip}{srv.port && srv.port !== 25565 ? `:${srv.port}` : ''}
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => handleStartEditServer(srv)}
-                            className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition"
-                            title="Edit server"
-                          >
-                            <Edit3 className="w-4 h-4" />
-                          </button>
-                          {savedServers.length > 1 && (
-                            <button
-                              onClick={() => onDeleteServer(srv.id)}
-                              className="p-2 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition"
-                              title="Delete server"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                        </div>
+                  {/* Connect on Play Toggle Switch */}
+                  <div className="pt-2 border-t border-white/5">
+                    <div className="flex items-center justify-between p-3 rounded-xl bg-white/[0.02] border border-white/5">
+                      <div>
+                        <div className="text-xs font-bold text-white tracking-wide">{t.connectOnPlay}</div>
+                        <div className="text-[11px] text-slate-400 mt-0.5">{t.connectOnPlayDesc}</div>
                       </div>
-                    );
-                  })}
+
+                      <ToggleSwitch
+                        checked={directConnectServer}
+                        onChange={onToggleDirectConnectServer}
+                        size="md"
+                        title={t.connectOnPlay}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -724,20 +1143,127 @@ export const ServerHub: React.FC<ServerHubProps> = ({
       <div className="bg-gradient-to-t from-black/95 via-black/50 to-transparent pb-6 pt-6 px-12 flex items-center justify-between z-20">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setActiveTab(activeTab === 'server' ? 'overview' : 'server')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold border transition flex items-center gap-2 shadow-md ${
-              activeTab === 'server'
-                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                : 'bg-[#141414] hover:bg-[#1c1c1c] text-slate-300 hover:text-white border-white/[0.08]'
-            }`}
+            onClick={() => onOpenBackgroundModal?.()}
+            className="px-4 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer bg-[#141414] hover:bg-[#1c1c1c] text-slate-300 hover:text-white border-white/[0.08]"
           >
-            <Server className="w-3.5 h-3.5 text-amber-400" />
-            <span>{activeTab === 'server' ? 'Back to Home' : 'Server Info & Hub'}</span>
+            <ImageIcon className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+            <span>{t.changeBackground || 'Change Background'}</span>
           </button>
         </div>
 
         <div />
       </div>
+
+      {/* Add / Edit Server Modal Dialog */}
+      {isServerModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="glass-panel w-full max-w-md rounded-3xl border border-white/10 shadow-2xl p-6 space-y-4 animate-scaleUp">
+            <div className="flex items-center justify-between border-b border-white/5 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)]">
+                  <Server className="w-4 h-4" />
+                </div>
+                <h3 className="text-base font-bold text-white tracking-wide">
+                  {isEditingServer ? t.editServer : t.addServer}
+                </h3>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsServerModalOpen(false)}
+                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer active:scale-95"
+                title={t.cancel}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveServerModal} className="space-y-3.5">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverName}</label>
+                <input
+                  type="text"
+                  value={serverNameInput}
+                  onChange={(e) => setServerNameInput(e.target.value)}
+                  placeholder="e.g. Hypixel Network"
+                  required
+                  className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] transition"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverAddress}</label>
+                  <input
+                    type="text"
+                    value={serverIpInput}
+                    onChange={(e) => setServerIpInput(e.target.value)}
+                    placeholder="mc.hypixel.net"
+                    required
+                    className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverPort}</label>
+                  <input
+                    type="number"
+                    value={serverPortInput}
+                    onChange={(e) => setServerPortInput(Number(e.target.value))}
+                    className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-[var(--accent-color)] transition"
+                  />
+                </div>
+              </div>
+
+              {/* Test Ping inside Modal */}
+              <div className="pt-1">
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestPingInModal}
+                    disabled={isTestingPing || !serverIpInput.trim()}
+                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isTestingPing ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
+                    <span>{isTestingPing ? t.testingConnection : t.testConnection}</span>
+                  </button>
+
+                  {testPingResult && (
+                    <div className="text-xs flex items-center gap-1.5">
+                      {testPingResult.online ? (
+                        <>
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-400 font-semibold">{testPingResult.pingMs} ms</span>
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                          <span className="text-rose-400 font-semibold">{t.offline}</span>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setIsServerModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer active:scale-95"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="btn-primary px-5 py-2 rounded-xl text-xs font-bold shadow-none hover:shadow-none cursor-pointer active:scale-95 transition-all"
+                >
+                  {t.saveServer}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -16,8 +16,20 @@ export interface GameInstance {
   customSkinPath?: string;
   skinModel?: 'classic' | 'slim';
   enableSkinInGame: boolean;
+  customDir?: string;
   lastPlayed?: string;
   totalPlayTime?: number; // in minutes
+}
+
+export interface MrpackManifestSummary {
+  name: string;
+  summary: string;
+  gameVersion: string;
+  loader: string;
+  loaderVersion?: string;
+  totalFiles: number;
+  totalSizeBytes: number;
+  filePath: string;
 }
 
 export interface VersionItem {
@@ -39,6 +51,7 @@ export interface Account {
   type: 'offline' | 'microsoft';
   avatarIcon?: string;
   avatarCustom?: string;
+  customBanner?: string;
   skinUrl?: string;
   skinModel: 'classic' | 'slim';
   uuid: string;
@@ -82,12 +95,47 @@ export interface ModrinthMod {
   installedVersion?: string;
 }
 
+export type AddonContentType =
+  | 'mods'
+  | 'resourcepacks'
+  | 'datapacks'
+  | 'shaderpacks'
+  | 'modpacks'
+  | 'plugins'
+  | 'servers';
+export type AddonSource = 'modrinth' | 'curseforge';
+
+export interface AddonItem {
+  id: string;
+  source: AddonSource;
+  sources?: AddonSource[];
+  slug?: string;
+  name: string;
+  summary: string;
+  author: string;
+  iconUrl?: string;
+  bannerUrl?: string;
+  environment?: 'client' | 'server' | 'both';
+  color?: string;
+  loaders?: string[];
+  downloads: number;
+  follows?: number;
+  updatedAt?: string;
+  categories: string[];
+  contentType: AddonContentType;
+  webUrl: string;
+  isInstalled?: boolean;
+  modrinthId?: string;
+  curseforgeId?: string;
+}
+
 export interface LocalMod {
   fileName: string;
   name: string;
   version?: string;
   enabled: boolean;
   sizeBytes: number;
+  addonType?: string;
 }
 
 export interface LaunchProgress {
@@ -106,24 +154,57 @@ export interface JavaInstallation {
   is64Bit: boolean;
 }
 
+export type Language = 'vi' | 'en' | 'zh' | 'ja' | 'ko' | 'de' | 'fr' | 'es';
 export type UiStyle = 'riot' | 'minimal';
 export type ColorPalette = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate';
+export type DarkDepth = 'obsidian' | 'pure_black';
+export type WindowResolution = '1280x720' | '1440x900' | '1600x900' | '1920x1080';
 
 export interface LauncherSettings {
   defaultJavaPath?: string;
   defaultMinRam: number;
   defaultMaxRam: number;
   defaultJvmArgs: string;
-  language: 'vi' | 'en';
-  uiStyle: UiStyle;
+  language: Language;
+  uiStyle?: UiStyle;
   colorPalette: ColorPalette;
+  windowResolution?: WindowResolution;
+  darkDepth?: DarkDepth;
+  reduceMotion?: boolean;
   bgType?: 'video' | 'image' | 'solid';
   customBgImage?: string;
   customVideoUrl?: string;
   bgOpacity: number;
+  bgBlur?: number;
   closeOnLaunch: boolean;
   enableDiscordRpc: boolean;
   serverHost: string;
   serverPort: number;
   serverName: string;
+  gameDataDir?: string;
+  hasCompletedOnboarding?: boolean;
+  curseForgeApiKey?: string;
 }
+
+export interface VersionCleanupInfo {
+  version: string;
+  sizeBytes: number;
+}
+
+export interface StorageCleanupScanResult {
+  unusedVersions: VersionCleanupInfo[];
+  orphanedInstances: string[];
+  orphanedInstancesBytes: number;
+  tempCacheBytes: number;
+  totalReclaimableBytes: number;
+  storageRoot: string;
+}
+
+export interface StorageCleanupReport {
+  bytesFreed: number;
+  versionsDeleted: number;
+  cacheCleaned: boolean;
+  orphanedInstancesDeleted: number;
+  message: string;
+}
+

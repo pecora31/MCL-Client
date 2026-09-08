@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Noto Sans SC', 'Noto Sans JP', 'Noto Sans KR', 'PingFang SC', 'Microsoft YaHei', 'Hiragino Sans', 'Yu Gothic', 'Malgun Gothic', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 @layer base {
@@ -16,6 +16,11 @@
     --accent-subtle: rgba(245, 158, 11, 0.15);
   }
 
+  ::selection {
+    background-color: var(--accent-color);
+    color: #ffffff;
+  }
+
   /* Color Palettes */
   .palette-amber {
     --accent-color: #f59e0b;
@@ -24,7 +29,7 @@
     --accent-subtle: rgba(245, 158, 11, 0.15);
     --accent-light: #fcd34d;
     --accent-border: rgba(245, 158, 11, 0.4);
-    --accent-bg: rgba(245, 158, 11, 0.18);
+    --accent-bg: rgba(245, 158, 11, 0.04);
   }
 
   .palette-emerald {
@@ -34,7 +39,7 @@
     --accent-subtle: rgba(16, 185, 129, 0.15);
     --accent-light: #6ee7b7;
     --accent-border: rgba(16, 185, 129, 0.4);
-    --accent-bg: rgba(16, 185, 129, 0.18);
+    --accent-bg: rgba(16, 185, 129, 0.04);
   }
 
   .palette-indigo {
@@ -44,7 +49,7 @@
     --accent-subtle: rgba(99, 102, 241, 0.15);
     --accent-light: #a5b4fc;
     --accent-border: rgba(99, 102, 241, 0.4);
-    --accent-bg: rgba(99, 102, 241, 0.18);
+    --accent-bg: rgba(99, 102, 241, 0.04);
   }
 
   .palette-rose {
@@ -54,7 +59,7 @@
     --accent-subtle: rgba(244, 63, 94, 0.15);
     --accent-light: #fda4af;
     --accent-border: rgba(244, 63, 94, 0.4);
-    --accent-bg: rgba(244, 63, 94, 0.18);
+    --accent-bg: rgba(244, 63, 94, 0.04);
   }
 
   .palette-cyan {
@@ -64,7 +69,7 @@
     --accent-subtle: rgba(6, 182, 212, 0.15);
     --accent-light: #67e8f9;
     --accent-border: rgba(6, 182, 212, 0.4);
-    --accent-bg: rgba(6, 182, 212, 0.18);
+    --accent-bg: rgba(6, 182, 212, 0.04);
   }
 
   .palette-slate {
@@ -74,7 +79,7 @@
     --accent-subtle: rgba(148, 163, 184, 0.15);
     --accent-light: #e2e8f0;
     --accent-border: rgba(148, 163, 184, 0.4);
-    --accent-bg: rgba(148, 163, 184, 0.18);
+    --accent-bg: rgba(148, 163, 184, 0.04);
   }
 
   /* Universal Theme Accent Propagation: Dynamic overrides for all colored elements */
@@ -110,6 +115,35 @@
   [class*="palette-"] .bg-amber-500\/30,
   [class*="palette-"] .bg-theme-subtle {
     background-color: var(--accent-bg) !important;
+  }
+
+  /* Solid base selected states to prevent transparency loss over wallpapers */
+  .bg-theme-selected {
+    background-color: color-mix(in srgb, var(--accent-color) 6%, #141414) !important;
+  }
+
+  .bg-theme-selected-card {
+    background-color: color-mix(in srgb, var(--accent-color) 6%, #161616) !important;
+  }
+
+  /* OLED Pure Black depth variant */
+  .dark-pure-black,
+  .dark-pure-black .bg-\[\#0a0a0a\],
+  .dark-pure-black .bg-\[\#121212\] {
+    background-color: #000000 !important;
+  }
+  .dark-pure-black .glass-panel {
+    background-color: rgba(5, 5, 6, 0.95) !important;
+  }
+
+  /* Performance mode: reduce motion and disable heavy backdrop blurs */
+  .reduce-motion *,
+  .reduce-motion *::before,
+  .reduce-motion *::after {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    animation-duration: 0.001s !important;
+    transition-duration: 0.001s !important;
   }
 
   /* Solid accent borders */
@@ -180,7 +214,12 @@
 
   /* Dynamic Focus Overrides for Input Fields */
   [class*="palette-"] .focus\:border-amber-400:focus,
-  [class*="palette-"] .focus\:border-amber-500:focus {
+  [class*="palette-"] .focus\:border-amber-400\/50:focus,
+  [class*="palette-"] .focus\:border-amber-400\/60:focus,
+  [class*="palette-"] .focus\:border-amber-400\/70:focus,
+  [class*="palette-"] .focus\:border-amber-400\/80:focus,
+  [class*="palette-"] .focus\:border-amber-500:focus,
+  [class*="palette-"] .focus\:border-theme:focus {
     border-color: var(--accent-color) !important;
   }
 
@@ -194,7 +233,7 @@
   body {
     background-color: #0a0a0a;
     color: #f3f4f6;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: var(--font-sans);
     font-size: 15px;
     letter-spacing: 0.012em;
     line-height: 1.55;
@@ -222,7 +261,7 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #0a0a0a;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -232,6 +271,84 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--accent-color);
+}
+
+/* Custom Unified Range Sliders (Obsidian Matte, Zero Box Borders) */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+  outline: none;
+  border: none !important;
+  cursor: pointer;
+  margin: 6px 0;
+  /* Do not add transitions here to ensure 60fps instant drag response */
+}
+
+input[type="range"]:focus {
+  outline: none;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+/* Webkit Track */
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  border-radius: 9999px;
+  border: none !important;
+  background: transparent;
+}
+
+/* Webkit Thumb - Solid flat matte circle with theme accent color, no glow aura, no zoom */
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: var(--accent-color, #10b981);
+  cursor: pointer;
+  margin-top: -4px;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  transition: none !important;
+  transform: none !important;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover,
+input[type="range"]::-webkit-slider-thumb:active {
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Firefox Track */
+input[type="range"]::-moz-range-track {
+  width: 100%;
+  height: 6px;
+  cursor: pointer;
+  border-radius: 9999px;
+  border: none !important;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Firefox Thumb - Solid flat matte circle, no glow aura, no zoom */
+input[type="range"]::-moz-range-thumb {
+  height: 14px;
+  width: 14px;
+  border-radius: 50%;
+  background: var(--accent-color, #10b981);
+  cursor: pointer;
+  box-shadow: none !important;
+  border: none !important;
+  outline: none !important;
+  transition: none !important;
+  transform: none !important;
 }
 
 /* Typography Utilities - Plus Jakarta Sans */
@@ -273,6 +390,7 @@
 
 .glass-input,
 .minimal-input {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: #121212;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: #f8fafc;
@@ -291,16 +409,16 @@
   background: var(--accent-color);
   color: #070a12;
   font-weight: 700;
-  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-family: var(--font-sans);
   letter-spacing: 0.02em;
-  transition: background-color 0.12s ease, box-shadow 0.12s ease;
-  box-shadow: 0 2px 10px var(--accent-subtle);
+  transition: background-color 0.12s ease;
+  box-shadow: none;
   border: none;
 }
 
 .btn-primary:hover {
   background: var(--accent-hover);
-  box-shadow: 0 4px 18px var(--accent-glow);
+  box-shadow: none;
 }
 
 /* Launch Button Variants - Flat, No 3D */
@@ -516,7 +634,7 @@
   -webkit-app-region: no-drag;
 }
 
-/* Smooth Menu & Modal Transitions */
+/* Smooth Menu & Modal Transitions (Pixel-Perfect, Zero-Jitter, No Font Blurring) */
 @keyframes modalBackdropFade {
   0% {
     opacity: 0;
@@ -529,7 +647,7 @@
 @keyframes modalScaleIn {
   0% {
     opacity: 0;
-    transform: scale(0.98) translateY(6px);
+    transform: scale(0.98) translateY(4px);
   }
   100% {
     opacity: 1;
@@ -540,11 +658,51 @@
 @keyframes tabSlideFade {
   0% {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(3px);
   }
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleUp {
+  0% {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes dropdownSlideFade {
+  0% {
+    opacity: 0;
+    transform: translateY(-12px) scaleY(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
+  }
+}
+
+@keyframes tabSwitchFade {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
@@ -554,10 +712,205 @@
 
 .animate-modalScale {
   animation: modalScaleIn 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
 }
 
 .animate-tabSlideFade {
-  animation: tabSlideFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
-  will-change: transform, opacity;
+  animation: tabSlideFade 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+.animate-fadeIn {
+  animation: fadeIn 0.18s ease-out both;
+}
+
+@keyframes profilePopoutIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateX(-6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateX(0);
+  }
+}
+
+.animate-profilePopout {
+  animation: profilePopoutIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-scaleUp {
+  animation: scaleUp 0.18s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-smooth-in {
+  animation: fadeIn 0.2s ease-out both;
+}
+
+.animate-dropdown {
+  animation: dropdownSlideFade 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
+  transform-origin: top;
+}
+
+.animate-tab-switch {
+  animation: tabSwitchFade 0.18s ease-out both;
+}
+
+/* Skeleton Shimmer Sweep Effect */
+@keyframes skeletonShimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-shimmer::after {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: skeletonShimmer 1.5s infinite;
+  content: '';
+}
+
+/* ==========================================================================
+   Ultra-Smooth Modern Vector Toggle Switch System (Hollow Off / Solid On)
+   ========================================================================== */
+.toggle-switch-track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(18, 18, 20, 0.9);
+  cursor: pointer;
+  user-select: none;
+  outline: none;
+  transition: background-color 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch-track:hover {
+  background-color: rgba(26, 26, 30, 0.95);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.toggle-switch-track[aria-checked="true"] {
+  border-color: var(--accent-color);
+  background-color: rgba(18, 18, 20, 0.9);
+}
+
+.toggle-switch-track[aria-checked="true"]:hover {
+  border-color: var(--accent-hover);
+  background-color: rgba(26, 26, 30, 0.95);
+}
+
+.toggle-switch-thumb {
+  display: block;
+  border-radius: 9999px;
+  pointer-events: none;
+  background-color: transparent;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  transform: translate3d(0, 0, 0);
+  will-change: transform;
+  transition: transform 260ms cubic-bezier(0.4, 0, 0.2, 1),
+              border-color 240ms cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 240ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.toggle-switch-track:hover .toggle-switch-thumb {
+  border-color: rgba(255, 255, 255, 0.75);
+}
+
+.toggle-switch-track[aria-checked="true"] .toggle-switch-thumb {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Size sm */
+.toggle-switch-sm {
+  width: 38px;
+  height: 22px;
+  padding: 2px;
+}
+.toggle-switch-sm .toggle-switch-thumb {
+  width: 14px;
+  height: 14px;
+}
+.toggle-switch-sm[aria-checked="true"] .toggle-switch-thumb {
+  transform: translate3d(16px, 0, 0);
+}
+
+/* Size md */
+.toggle-switch-md {
+  width: 44px;
+  height: 24px;
+  padding: 2px;
+}
+.toggle-switch-md .toggle-switch-thumb {
+  width: 16px;
+  height: 16px;
+}
+.toggle-switch-md[aria-checked="true"] .toggle-switch-thumb {
+  transform: translate3d(20px, 0, 0);
+}
+
+/* Size lg */
+.toggle-switch-lg {
+  width: 56px;
+  height: 30px;
+  padding: 2px;
+}
+.toggle-switch-lg .toggle-switch-thumb {
+  width: 22px;
+  height: 22px;
+  border-width: 2.5px;
+}
+.toggle-switch-lg[aria-checked="true"] .toggle-switch-thumb {
+  transform: translate3d(26px, 0, 0);
+}
+
+/* Dark Obsidian Depth: Pure OLED Black overrides */
+.dark-pure-black {
+  background-color: #000000 !important;
+}
+.dark-pure-black .glass-panel,
+.dark-pure-black .glass-panel-sidebar,
+.dark-pure-black .glass-card {
+  background-color: #050505 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Performance Mode: Reduce Motion & Blur */
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+.reduce-motion .backdrop-blur-xl,
+.reduce-motion .backdrop-blur-2xl,
+.reduce-motion .backdrop-blur-md,
+.reduce-motion .backdrop-blur-sm,
+.reduce-motion [class*="backdrop-blur"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+

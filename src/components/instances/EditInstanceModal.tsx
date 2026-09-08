@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sliders, Cpu, Save, ShieldCheck } from 'lucide-react';
+import { X, Sliders, Cpu, Save, ShieldCheck, FolderOpen } from 'lucide-react';
 import type { GameInstance } from '../../types';
+import { getTranslation, type Language } from '../../locales/i18n';
+import { ToggleSwitch } from '../common/ToggleSwitch';
 
 interface EditInstanceModalProps {
   isOpen: boolean;
   onClose: () => void;
   instance: GameInstance | null;
   onSave: (updated: GameInstance) => void;
+  onOpenDir?: (id: string) => void;
+  language?: Language;
 }
 
 export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
@@ -14,7 +18,10 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
   onClose,
   instance,
   onSave,
+  onOpenDir,
+  language = 'en',
 }) => {
+  const t = getTranslation(language);
   const [name, setName] = useState('');
   const [minRam, setMinRam] = useState(2048);
   const [maxRam, setMaxRam] = useState(4096);
@@ -63,10 +70,12 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+            className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
+            title="Close"
           >
-            <X className="w-4 h-4" />
+            <X className="w-4 h-4 text-white" strokeWidth={3} />
           </button>
         </div>
 
@@ -91,10 +100,10 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
           <div className="space-y-3 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                <Cpu className="w-4 h-4 text-amber-400" />
+                <Cpu className="w-4 h-4 text-[var(--accent-color)]" />
                 <span>Memory (RAM) Allocation</span>
               </label>
-              <span className="text-xs font-mono font-bold text-amber-400">
+              <span className="text-xs font-mono font-bold text-[var(--accent-color)]">
                 {(maxRam / 1024).toFixed(1)} GB (Max)
               </span>
             </div>
@@ -104,15 +113,23 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                 <span>Maximum RAM: {maxRam} MB</span>
                 <span>(Recommended: 4096 - 8192 MB)</span>
               </div>
-              <input
-                type="range"
-                min={2048}
-                max={16384}
-                step={512}
-                value={maxRam}
-                onChange={(e) => setMaxRam(Number(e.target.value))}
-                className="w-full accent-amber-400 cursor-pointer"
-              />
+              {(() => {
+                const ramPct = Math.round(((maxRam - 2048) / (16384 - 2048)) * 100);
+                return (
+                  <input
+                    type="range"
+                    min={2048}
+                    max={16384}
+                    step={512}
+                    value={maxRam}
+                    style={{
+                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
+                    }}
+                    onChange={(e) => setMaxRam(Number(e.target.value))}
+                    className="w-full cursor-pointer"
+                  />
+                );
+              })()}
               <div className="flex justify-between text-[10px] text-slate-500 font-mono">
                 <span>2 GB</span>
                 <span>4 GB</span>
@@ -145,30 +162,44 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                 <span className="text-[11px] text-slate-400">Automatically sync custom player skins in-game</span>
               </div>
             </div>
-            <input
-              type="checkbox"
+            <ToggleSwitch
+              size="md"
               checked={enableSkinInGame}
-              onChange={(e) => setEnableSkinInGame(e.target.checked)}
-              className="w-4 h-4 accent-amber-400 rounded cursor-pointer"
+              onChange={setEnableSkinInGame}
+              title="In-Game Team Skin Support"
             />
           </div>
 
           {/* Footer Actions */}
-          <div className="pt-3 border-t border-white/[0.08] flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 transition"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="btn-primary px-5 py-2.5 rounded-xl text-xs font-bold font-riot flex items-center gap-2 shadow-lg"
-            >
-              <Save className="w-4 h-4" />
-              <span>Save Changes</span>
-            </button>
+          <div className="pt-3 border-t border-white/[0.08] flex items-center justify-between gap-3">
+            {onOpenDir && (
+              <button
+                type="button"
+                onClick={() => onOpenDir(instance.id)}
+                className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-white/5 hover:bg-white/10 border border-white/10 flex items-center gap-2 transition cursor-pointer"
+                title={t.openFolderInExplorer || 'Open profile folder in File Explorer'}
+              >
+                <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                <span>{t.btnOpenDir || 'Open Folder'}</span>
+              </button>
+            )}
+
+            <div className="flex items-center gap-3 ml-auto">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/5 transition cursor-pointer"
+              >
+                {t.cancel || 'Cancel'}
+              </button>
+              <button
+                type="submit"
+                className="btn-primary px-5 py-2.5 rounded-xl text-xs font-bold font-riot flex items-center gap-2 shadow-lg cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>{t.btnSave || 'Save Changes'}</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

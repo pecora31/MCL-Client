@@ -1,4 +1,14 @@
-import type { VersionItem, ModrinthMod, ServerStatus } from '../types';
+import type {
+  VersionItem,
+  ModrinthMod,
+  ServerStatus,
+  AddonContentType,
+  AddonSource,
+  AddonItem,
+  LocalMod,
+  MrpackManifestSummary,
+  GameInstance,
+} from '../types';
 import { invoke } from '@tauri-apps/api/core';
 
 // Check if running inside Tauri environment
@@ -18,6 +28,19 @@ export async function invokeCommand<T>(cmd: string, args: Record<string, unknown
   }
   // Fallback handler for browser preview mode
   return mockCommand<T>(cmd, args);
+}
+
+// Modpack Management (Modrinth .mrpack)
+export async function selectMrpackFile(): Promise<string | null> {
+  return await invokeCommand<string | null>('select_mrpack_file');
+}
+
+export async function inspectMrpack(mrpackPath: string): Promise<MrpackManifestSummary> {
+  return await invokeCommand<MrpackManifestSummary>('inspect_mrpack', { mrpackPath });
+}
+
+export async function installMrpack(mrpackPath: string, customName?: string): Promise<GameInstance> {
+  return await invokeCommand<GameInstance>('install_mrpack', { mrpackPath, customName });
 }
 
 // Fetch Minecraft Versions directly from Mojang API
@@ -69,7 +92,143 @@ export async function fetchQuiltVersions(gameVersion: string): Promise<string[]>
   }
 }
 
-// Search Modrinth Mods
+// Community CurseForge API Key used by open-source Minecraft launchers
+export const DEFAULT_CURSEFORGE_KEY = '$2a$10$wuAJuNZuted3NORVmpgUC.m8sI.pv1tOPKZyBgLFGjxFp/br0lZCC';
+
+// Map loader string to CurseForge modLoaderType
+// 0 = Any, 1 = Forge, 2 = Cauldron, 3 = LiteLoader, 4 = Fabric, 5 = Quilt, 6 = NeoForge
+export function getCurseForgeLoaderType(loader?: string): number {
+  if (!loader) return 0;
+  const l = loader.toLowerCase();
+  if (l.includes('neo')) return 6;
+  if (l.includes('forge')) return 1;
+  if (l.includes('fabric')) return 4;
+  if (l.includes('quilt')) return 5;
+  return 0;
+}
+
+// Map content type to CurseForge Class ID
+// 6 = Mods, 6552 = Shaders, 12 = Resource Packs
+export function getCurseForgeClassId(contentType: AddonContentType): number {
+  switch (contentType) {
+    case 'shaderpacks':
+      return 6552;
+    case 'resourcepacks':
+      return 12;
+    case 'datapacks':
+      return 4547;
+    case 'modpacks':
+      return 4471;
+    case 'mods':
+    default:
+      return 6;
+  }
+}
+
+// Search Modrinth (Mods, Shaders, Resource Packs, Data Packs, Modpacks, Plugins)
+export async function searchModrinth(
+  query: string,
+  contentType: AddonContentType = 'mods',
+  gameVersion?: string,
+  loader?: string,
+  categoryFilter?: string,
+  sortBy: 'relevance' | 'downloads' | 'newest' | 'published' = 'relevance',
+  environment: 'all' | 'client' | 'server' = 'all',
+  limit = 20,
+  offset = 0
+): Promise<{ items: AddonItem[]; total: number }> {
+  try {
+    const projectType =
+      contentType === 'shaderpacks'
+        ? 'shader'
+        : contentType === 'resourcepacks'
+        ? 'resourcepack'
+        : contentType === 'datapacks'
+        ? 'datapack'
+        : contentType === 'modpacks'
+        ? 'modpack'
+        : contentType === 'plugins'
+        ? 'plugin'
+        : 'mod';
+
+    const facets: string[][] = [[`project_type:${projectType}`]];
+    if (gameVersion) facets.push([`versions:${gameVersion}`]);
+    if (loader && loader !== 'vanilla' && contentType === 'mods') {
+      facets.push([`categories:${loader}`]);
+    }
+    if (categoryFilter && categoryFilter !== 'all') {
+      facets.push([`categories:${categoryFilter}`]);
+    }
+    if (environment === 'client') {
+      facets.push(['client_side:required', 'client_side:optional']);
+    } else if (environment === 'server') {
+      facets.push(['server_side:required', 'server_side:optional']);
+    }
+
+    const indexSort =
+      sortBy === 'downloads'
+        ? 'downloads'
+        : sortBy === 'published'
+        ? 'newest'
+        : sortBy === 'newest'
+        ? 'updated'
+        : 'relevance';
+
+    const params = new URLSearchParams({
+      query: query || '',
+      limit: limit.toString(),
+      offset: offset.toString(),
+      index: indexSort,
+      facets: JSON.stringify(facets),
+    });
+
+    const res = await fetch(`https://api.modrinth.com/v2/search?${params.toString()}`, {
+      headers: {
+        'User-Agent': 'MCLv2-Launcher/1.0.0 (https://github.com/pecora31/MCLv2)',
+      },
+    });
+    if (!res.ok) throw new Error('Modrinth API failed');
+    const data = await res.json();
+
+    const items: AddonItem[] = (data.hits || []).map((hit: any) => ({
+      id: hit.project_id,
+      modrinthId: hit.project_id,
+      source: 'modrinth' as AddonSource,
+      sources: ['modrinth' as AddonSource],
+      slug: hit.slug,
+      name: hit.title,
+      summary: hit.description,
+      author: hit.author,
+      iconUrl: hit.icon_url,
+      bannerUrl: hit.featured_gallery || (hit.gallery && hit.gallery[0]) || undefined,
+      color: hit.color ? `#${hit.color.toString(16).padStart(6, '0')}` : undefined,
+      environment:
+        hit.client_side === 'required' && hit.server_side === 'required'
+          ? 'both'
+          : hit.client_side === 'required'
+          ? 'client'
+          : hit.server_side === 'required'
+          ? 'server'
+          : hit.client_side === 'optional' || hit.server_side === 'optional'
+          ? 'both'
+          : undefined,
+      loaders: hit.loaders || [],
+      downloads: hit.downloads,
+      follows: hit.follows || 0,
+      updatedAt: hit.date_modified || hit.date_created,
+      categories: hit.categories || [],
+      contentType,
+      webUrl: `https://modrinth.com/${projectType}/${hit.slug || hit.project_id}`,
+    }));
+
+    return { items, total: data.total_hits || items.length };
+  } catch (err) {
+    console.error('Modrinth search error:', err);
+    return { items: [], total: 0 };
+  }
+}
+
+// Backwards-compatible alias for existing callers
 export async function searchModrinthMods(
   query: string,
   gameVersion?: string,
@@ -77,25 +236,453 @@ export async function searchModrinthMods(
   limit = 20,
   offset = 0
 ): Promise<{ hits: ModrinthMod[]; total_hits: number }> {
-  try {
-    const facets: string[][] = [['project_type:mod']];
-    if (gameVersion) facets.push([`versions:${gameVersion}`]);
-    if (loader && loader !== 'vanilla') facets.push([`categories:${loader}`]);
+  const res = await searchModrinth(query, 'mods', gameVersion, loader, undefined, 'relevance', 'all', limit, offset);
+  const hits: ModrinthMod[] = res.items.map((i) => ({
+    project_id: i.id,
+    slug: i.slug || i.id,
+    title: i.name,
+    description: i.summary,
+    icon_url: i.iconUrl,
+    downloads: i.downloads,
+    follows: i.follows || 0,
+    categories: i.categories,
+    client_side: 'optional',
+    server_side: 'optional',
+    versions: [],
+    author: i.author,
+  }));
+  return { hits, total_hits: res.total };
+}
 
-    const params = new URLSearchParams({
-      query: query || '',
-      limit: limit.toString(),
-      offset: offset.toString(),
-      index: 'relevance',
-      facets: JSON.stringify(facets),
+// Get direct download info from Modrinth
+export async function getModrinthDownloadInfo(
+  projectId: string,
+  gameVersion?: string,
+  loader?: string
+): Promise<{ url: string; fileName: string } | null> {
+  try {
+    const res = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`, {
+      headers: {
+        'User-Agent': 'MCLv2-Launcher/1.0.0 (https://github.com/pecora31/MCLv2)',
+      },
+    });
+    if (!res.ok) return null;
+    const versions: any[] = await res.json();
+    if (!Array.isArray(versions) || versions.length === 0) return null;
+
+    let target = versions.find((v) => {
+      const matchVer = !gameVersion || (v.game_versions && v.game_versions.includes(gameVersion));
+      const matchLoader = !loader || loader === 'vanilla' || (v.loaders && v.loaders.includes(loader));
+      return matchVer && matchLoader;
     });
 
-    const res = await fetch(`https://api.modrinth.com/v2/search?${params.toString()}`);
-    if (!res.ok) throw new Error('Modrinth API failed');
-    return await res.json();
+    if (!target) {
+      target = versions.find((v) => !gameVersion || (v.game_versions && v.game_versions.includes(gameVersion)));
+    }
+    if (!target) {
+      target = versions[0];
+    }
+
+    const primaryFile = (target.files || []).find((f: any) => f.primary) || target.files?.[0];
+    if (primaryFile && primaryFile.url) {
+      return { url: primaryFile.url, fileName: primaryFile.filename };
+    }
+    return null;
   } catch (err) {
-    console.error('Modrinth search error:', err);
-    return { hits: [], total_hits: 0 };
+    console.error('Failed to get Modrinth download info:', err);
+    return null;
+  }
+}
+
+// Search CurseForge (Mods, Shaders, Resource Packs)
+export async function searchCurseForge(
+  query: string,
+  contentType: AddonContentType = 'mods',
+  gameVersion?: string,
+  loader?: string,
+  categoryFilter?: string,
+  sortBy: 'relevance' | 'downloads' | 'newest' | 'published' = 'relevance',
+  customApiKey?: string,
+  limit = 20,
+  offset = 0
+): Promise<{ items: AddonItem[]; total: number }> {
+  const apiKey = (customApiKey && customApiKey.trim()) || DEFAULT_CURSEFORGE_KEY;
+  const classId = getCurseForgeClassId(contentType);
+  const modLoaderType = contentType === 'mods' ? getCurseForgeLoaderType(loader) : 0;
+
+  try {
+    // 2 = Popularity, 6 = TotalDownloads, 3 = LastUpdated, 11 = ReleaseDate (Published)
+    const cfSortField =
+      sortBy === 'downloads'
+        ? '6'
+        : sortBy === 'published'
+        ? '11'
+        : sortBy === 'newest'
+        ? '3'
+        : '2';
+
+    const params = new URLSearchParams({
+      gameId: '432',
+      classId: classId.toString(),
+      pageSize: limit.toString(),
+      index: offset.toString(),
+      sortField: cfSortField,
+      sortOrder: 'desc',
+    });
+
+    if (query && query.trim()) {
+      params.append('searchFilter', query.trim());
+    }
+
+    if (gameVersion) params.append('gameVersion', gameVersion);
+    if (modLoaderType > 0) params.append('modLoaderType', modLoaderType.toString());
+
+    // CurseForge category mapping
+    const cfCategoryMap: Record<string, number> = {
+      technology: 421,
+      magic: 420,
+      storage: 419,
+      utility: 418,
+      optimization: 417,
+      adventure: 416,
+      worldgen: 414,
+      decoration: 424,
+      library: 412,
+    };
+    if (categoryFilter && categoryFilter !== 'all' && cfCategoryMap[categoryFilter]) {
+      params.append('categoryId', cfCategoryMap[categoryFilter].toString());
+    }
+
+    const res = await fetch(`https://api.curseforge.com/v1/mods/search?${params.toString()}`, {
+      headers: {
+        Accept: 'application/json',
+        'x-api-key': apiKey,
+      },
+    });
+
+    if (!res.ok) {
+      console.warn(`CurseForge API returned HTTP ${res.status}`);
+      return { items: [], total: 0 };
+    }
+
+    const data = await res.json();
+    const items: AddonItem[] = (data.data || []).map((hit: any) => {
+      const webUrl =
+        contentType === 'shaderpacks'
+          ? `https://www.curseforge.com/minecraft/shaders/${hit.slug || hit.id}`
+          : contentType === 'resourcepacks'
+          ? `https://www.curseforge.com/minecraft/texture-packs/${hit.slug || hit.id}`
+          : contentType === 'datapacks'
+          ? `https://www.curseforge.com/minecraft/data-packs/${hit.slug || hit.id}`
+          : contentType === 'modpacks'
+          ? `https://www.curseforge.com/minecraft/modpacks/${hit.slug || hit.id}`
+          : `https://www.curseforge.com/minecraft/mc-mods/${hit.slug || hit.id}`;
+
+      const bannerUrl = hit.screenshots?.[0]?.url || hit.screenshots?.[0]?.thumbnailUrl || undefined;
+      const loaders = (hit.latestFilesIndexes || [])
+        .map((idx: any) => {
+          if (idx.modLoader === 1) return 'forge';
+          if (idx.modLoader === 4) return 'fabric';
+          if (idx.modLoader === 5) return 'quilt';
+          if (idx.modLoader === 6) return 'neoforge';
+          return null;
+        })
+        .filter(Boolean);
+
+      return {
+        id: hit.id.toString(),
+        curseforgeId: hit.id.toString(),
+        source: 'curseforge' as AddonSource,
+        sources: ['curseforge' as AddonSource],
+        slug: hit.slug || hit.name?.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+        name: hit.name,
+        summary: hit.summary,
+        author: hit.authors?.[0]?.name || 'Unknown',
+        iconUrl: hit.logo?.thumbnailUrl || hit.logo?.url,
+        bannerUrl,
+        loaders,
+        downloads: hit.downloadCount || 0,
+        follows: hit.thumbsUpCount || 0,
+        updatedAt: hit.dateModified,
+        categories: (hit.categories || []).map((c: any) => c.name),
+        contentType,
+        webUrl,
+      };
+    });
+
+    return { items, total: data.pagination?.totalCount || items.length };
+  } catch (err) {
+    console.error('CurseForge search error:', err);
+    return { items: [], total: 0 };
+  }
+}
+
+// Helper: Normalize name/slug to identify duplicate mods across platforms
+export function normalizeAddonKey(str: string): string {
+  return str
+    .toLowerCase()
+    .replace(/\[.*?\]|\(.*?\)/g, '')
+    .replace(/[^a-z0-9]/g, '')
+    .replace(/(fabric|forge|neoforge|quilt|mods?|shaders?|texturepacks?|resourcepacks?|pack|mc|minecraft)/g, '')
+    .trim();
+}
+
+export function areAddonsIdentical(a: AddonItem, b: AddonItem): boolean {
+  if (a.contentType !== b.contentType) return false;
+
+  // 1. Direct Slug matching (without loader or edition suffixes)
+  if (a.slug && b.slug) {
+    const slugA = a.slug.toLowerCase().replace(/[-_](fabric|forge|neoforge|quilt|edition|forge-fabric|fabric-forge)$/, '');
+    const slugB = b.slug.toLowerCase().replace(/[-_](fabric|forge|neoforge|quilt|edition|forge-fabric|fabric-forge)$/, '');
+    if (slugA === slugB) return true;
+  }
+
+  // 2. Direct exact title match (case-insensitive)
+  if (a.name.toLowerCase().trim() === b.name.toLowerCase().trim()) return true;
+
+  // 3. Normalized alphanumeric string match (e.g., "Fabric API" vs "Fabric API")
+  const rawA = a.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const rawB = b.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (rawA === rawB && rawA.length >= 3) return true;
+
+  // 4. Normalized key matching without stopwords
+  const kA = normalizeAddonKey(a.name);
+  const kB = normalizeAddonKey(b.name);
+  if (kA && kB && kA === kB && kA.length >= 3) {
+    return true;
+  }
+
+  // 5. Cross-check slug with clean title
+  if (a.slug && b.slug) {
+    const cleanSlugA = a.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const cleanSlugB = b.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (cleanSlugA === rawB || cleanSlugB === rawA) return true;
+  }
+
+  return false;
+}
+
+// Merge & Deduplicate Addon lists from Modrinth and CurseForge
+export function mergeAndDeduplicateAddons(
+  modrinthItems: AddonItem[],
+  curseforgeItems: AddonItem[]
+): AddonItem[] {
+  const result: AddonItem[] = [];
+  const mergedCfIds = new Set<string>();
+
+  for (const mr of modrinthItems) {
+    const cfMatch = curseforgeItems.find((cf) => !mergedCfIds.has(cf.id) && areAddonsIdentical(mr, cf));
+    if (cfMatch) {
+      mergedCfIds.add(cfMatch.id);
+      result.push({
+        ...mr,
+        sources: ['modrinth', 'curseforge'],
+        modrinthId: mr.id,
+        curseforgeId: cfMatch.id,
+        bannerUrl: mr.bannerUrl || cfMatch.bannerUrl,
+        loaders: Array.from(new Set([...(mr.loaders || []), ...(cfMatch.loaders || [])])),
+        downloads: Math.max(mr.downloads, cfMatch.downloads),
+        categories: Array.from(new Set([...mr.categories, ...cfMatch.categories])),
+      });
+    } else {
+      result.push({
+        ...mr,
+        sources: ['modrinth'],
+        modrinthId: mr.id,
+      });
+    }
+  }
+
+  for (const cf of curseforgeItems) {
+    if (!mergedCfIds.has(cf.id)) {
+      result.push({
+        ...cf,
+        sources: ['curseforge'],
+        curseforgeId: cf.id,
+      });
+    }
+  }
+
+  return result;
+}
+
+// Unified Multi-Source Search
+export interface MultiSourceSearchOptions {
+  query: string;
+  contentType: AddonContentType;
+  sources: {
+    modrinth: boolean;
+    curseforge: boolean;
+  };
+  gameVersion?: string;
+  loader?: string;
+  categoryFilter?: string;
+  sortBy?: 'relevance' | 'downloads' | 'newest' | 'published';
+  environment?: 'all' | 'client' | 'server';
+  curseForgeApiKey?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function searchAddonsMultiSource(options: MultiSourceSearchOptions): Promise<{
+  items: AddonItem[];
+  total: number;
+}> {
+  const {
+    query,
+    contentType,
+    sources,
+    gameVersion,
+    loader,
+    categoryFilter,
+    sortBy = 'relevance',
+    environment = 'all',
+    curseForgeApiKey,
+    limit = 20,
+    offset = 0,
+  } = options;
+
+  const mrPromise = sources.modrinth
+    ? searchModrinth(query, contentType, gameVersion, loader, categoryFilter, sortBy, environment, limit, offset)
+    : Promise.resolve({ items: [], total: 0 });
+
+  const cfPromise = sources.curseforge
+    ? searchCurseForge(query, contentType, gameVersion, loader, categoryFilter, sortBy, curseForgeApiKey, limit, offset)
+    : Promise.resolve({ items: [], total: 0 });
+
+  const [mrRes, cfRes] = await Promise.allSettled([mrPromise, cfPromise]);
+
+  const mrItems = mrRes.status === 'fulfilled' ? mrRes.value.items : [];
+  const cfItems = cfRes.status === 'fulfilled' ? cfRes.value.items : [];
+
+  if (sources.modrinth && sources.curseforge) {
+    const deduplicated = mergeAndDeduplicateAddons(mrItems, cfItems);
+    if (sortBy === 'downloads') {
+      deduplicated.sort((a, b) => b.downloads - a.downloads);
+    }
+    const total =
+      (mrRes.status === 'fulfilled' ? mrRes.value.total : 0) +
+      (cfRes.status === 'fulfilled' ? cfRes.value.total : 0);
+    return { items: deduplicated, total };
+  }
+
+  if (sources.modrinth) {
+    return mrRes.status === 'fulfilled' ? mrRes.value : { items: [], total: 0 };
+  }
+
+  return cfRes.status === 'fulfilled' ? cfRes.value : { items: [], total: 0 };
+}
+
+// Get direct download info from CurseForge
+export async function getCurseForgeDownloadInfo(
+  modId: string | number,
+  gameVersion?: string,
+  loader?: string,
+  customApiKey?: string
+): Promise<{ url: string | null; fileName: string; directAllowed: boolean }> {
+  const apiKey = (customApiKey && customApiKey.trim()) || DEFAULT_CURSEFORGE_KEY;
+  const modLoaderType = getCurseForgeLoaderType(loader);
+
+  try {
+    const params = new URLSearchParams({
+      pageSize: '10',
+    });
+    if (gameVersion) params.append('gameVersion', gameVersion);
+    if (modLoaderType > 0) params.append('modLoaderType', modLoaderType.toString());
+
+    const res = await fetch(`https://api.curseforge.com/v1/mods/${modId}/files?${params.toString()}`, {
+      headers: {
+        Accept: 'application/json',
+        'x-api-key': apiKey,
+      },
+    });
+
+    if (!res.ok) return { url: null, fileName: '', directAllowed: false };
+    const data = await res.json();
+    const files: any[] = data.data || [];
+    if (files.length === 0) return { url: null, fileName: '', directAllowed: false };
+
+    const file = files[0];
+    let downloadUrl = file.downloadUrl || null;
+
+    // Fallback: Construct Edge CDN URL if author didn't populate downloadUrl
+    if (!downloadUrl && file.id && file.fileName) {
+      const firstPart = Math.floor(file.id / 1000);
+      const secondPart = file.id % 1000;
+      downloadUrl = `https://edge.forgecdn.net/files/${firstPart}/${secondPart}/${encodeURIComponent(file.fileName)}`;
+    }
+
+    return {
+      url: downloadUrl,
+      fileName: file.fileName || `${modId}.jar`,
+      directAllowed: Boolean(downloadUrl),
+    };
+  } catch (err) {
+    console.error('Failed to get CurseForge download info:', err);
+    return { url: null, fileName: '', directAllowed: false };
+  }
+}
+
+// Real addon installation via Tauri backend
+export async function installAddon(
+  instanceId: string,
+  url: string,
+  fileName: string,
+  addonType: AddonContentType
+): Promise<LocalMod> {
+  if (isTauri()) {
+    return await invokeCommand<LocalMod>('download_and_install_addon', {
+      instanceId,
+      url,
+      fileName,
+      addonType,
+    });
+  }
+  // Browser preview fallback
+  await new Promise((r) => setTimeout(r, 600));
+  return {
+    fileName,
+    name: fileName.replace(/\.(jar|zip)(\.disabled)?$/, ''),
+    enabled: true,
+    sizeBytes: 1024 * 1024,
+    addonType,
+  };
+}
+
+// Get installed addons for a profile
+export async function getInstalledAddons(
+  instanceId: string,
+  addonType: AddonContentType
+): Promise<LocalMod[]> {
+  if (isTauri()) {
+    return await invokeCommand<LocalMod[]>('get_installed_addons', {
+      instanceId,
+      addonType,
+    });
+  }
+  return [];
+}
+
+// Toggle enabled/disabled
+export async function toggleAddon(
+  instanceId: string,
+  addonType: AddonContentType,
+  fileName: string,
+  enable: boolean
+): Promise<void> {
+  if (isTauri()) {
+    await invokeCommand('toggle_addon', { instanceId, addonType, fileName, enable });
+  }
+}
+
+// Delete addon file
+export async function deleteAddon(
+  instanceId: string,
+  addonType: AddonContentType,
+  fileName: string
+): Promise<void> {
+  if (isTauri()) {
+    await invokeCommand('delete_addon', { instanceId, addonType, fileName });
   }
 }
 
@@ -117,7 +704,7 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
         version: data.version ?? 'Paper 1.21.4',
         playersOnline: data.players?.online ?? 0,
         playersMax: data.players?.max ?? 20,
-        motd: data.motd?.clean?.[0] || 'Máy Chủ Minecraft Nhóm Bạn',
+        motd: data.motd?.clean?.[0] || 'Minecraft Friends Server',
         pingMs: 24,
         favicon: data.icon,
       };
@@ -133,7 +720,7 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
     version: '1.21.4 (Fabric)',
     playersOnline: 4,
     playersMax: 20,
-    motd: '§aMáy Chủ Nhóm Bạn §7| §bSẵn sàng chiến game!',
+    motd: '§aFriends Server §7| §bReady to play!',
     pingMs: 18,
   };
 }
@@ -145,7 +732,7 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
       return [
         {
           id: 'server-instance-01',
-          name: 'Máy Chủ Nhóm Bạn',
+          name: 'Friends Server',
           gameVersion: '1.21.4',
           loader: 'fabric',
           loaderVersion: '0.16.10',
@@ -156,24 +743,24 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
           serverIp: 'play.ourserver.mc',
           serverPort: 25565,
           enableSkinInGame: true,
-          lastPlayed: 'Hôm nay, 21:30',
+          lastPlayed: 'Today, 21:30',
           totalPlayTime: 1420,
         },
         {
           id: 'instance-vanilla-latest',
-          name: 'Vanilla 1.21.4 Mới Nhất',
+          name: 'Latest Vanilla 1.21.4',
           gameVersion: '1.21.4',
           loader: 'vanilla',
           minRam: 2048,
           maxRam: 4096,
           icon: 'grass',
           enableSkinInGame: true,
-          lastPlayed: 'Hôm qua',
+          lastPlayed: 'Yesterday',
           totalPlayTime: 320,
         },
         {
           id: 'instance-forge-1201',
-          name: 'Modpack Sinh Tồn 1.20.1',
+          name: 'Survival Modpack 1.20.1',
           gameVersion: '1.20.1',
           loader: 'forge',
           loaderVersion: '47.3.0',
@@ -181,7 +768,7 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
           maxRam: 8192,
           icon: 'sword',
           enableSkinInGame: true,
-          lastPlayed: '3 ngày trước',
+          lastPlayed: '3 days ago',
           totalPlayTime: 2540,
         },
       ] as unknown as T;
@@ -200,12 +787,40 @@ async function mockCommand<T>(cmd: string, args: Record<string, unknown>): Promi
     case 'get_local_mods':
       return [
         { fileName: 'fabric-api-0.115.0+1.21.4.jar', name: 'Fabric API', version: '0.115.0', enabled: true, sizeBytes: 2154300 },
-        { fileName: 'sodium-fabric-0.6.9+mc1.21.4.jar', name: 'Sodium (Tối ưu FPS)', version: '0.6.9', enabled: true, sizeBytes: 1540200 },
+        { fileName: 'sodium-fabric-0.6.9+mc1.21.4.jar', name: 'Sodium (FPS Optimization)', version: '0.6.9', enabled: true, sizeBytes: 1540200 },
         { fileName: 'iris-1.8.1+mc1.21.4.jar', name: 'Iris Shaders', version: '1.8.1', enabled: true, sizeBytes: 2840000 },
-        { fileName: 'CustomSkinLoader_Fabric-14.21.jar', name: 'CustomSkinLoader (Skin Đồng Đội)', version: '14.21', enabled: true, sizeBytes: 890000 },
+        { fileName: 'CustomSkinLoader_Fabric-14.21.jar', name: 'CustomSkinLoader (Multiplayer Skin)', version: '14.21', enabled: true, sizeBytes: 890000 },
         { fileName: 'voicechat-fabric-1.21.4-2.5.28.jar', name: 'Simple Voice Chat', version: '2.5.28', enabled: true, sizeBytes: 4200000 },
         { fileName: 'appleskin-fabric-mc1.21.4-3.0.5.jar', name: 'AppleSkin', version: '3.0.5', enabled: false, sizeBytes: 310000 },
       ] as unknown as T;
+
+    case 'select_mrpack_file':
+      return 'C:\\Downloads\\Fabulously-Optimized-1.21.4.mrpack' as unknown as T;
+
+    case 'inspect_mrpack':
+      return {
+        name: 'Fabulously Optimized',
+        summary: 'A simple Minecraft modpack focusing on performance and graphics.',
+        gameVersion: '1.21.4',
+        loader: 'fabric',
+        loaderVersion: '0.16.10',
+        totalFiles: 42,
+        totalSizeBytes: 35000000,
+        filePath: (args.mrpackPath as string) || 'modpack.mrpack',
+      } as unknown as T;
+
+    case 'install_mrpack':
+      return {
+        id: 'modpack-mock-01',
+        name: (args.customName as string) || 'Fabulously Optimized',
+        gameVersion: '1.21.4',
+        loader: 'fabric',
+        loaderVersion: '0.16.10',
+        minRam: 2048,
+        maxRam: 4096,
+        icon: 'package',
+        enableSkinInGame: true,
+      } as unknown as T;
 
     default:
       return {} as unknown as T;
