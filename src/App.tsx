@@ -19,7 +19,6 @@ import { BackgroundCustomizerModal } from './components/home/BackgroundCustomize
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer } from './types';
 import { invokeCommand, isTauri } from './services/api';
 import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow, LogicalSize } from '@tauri-apps/api/window';
 import type { Language } from './locales/i18n';
 import { X } from 'lucide-react';
 
@@ -147,6 +146,31 @@ function readStoredJson<T>(key: string, fallback: T): T {
   } catch (err) {
     console.warn(`Discarding corrupted localStorage entry "${key}":`, err);
     return fallback;
+  }
+}
+
+// Bump when the shape of persisted mcl_* data changes, and add the matching step below.
+const STORAGE_SCHEMA_VERSION = 1;
+
+export function runStorageMigrations() {
+  try {
+    const raw = localStorage.getItem('mcl_schema_version');
+    // Data written before versioning existed already matches the current shape
+    const stored = raw === null ? STORAGE_SCHEMA_VERSION : Number(raw);
+
+    if (stored > STORAGE_SCHEMA_VERSION) {
+      console.warn(`Local data comes from a newer launcher (v${stored}); leaving it untouched.`);
+      return;
+    }
+
+    // Steps run in order, each upgrading from the version before it:
+    // if (stored < 2) { ...reshape mcl_instances... }
+
+    if (String(stored) !== raw) {
+      localStorage.setItem('mcl_schema_version', String(STORAGE_SCHEMA_VERSION));
+    }
+  } catch (err) {
+    console.warn('Storage migration skipped:', err);
   }
 }
 
