@@ -223,7 +223,7 @@ export const translations = {
     gameVersion: 'Phiên Bản Game',
     heroCta: 'Xem Ngay',
     heroSub: 'Tham gia cùng bạn bè, khám phá thế giới với modpack tối ưu FPS và skin đồng bộ.',
-    heroTitle: 'Máy Chủ Sinh Tồn MCLv2',
+    heroTitle: 'MCL Client',
     importSkin: 'Nạp Skin Mới',
     inGame: 'Đang chơi Minecraft',
     inGameSkin: 'Skin Đồng Đội',
