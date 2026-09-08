@@ -150,7 +150,22 @@ function readStoredJson<T>(key: string, fallback: T): T {
 }
 
 // Bump when the shape of persisted mcl_* data changes, and add the matching step below.
-const STORAGE_SCHEMA_VERSION = 2;
+const STORAGE_SCHEMA_VERSION = 3;
+
+function dropStoredEntriesById(key: string, ids: string[]) {
+  const raw = localStorage.getItem(key);
+  if (!raw) return;
+  try {
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return;
+    const kept = list.filter((item) => !ids.includes(item?.id));
+    if (kept.length !== list.length) {
+      localStorage.setItem(key, JSON.stringify(kept));
+    }
+  } catch {
+    // Unreadable lists are discarded by readStoredJson anyway
+  }
+}
 
 export function runStorageMigrations() {
   try {
@@ -189,9 +204,20 @@ export function runStorageMigrations() {
       }
     }
 
-    if (String(stored) !== raw) {
-      localStorage.setItem('mcl_schema_version', String(STORAGE_SCHEMA_VERSION));
+    if (stored < 3) {
+      // Early builds seeded sample profiles and servers with fixed ids, while
+      // anything the user creates carries a timestamp suffix
+      const sampleInstanceIds = ['server-instance-01', 'instance-vanilla-latest', 'instance-forge-1201'];
+      const sampleServerIds = ['srv-01', 'srv-02'];
+      dropStoredEntriesById('mcl_instances', sampleInstanceIds);
+      dropStoredEntriesById('mcl_servers', sampleServerIds);
+      const activeServer = localStorage.getItem('mcl_active_server');
+      if (activeServer && sampleServerIds.includes(activeServer)) {
+        localStorage.removeItem('mcl_active_server');
+      }
     }
+
+    localStorage.setItem('mcl_schema_version', String(STORAGE_SCHEMA_VERSION));
   } catch (err) {
     console.warn('Storage migration skipped:', err);
   }
@@ -248,7 +274,7 @@ export const App: React.FC = () => {
     readStoredJson('mcl_servers', DEFAULT_SERVERS)
   );
   const [activeServerId, setActiveServerId] = useState<string>(() => {
-    return localStorage.getItem('mcl_active_server') || savedServers[0]?.id || 'srv-01';
+    return localStorage.getItem('mcl_active_server') || savedServers[0]?.id || '';
   });
   const [directConnectServer, setDirectConnectServer] = useState<boolean>(() => {
     return localStorage.getItem('mcl_direct_connect') === 'true';
