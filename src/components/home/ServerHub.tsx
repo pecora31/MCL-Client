@@ -582,54 +582,68 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
               {/* Server Widget - Located BELOW Play Button & Profile Box */}
               {/* Width = 220px (Play) + 12px (gap) + 280px (Profile) = 512px exact */}
-              <div className="w-[512px] mt-3.5 p-3.5 rounded-2xl bg-[#121212]/90 border border-white/[0.08] shadow-xl space-y-2.5">
+              <div
+                className="w-[512px] mt-3.5 p-4 rounded-2xl bg-[#141416]/95 border border-white/[0.08] shadow-2xl flex flex-col gap-3.5"
+                style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
+              >
+                {/* Top Row: Server Selector Dropdown & Live Status (Players/Ping) */}
                 <div className="flex items-center justify-between">
                   {/* Active Server Dropdown */}
                   <div className="flex items-center gap-2.5 relative">
-                    <span className={`w-2.5 h-2.5 rounded-full ${serverStatus.online ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${
+                        serverStatus.online ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]' : 'bg-red-400'
+                      }`}
+                    />
 
                     <div className="relative">
                       <button
                         onClick={() => setIsServerDropdownOpen(!isServerDropdownOpen)}
-                        className="flex items-center gap-1.5 text-sm font-bold text-white hover:text-amber-300 transition"
+                        className="flex items-center gap-1.5 text-sm font-bold text-white hover:text-[var(--accent-light)] transition cursor-pointer"
                         title="Click to switch active server"
                       >
                         <span className="truncate max-w-[200px]">{currentSavedServer?.name || 'Minecraft Server'}</span>
-                        <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isServerDropdownOpen ? 'rotate-180' : ''}`} />
+                        <ChevronDown
+                          className={`w-4 h-4 text-slate-400 transition-transform duration-150 ${
+                            isServerDropdownOpen ? 'rotate-180 text-white' : ''
+                          }`}
+                        />
                       </button>
 
                       {/* Dropdown Menu */}
                       {isServerDropdownOpen && (
-                        <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#181818] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown">
-                          <div className="px-3 py-1 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                        <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#161618] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown backdrop-blur-md">
+                          <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                             Saved Servers
                           </div>
-                          {savedServers.map((srv) => (
-                            <button
-                              key={srv.id}
-                              onClick={() => {
-                                onSelectActiveServer(srv.id);
-                                setIsServerDropdownOpen(false);
-                              }}
-                              className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
-                                srv.id === activeServerId
-                                  ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
-                                  : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
-                              }`}
-                            >
-                              <span className="truncate font-semibold">{srv.name}</span>
-                              <span className="text-[10px] text-slate-500 font-mono shrink-0 ml-2">{srv.ip}</span>
-                            </button>
-                          ))}
-                          <div className="pt-1 border-t border-white/[0.06]">
+                          <div className="max-h-52 overflow-y-auto space-y-1 custom-scrollbar">
+                            {savedServers.map((srv) => (
+                              <button
+                                key={srv.id}
+                                onClick={() => {
+                                  onSelectActiveServer(srv.id);
+                                  setIsServerDropdownOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
+                                  srv.id === activeServerId
+                                    ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
+                                    : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
+                                }`}
+                              >
+                                <span className="truncate font-semibold">{srv.name}</span>
+                                <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-2">{srv.ip}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <div className="pt-1.5 border-t border-white/[0.06]">
                             <button
                               onClick={() => {
                                 setIsServerDropdownOpen(false);
                                 setActiveTab('server');
                               }}
-                              className="w-full text-left px-3 py-1.5 rounded-xl text-xs text-amber-400 font-semibold hover:bg-amber-500/10 transition flex items-center gap-1.5"
+                              className="w-full text-left px-3 py-2 rounded-xl text-xs text-[var(--accent-light)] font-bold hover:bg-[var(--accent-subtle)] transition flex items-center gap-2 cursor-pointer"
                             >
-                              <Server className="w-3.5 h-3.5" />
+                              <Server className="w-3.5 h-3.5 text-[var(--accent-color)]" />
                               <span>{t.manageServersTitle || 'Manage Servers'}</span>
                             </button>
                           </div>
@@ -638,32 +652,67 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                     </div>
                   </div>
 
-                  {/* Live Ping & Player Count */}
-                  <div className="flex items-center gap-2 text-xs font-mono">
-                    <span className="text-slate-300 font-semibold">{serverStatus.playersOnline}/{serverStatus.playersMax} {t.online || 'Online'}</span>
-                    <span className="text-slate-600">•</span>
-                    <span className="text-emerald-400 font-bold">{serverStatus.pingMs ?? '--'} ms</span>
+                  {/* Live Ping & Player Count Badges */}
+                  <div className="flex items-center gap-2.5 text-xs">
+                    <div className="flex items-center gap-1.5 text-slate-300 font-medium tabular-nums">
+                      <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="font-bold text-white tracking-tight">
+                        {(serverStatus.playersOnline ?? 0).toLocaleString()}
+                      </span>
+                      <span className="text-slate-500 font-normal">
+                        /{(serverStatus.playersMax ?? 0).toLocaleString()}
+                      </span>
+                      <span className="text-slate-400 text-[11px] font-normal ml-0.5">
+                        {t.online || 'Online'}
+                      </span>
+                    </div>
+
+                    <span className="text-white/20 text-xs">•</span>
+
+                    <div
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold tracking-tight border ${
+                        (serverStatus.pingMs ?? 999) < 80
+                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+                          : (serverStatus.pingMs ?? 999) < 150
+                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
+                      }`}
+                    >
+                      <Wifi className="w-3 h-3 shrink-0" />
+                      <span>{serverStatus.pingMs !== undefined ? `${serverStatus.pingMs} ms` : '--'}</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Bottom Row: Copy IP Badge & Switch Toggle for Connect on Play */}
-                <div className="flex items-center justify-between pt-1 text-xs border-t border-white/[0.04] gap-2">
+                {/* Clean Balanced Divider Line */}
+                <div className="h-px bg-white/[0.06] w-full" />
+
+                {/* Bottom Row: Copy IP Button & Switch Toggle for Connect on Play */}
+                <div className="flex items-center justify-between gap-3 text-xs">
                   <button
                     onClick={handleCopyIp}
-                    className={`px-2.5 py-1.5 rounded-xl text-xs font-mono flex items-center gap-1.5 transition border ${
+                    className={`h-8 px-3 rounded-xl text-xs flex items-center gap-2 transition-all border cursor-pointer active:scale-95 group ${
                       copied
-                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                        : 'bg-white/[0.04] text-slate-300 hover:text-amber-300 border-white/[0.06] hover:border-amber-400/40'
+                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                        : 'bg-white/[0.03] hover:bg-white/[0.06] text-slate-300 hover:text-white border-white/[0.08] hover:border-white/20'
                     }`}
                     title="Click to copy server IP address"
                   >
-                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-amber-400" />}
-                    <span className="font-semibold truncate max-w-[160px]">{currentSavedServer?.ip || serverStatus.ip}</span>
-                    <span className="text-[10px] opacity-75">{copied ? `(${t.copied || 'Copied!'})` : `(${t.copyAction || 'Copy'})`}</span>
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-[var(--accent-color)] group-hover:brightness-110 shrink-0 transition" />
+                    )}
+                    <span className="font-medium font-mono text-[11px] tracking-tight text-slate-200">
+                      {currentSavedServer?.ip || serverStatus.ip}
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      ({copied ? (t.copied || 'Copied!') : (t.copyAction || 'Copy')})
+                    </span>
                   </button>
 
                   {/* Switch Toggle for Direct Connect */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <ToggleSwitch
                       checked={directConnectServer}
                       onChange={onToggleDirectConnectServer}
