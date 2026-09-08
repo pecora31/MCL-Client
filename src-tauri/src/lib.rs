@@ -10,6 +10,7 @@ use models::{
     GameInstance, JavaInstallation, LocalMod, ServerStatus, StorageCleanupReport,
     StorageCleanupScanResult,
 };
+use base64::Engine as _;
 use tauri::Manager;
 use std::sync::{Mutex, OnceLock};
 
@@ -69,6 +70,63 @@ fn select_folder(default_path: Option<String>) -> Option<String> {
     dialog.pick_folder().map(|p| p.to_string_lossy().to_string())
 }
 
+const MAX_INLINE_FILE_BYTES: u64 = 3 * 1024 * 1024;
+
+fn mime_from_extension(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
+        Some("bmp") => "image/bmp",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+#[tauri::command]
+fn select_file(
+    filter_name: Option<String>,
+    filter_extensions: Option<Vec<String>>,
+) -> Result<Option<String>, String> {
+    let extensions = filter_extensions.unwrap_or_default();
+    let mut dialog = rfd::FileDialog::new();
+    if !extensions.is_empty() {
+        dialog = dialog.add_filter(filter_name.unwrap_or_else(|| "Files".to_string()), &extensions);
+    }
+
+    let path = match dialog.pick_file() {
+        Some(path) => path,
+        None => return Ok(None),
+    };
+
+    let size = std::fs::metadata(&path)
+        .map_err(|e| format!("Cannot read file metadata: {}", e))?
+        .len();
+    if size > MAX_INLINE_FILE_BYTES {
+        return Err(format!(
+            "File is too large ({:.1} MB). Maximum allowed is {} MB.",
+            size as f64 / (1024.0 * 1024.0),
+            MAX_INLINE_FILE_BYTES / (1024 * 1024)
+        ));
+    }
+
+    let bytes = std::fs::read(&path).map_err(|e| format!("Cannot read file: {}", e))?;
+
+    // The webview cannot load file:// paths from the app origin, so the file is inlined instead
+    Ok(Some(format!(
+        "data:{};base64,{}",
+        mime_from_extension(&path),
+        base64::engine::general_purpose::STANDARD.encode(&bytes)
+    )))
+}
+
 #[tauri::command]
 fn open_instance_dir(instance_id: String) -> Result<(), String> {
     let dir = if instance_id.is_empty() {
@@ -109,7 +167,7 @@ fn open_instance_dir(instance_id: String) -> Result<(), String> {
 
 #[tauri::command]
 fn detect_java() -> Vec<JavaInstallation> {
-    let mut lock = get_cached_javas().lock().unwrap();
+    let mut lock = get_cached_javas().lock().unwrap_or_else(|e| e.into_inner());
     if !lock.is_empty() {
         return lock.clone();
     }
@@ -192,7 +250,7 @@ async fn launch_instance(
                 let _ = app_handle.emit(
                     "download-progress",
                     minecraft_core::downloader::DownloadProgressPayload {
-                        stage: "Lỗi".to_string(),
+                        stage: "Error".to_string(),
                         percentage: 0,
                         current_file: e,
                         downloaded_bytes: 0,
@@ -304,7 +362,7 @@ pub fn run() {
             // Pre-warm Java detection in background OS thread on launch
             std::thread::spawn(|| {
                 let javas = java_detector::detect_installed_javas();
-                let mut lock = get_cached_javas().lock().unwrap();
+                let mut lock = get_cached_javas().lock().unwrap_or_else(|e| e.into_inner());
                 *lock = javas;
             });
 
@@ -318,6 +376,7 @@ pub fn run() {
             get_game_data_dir,
             set_game_data_dir,
             select_folder,
+            select_file,
             scan_storage_cleanup,
             execute_storage_cleanup,
             detect_java,

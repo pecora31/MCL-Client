@@ -84,17 +84,19 @@ pub async fn download_files_concurrently(
     for task in tasks {
         if task.destination.exists() {
             if let Ok(metadata) = fs::metadata(&task.destination) {
-                // If size matches and sha1 matches (or no sha1 specified), reuse cached file
-                if task.size > 0 && metadata.len() == task.size {
-                    if let Some(expected_sha1) = &task.sha1 {
-                        if verify_file_sha1(&task.destination, expected_sha1) {
-                            continue; // Valid cached file
-                        } else {
-                            let _ = fs::remove_file(&task.destination); // Corrupted cache, remove to re-download
-                        }
-                    } else {
+                if let Some(expected_sha1) = &task.sha1 {
+                    if verify_file_sha1(&task.destination, expected_sha1) {
+                        continue; // Valid cached file
+                    }
+                    let _ = fs::remove_file(&task.destination); // Corrupted cache, remove to re-download
+                } else if task.size > 0 {
+                    if metadata.len() == task.size {
                         continue; // No SHA1, valid size match
                     }
+                } else if metadata.len() > 0 {
+                    // Fabric maven artifacts carry no size/sha1 metadata. Files only appear at the
+                    // destination after an atomic rename, so any non-empty file here is complete.
+                    continue;
                 }
             }
         }

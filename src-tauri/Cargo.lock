@@ -76,28 +76,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
-name = "app"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "dirs",
- "futures-util",
- "log",
- "reqwest 0.12.28",
- "rfd",
- "serde",
- "serde_json",
- "sha1",
- "tauri",
- "tauri-build",
- "tauri-plugin-log",
- "tokio",
- "uuid",
- "walkdir",
- "zip",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2082,6 +2060,29 @@ dependencies = [
  "log",
  "tendril",
  "web_atoms",
+]
+
+[[package]]
+name = "mcl-client"
+version = "0.2.1"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "futures-util",
+ "log",
+ "reqwest 0.12.28",
+ "rfd",
+ "serde",
+ "serde_json",
+ "sha1",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-log",
+ "tokio",
+ "uuid",
+ "walkdir",
+ "zip",
 ]
 
 [[package]]
