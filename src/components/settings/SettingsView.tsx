@@ -28,6 +28,7 @@ interface SettingsViewProps {
   settings: LauncherSettings;
   onSaveSettings: (settings: LauncherSettings) => void;
   language: Language;
+  onChangeLanguage: (lang: Language) => void;
 }
 
 // Module-level cache so reopening Settings renders in 0ms with zero delay
@@ -39,7 +40,12 @@ export const setPrewarmedJavaList = (list: JavaInstallation[]) => {
   hasInitialDetected = true;
 };
 
-export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSaveSettings, language }) => {
+export const SettingsView: React.FC<SettingsViewProps> = ({
+  settings,
+  onSaveSettings,
+  language,
+  onChangeLanguage,
+}) => {
   const t = getTranslation(language);
   const [formData, setFormData] = useState<LauncherSettings>(settings);
   const [javaList, setJavaList] = useState<JavaInstallation[]>(cachedJavaList);
@@ -142,9 +148,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSaveSett
   ];
 
   const handleSelectLanguage = (langCode: Language) => {
-    const updated = { ...formData, language: langCode };
-    setFormData(updated);
-    onSaveSettings(updated);
+    onChangeLanguage(langCode);
   };
 
   return (
@@ -313,7 +317,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ settings, onSaveSett
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
             {languagesList.map((lang) => {
-              const isSelected = (formData.language || language) === lang.code;
+              const isSelected = language === lang.code;
               return (
                 <button
                   key={lang.code}

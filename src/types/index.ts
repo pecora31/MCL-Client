@@ -178,7 +178,6 @@ export interface LauncherSettings {
   defaultMinRam: number;
   defaultMaxRam: number;
   defaultJvmArgs: string;
-  language: Language;
   uiStyle?: UiStyle;
   colorPalette: ColorPalette;
   windowResolution?: WindowResolution;

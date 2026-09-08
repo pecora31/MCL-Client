@@ -150,21 +150,44 @@ function readStoredJson<T>(key: string, fallback: T): T {
 }
 
 // Bump when the shape of persisted mcl_* data changes, and add the matching step below.
-const STORAGE_SCHEMA_VERSION = 1;
+const STORAGE_SCHEMA_VERSION = 2;
 
 export function runStorageMigrations() {
   try {
     const raw = localStorage.getItem('mcl_schema_version');
-    // Data written before versioning existed already matches the current shape
-    const stored = raw === null ? STORAGE_SCHEMA_VERSION : Number(raw);
+    let stored: number;
+    if (raw !== null) {
+      stored = Number(raw);
+    } else {
+      // Unstamped data predates versioning; only an empty store is a fresh install
+      const hasExistingData = Object.keys(localStorage).some((key) => key.startsWith('mcl_'));
+      stored = hasExistingData ? 1 : STORAGE_SCHEMA_VERSION;
+    }
 
     if (stored > STORAGE_SCHEMA_VERSION) {
       console.warn(`Local data comes from a newer launcher (v${stored}); leaving it untouched.`);
       return;
     }
 
-    // Steps run in order, each upgrading from the version before it:
-    // if (stored < 2) { ...reshape mcl_instances... }
+    // Steps run in order, each upgrading from the version before it.
+    if (stored < 2) {
+      // The language moved out of settings; mcl_lang is the only source now
+      const rawSettings = localStorage.getItem('mcl_settings');
+      if (rawSettings) {
+        try {
+          const parsed = JSON.parse(rawSettings);
+          if (parsed && typeof parsed === 'object' && 'language' in parsed) {
+            if (!localStorage.getItem('mcl_lang')) {
+              localStorage.setItem('mcl_lang', parsed.language);
+            }
+            delete parsed.language;
+            localStorage.setItem('mcl_settings', JSON.stringify(parsed));
+          }
+        } catch {
+          // Unreadable settings are discarded by readStoredJson anyway
+        }
+      }
+    }
 
     if (String(stored) !== raw) {
       localStorage.setItem('mcl_schema_version', String(STORAGE_SCHEMA_VERSION));
@@ -201,7 +224,6 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   defaultMinRam: 2048,
   defaultMaxRam: 4096,
   defaultJvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
-  language: 'en',
   uiStyle: 'riot',
   colorPalette: 'rose',
   bgType: 'image',
@@ -257,7 +279,6 @@ export const App: React.FC = () => {
       ...parsed,
       colorPalette,
       bgOpacity,
-      language: 'en',
       bgType: parsed.bgType || (parsed.customBgImage ? 'image' : 'video'),
     };
   });
@@ -680,8 +701,11 @@ export const App: React.FC = () => {
 
   const handleChangeLanguage = (lang: Language) => {
     setLanguage(lang);
-    localStorage.setItem('mcl_lang', lang);
-    setSettings((s) => ({ ...s, language: lang }));
+    try {
+      localStorage.setItem('mcl_lang', lang);
+    } catch (err) {
+      console.warn('Failed to persist the language preference:', err);
+    }
   };
 
   const handleUpdateBackground = (patch: Partial<LauncherSettings>) => {
@@ -694,10 +718,6 @@ export const App: React.FC = () => {
 
   const handleSaveSettings = (newSettings: LauncherSettings) => {
     setSettings(newSettings);
-    if (newSettings.language && newSettings.language !== language) {
-      setLanguage(newSettings.language);
-      localStorage.setItem('mcl_lang', newSettings.language);
-    }
   };
 
   const activeInstance = instances.find((i) => i.id === selectedInstanceId) || instances[0];
@@ -864,6 +884,7 @@ export const App: React.FC = () => {
                           settings={settings}
                           onSaveSettings={handleSaveSettings}
                           language={language}
+                          onChangeLanguage={handleChangeLanguage}
                         />
                       )}
                     </div>
@@ -926,11 +947,7 @@ export const App: React.FC = () => {
             isOpen={!hasCompletedOnboarding}
             onComplete={handleCompleteOnboarding}
             currentLanguage={language}
-            onLanguageChange={(lang) => {
-              setLanguage(lang);
-              localStorage.setItem('mcl_lang', lang);
-              setSettings((s) => ({ ...s, language: lang }));
-            }}
+            onLanguageChange={handleChangeLanguage}
           />
         </div>
       </div>
