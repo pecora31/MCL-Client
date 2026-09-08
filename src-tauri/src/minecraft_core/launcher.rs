@@ -33,7 +33,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Bắt đầu chuẩn bị tài nguyên cho profile: {} (Minecraft {})",
+            "[{}] [MCLv2] Preparing resources for profile: {} (Minecraft {})",
             chrono::Local::now().format("%H:%M:%S"),
             instance.name,
             instance.game_version
@@ -43,7 +43,7 @@ pub async fn prepare_and_launch(
     // 1. Fetch Version Details from Mojang
     let _ = app_handle.emit(
         "mc-log",
-        format!("[{}] [MCLv2] Đang tải danh mục phiên bản từ Mojang CDN...", chrono::Local::now().format("%H:%M:%S")),
+        format!("[{}] [MCLv2] Fetching the version manifest from the Mojang CDN...", chrono::Local::now().format("%H:%M:%S")),
     );
     let _ = app_handle.emit(
         "download-progress",
@@ -112,7 +112,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Đang tải các thư viện phụ thuộc (Libraries, LWJGL, Fastutil)...",
+            "[{}] [MCLv2] Downloading dependencies (libraries, LWJGL, Fastutil)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -132,7 +132,7 @@ pub async fn prepare_and_launch(
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2] Đang thiết lập Fabric Loader v{}...",
+                "[{}] [MCLv2] Setting up Fabric Loader v{}...",
                 chrono::Local::now().format("%H:%M:%S"),
                 loader_ver
             ),
@@ -194,7 +194,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Đang kiểm tra và tải tài nguyên âm thanh/hình ảnh (Assets)...",
+            "[{}] [MCLv2] Checking and downloading assets (audio and textures)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -207,7 +207,7 @@ pub async fn prepare_and_launch(
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [CustomSkinLoader] Đã cấu hình nạp Skin Đồng Đội cho '{}'",
+                "[{}] [CustomSkinLoader] Configured multiplayer skin loading for '{}'",
                 chrono::Local::now().format("%H:%M:%S"),
                 username
             ),
@@ -229,7 +229,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Đang giải nén thư viện native (LWJGL, OpenAL)...",
+            "[{}] [MCLv2] Extracting native libraries (LWJGL, OpenAL)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -238,7 +238,7 @@ pub async fn prepare_and_launch(
     // 8. Smart Java Auto-Matching based on Minecraft version
     let (java_bin, java_major, java_reason) = if let Some(custom_path) = &instance.java_path {
         if !custom_path.is_empty() && Path::new(custom_path).exists() {
-            (custom_path.clone(), 0u32, format!("Sử dụng Java tùy chỉnh: {}", custom_path))
+            (custom_path.clone(), 0u32, format!("Using custom Java: {}", custom_path))
         } else {
             crate::java_detector::find_best_java_for_version(&instance.game_version)
         }
@@ -257,7 +257,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Khởi chạy tiến trình Minecraft với Java: {} (v{})",
+            "[{}] [MCLv2] Starting Minecraft with Java: {} (v{})",
             chrono::Local::now().format("%H:%M:%S"),
             java_bin,
             if java_major > 0 { java_major.to_string() } else { "custom".to_string() }
@@ -268,7 +268,7 @@ pub async fn prepare_and_launch(
         DownloadProgressPayload {
             stage: "launching".to_string(),
             percentage: 95,
-            current_file: "Đang khởi tạo máy ảo Java và nạp Minecraft...".to_string(),
+            current_file: "Starting the Java virtual machine and loading Minecraft...".to_string(),
             downloaded_bytes: 0,
             total_bytes: 0,
             speed_bps: 0,
@@ -328,7 +328,7 @@ pub async fn prepare_and_launch(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("Không thể khởi chạy Java ({}): {}", java_bin, e))?;
+    let mut child = cmd.spawn().map_err(|e| format!("Cannot start Java ({}): {}", java_bin, e))?;
     let pid = child.id();
     CURRENT_GAME_PID.store(pid, Ordering::SeqCst);
 
@@ -337,7 +337,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/INFO] Đã khởi chạy tiến trình Minecraft (PID: {})!",
+            "[{}] [MCLv2/INFO] Minecraft process started (PID: {}).",
             chrono::Local::now().format("%H:%M:%S"),
             pid
         ),
@@ -380,7 +380,7 @@ pub async fn prepare_and_launch(
                     let _ = app_exit.emit(
                         "mc-log",
                         format!(
-                            "[{}] [MCLv2/INFO] Minecraft '{}' (MC {}) đã thoát bình thường.",
+                            "[{}] [MCLv2/INFO] Minecraft '{}' (MC {}) exited normally.",
                             chrono::Local::now().format("%H:%M:%S"),
                             instance_name_for_exit,
                             game_version_for_exit
@@ -389,15 +389,15 @@ pub async fn prepare_and_launch(
                 } else {
                     // Crash detected
                     let crash_hint = match code {
-                        -1 => "Tiến trình bị kill hoặc lỗi hệ thống.".to_string(),
-                        1 => "Lỗi chung — có thể do mod xung đột hoặc file game bị hỏng.".to_string(),
-                        -805306369 => "Out of Memory! Hãy tăng RAM tối đa trong cài đặt profile.".to_string(),
-                        _ => format!("Mã lỗi: {}. Kiểm tra log console để biết chi tiết.", code),
+                        -1 => "The process was killed or hit a system error.".to_string(),
+                        1 => "Generic error, likely conflicting mods or corrupted game files.".to_string(),
+                        -805306369 => "Out of memory. Increase the maximum RAM in the profile settings.".to_string(),
+                        _ => format!("Exit code: {}. Check the console log for details.", code),
                     };
                     let _ = app_exit.emit(
                         "mc-log",
                         format!(
-                            "[{}] [MCLv2/ERROR] ⚠ Minecraft đã CRASH! Exit code: {}. {}",
+                            "[{}] [MCLv2/ERROR] ⚠ Minecraft crashed. Exit code: {}. {}",
                             chrono::Local::now().format("%H:%M:%S"),
                             code,
                             crash_hint
@@ -411,7 +411,7 @@ pub async fn prepare_and_launch(
                 let _ = app_exit.emit(
                     "mc-log",
                     format!(
-                        "[{}] [MCLv2/ERROR] Lỗi khi chờ tiến trình Minecraft: {}",
+                        "[{}] [MCLv2/ERROR] Error while waiting for the Minecraft process: {}",
                         chrono::Local::now().format("%H:%M:%S"),
                         e
                     ),
@@ -536,7 +536,7 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2] Đã giải nén {} file native (DLL/SO) vào thư mục natives/",
+                "[{}] [MCLv2] Extracted {} native file(s) (DLL/SO) into natives/",
                 chrono::Local::now().format("%H:%M:%S"),
                 extracted_count
             ),

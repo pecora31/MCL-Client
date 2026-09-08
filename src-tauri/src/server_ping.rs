@@ -53,7 +53,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
                 version: None,
                 players_online: None,
                 players_max: None,
-                motd: Some("Không thể kết nối tới máy chủ".to_string()),
+                motd: Some("Cannot reach the server".to_string()),
                 ping_ms: None,
                 favicon: None,
             };
@@ -102,7 +102,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
             version: Some("Minecraft Server".to_string()),
             players_online: Some(0),
             players_max: Some(20),
-            motd: Some("Máy Chủ Minecraft Nhóm Bạn".to_string()),
+            motd: Some("Minecraft Server".to_string()),
             ping_ms: Some(ping_ms),
             favicon: None,
         };
@@ -135,7 +135,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
             } else if let Some(text) = val["description"]["text"].as_str() {
                 Some(text.to_string())
             } else {
-                Some("Máy Chủ Minecraft Nhóm Bạn".to_string())
+                Some("Minecraft Server".to_string())
             };
 
             let favicon = val["favicon"].as_str().map(|s| s.to_string());
@@ -162,7 +162,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
         version: Some("Minecraft 1.21.x".to_string()),
         players_online: Some(0),
         players_max: Some(20),
-        motd: Some("Máy Chủ Minecraft Nhóm Bạn".to_string()),
+        motd: Some("Minecraft Server".to_string()),
         ping_ms: Some(ping_ms),
         favicon: None,
     }

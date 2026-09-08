@@ -55,30 +55,30 @@ pub struct MrpackManifestSummary {
     pub file_path: String,
 }
 
-/// Đọc và phân tích nhanh thông tin metadata từ file `.mrpack`
+/// Reads the metadata of a `.mrpack` file without installing it
 pub fn inspect_mrpack_file(path_str: &str) -> Result<MrpackManifestSummary, String> {
     let path = Path::new(path_str);
     if !path.exists() {
-        return Err(format!("File không tồn tại: {}", path_str));
+        return Err(format!("File does not exist: {}", path_str));
     }
 
-    let file = File::open(path).map_err(|e| format!("Không thể mở file .mrpack: {}", e))?;
+    let file = File::open(path).map_err(|e| format!("Cannot open the .mrpack file: {}", e))?;
     let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("File .mrpack không đúng định dạng nén ZIP: {}", e))?;
+        .map_err(|e| format!("The .mrpack file is not a valid ZIP archive: {}", e))?;
 
     let index_data = {
         let mut index_file = archive
             .by_name("modrinth.index.json")
-            .map_err(|_| "Không tìm thấy file 'modrinth.index.json' trong gói .mrpack".to_string())?;
+            .map_err(|_| "'modrinth.index.json' was not found inside the .mrpack".to_string())?;
         let mut content = String::new();
         index_file
             .read_to_string(&mut content)
-            .map_err(|e| format!("Lỗi đọc manifest modpack: {}", e))?;
+            .map_err(|e| format!("Failed to read the modpack manifest: {}", e))?;
         content
     };
 
     let index: MrpackIndex = serde_json::from_str(&index_data)
-        .map_err(|e| format!("Định dạng modrinth.index.json không hợp lệ: {}", e))?;
+        .map_err(|e| format!("Invalid modrinth.index.json format: {}", e))?;
 
     let game_version = index
         .dependencies
@@ -125,7 +125,7 @@ pub fn inspect_mrpack_file(path_str: &str) -> Result<MrpackManifestSummary, Stri
     })
 }
 
-/// Giải nén overrides và tải các mods trong modpack để tạo Instance hoàn chỉnh
+/// Extracts the overrides and downloads the mods into a new instance
 pub async fn install_mrpack(
     app_handle: &AppHandle,
     mrpack_path_str: &str,
@@ -133,7 +133,7 @@ pub async fn install_mrpack(
 ) -> Result<GameInstance, String> {
     let path = Path::new(mrpack_path_str);
     if !path.exists() {
-        return Err(format!("File không tồn tại: {}", mrpack_path_str));
+        return Err(format!("File does not exist: {}", mrpack_path_str));
     }
 
     let _ = app_handle.emit(
@@ -141,27 +141,27 @@ pub async fn install_mrpack(
         DownloadProgressPayload {
             stage: "preparing".to_string(),
             percentage: 2,
-            current_file: "Đang phân tích modrinth.index.json...".to_string(),
+            current_file: "Reading modrinth.index.json...".to_string(),
             downloaded_bytes: 0,
             total_bytes: 0,
             speed_bps: 0,
         },
     );
 
-    let file = File::open(path).map_err(|e| format!("Không thể mở file .mrpack: {}", e))?;
+    let file = File::open(path).map_err(|e| format!("Cannot open the .mrpack file: {}", e))?;
     let mut archive = ZipArchive::new(file)
-        .map_err(|e| format!("File .mrpack không đúng định dạng zip: {}", e))?;
+        .map_err(|e| format!("The .mrpack file is not a valid ZIP archive: {}", e))?;
 
     let index: MrpackIndex = {
         let mut index_file = archive
             .by_name("modrinth.index.json")
-            .map_err(|_| "Không tìm thấy modrinth.index.json trong .mrpack".to_string())?;
+            .map_err(|_| "modrinth.index.json was not found inside the .mrpack".to_string())?;
         let mut content = String::new();
         index_file
             .read_to_string(&mut content)
             .map_err(|e| e.to_string())?;
         serde_json::from_str(&content)
-            .map_err(|e| format!("Parse modrinth.index.json thất bại: {}", e))?
+            .map_err(|e| format!("Failed to parse modrinth.index.json: {}", e))?
     };
 
     let game_version = index
@@ -194,15 +194,15 @@ pub async fn install_mrpack(
 
     let instance_dir = get_launcher_dir().join("instances").join(&instance_id);
     fs::create_dir_all(&instance_dir)
-        .map_err(|e| format!("Không thể tạo thư mục instance: {}", e))?;
+        .map_err(|e| format!("Cannot create the instance directory: {}", e))?;
 
-    // 1. Giải nén overrides/ và client-overrides/
+    // 1. Extract overrides/ and client-overrides/
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
             stage: "extracting".to_string(),
             percentage: 5,
-            current_file: "Trích xuất tệp overrides...".to_string(),
+            current_file: "Extracting override files...".to_string(),
             downloaded_bytes: 0,
             total_bytes: 0,
             speed_bps: 0,
@@ -213,7 +213,7 @@ pub async fn install_mrpack(
     for i in 0..archive_len {
         let mut file_entry = archive
             .by_index(i)
-            .map_err(|e| format!("Lỗi trích xuất file zip: {}", e))?;
+            .map_err(|e| format!("Failed to extract a zip entry: {}", e))?;
         let entry_name = file_entry.name().to_string();
 
         let relative_path = if let Some(rel) = entry_name.strip_prefix("overrides/") {
@@ -244,7 +244,7 @@ pub async fn install_mrpack(
         }
     }
 
-    // 2. Chuẩn bị danh sách download tasks cho các mods
+    // 2. Build the download task list for the mods
     let mut download_tasks = Vec::new();
     for item in index.files {
         if let Some(ref env) = item.env {
@@ -276,11 +276,11 @@ pub async fn install_mrpack(
         });
     }
 
-    // 3. Tải song song tất cả mods qua download engine
+    // 3. Download all mods concurrently
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/Modpack] Bắt đầu tải {} mod files cho modpack '{}'...",
+            "[{}] [MCLv2/Modpack] Downloading {} mod file(s) for modpack '{}'...",
             chrono::Local::now().format("%H:%M:%S"),
             download_tasks.len(),
             final_name
@@ -297,7 +297,7 @@ pub async fn install_mrpack(
     )
     .await?;
 
-    // 4. Tạo GameInstance và lưu vào hệ thống
+    // 4. Create the GameInstance and persist it
     let new_instance = GameInstance {
         id: instance_id.clone(),
         name: final_name,
@@ -315,7 +315,7 @@ pub async fn install_mrpack(
         skin_model: Some("classic".to_string()),
         enable_skin_in_game: true,
         custom_dir: None,
-        last_played: Some("Vừa tạo".to_string()),
+        last_played: Some("Just created".to_string()),
         total_play_time: Some(0),
     };
 
@@ -328,7 +328,7 @@ pub async fn install_mrpack(
         DownloadProgressPayload {
             stage: "done".to_string(),
             percentage: 100,
-            current_file: "Modpack đã sẵn sàng khởi chạy!".to_string(),
+            current_file: "The modpack is ready to launch.".to_string(),
             downloaded_bytes: 0,
             total_bytes: 0,
             speed_bps: 0,
@@ -338,7 +338,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/Modpack] ✅ Cài đặt Modpack hoàn tất: ID={}",
+            "[{}] [MCLv2/Modpack] Modpack installed: ID={}",
             chrono::Local::now().format("%H:%M:%S"),
             instance_id
         ),

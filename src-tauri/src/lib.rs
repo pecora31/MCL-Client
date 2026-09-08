@@ -245,7 +245,7 @@ async fn launch_instance(
         let app_handle = app.clone();
         tokio::spawn(async move {
             if let Err(e) = minecraft_core::launcher::prepare_and_launch(&app_handle, &inst, &username).await {
-                log::error!("Lỗi khởi chạy game: {}", e);
+                log::error!("Failed to launch the game: {}", e);
                 let _ = app_handle.emit("mc-log", format!("[MCLv2/ERROR] {}", e));
                 let _ = app_handle.emit(
                     "download-progress",
@@ -260,9 +260,9 @@ async fn launch_instance(
                 );
             }
         });
-        Ok(format!("Bắt đầu chuẩn bị tài nguyên cho profile: {}", instance_id))
+        Ok(format!("Preparing resources for profile: {}", instance_id))
     } else {
-        Err(format!("Không tìm thấy profile với ID: {}", instance_id))
+        Err(format!("No profile found with ID: {}", instance_id))
     }
 }
 

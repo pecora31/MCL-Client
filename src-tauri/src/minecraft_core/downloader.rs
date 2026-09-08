@@ -39,7 +39,7 @@ pub struct DownloadTask {
     pub sha1: Option<String>,
 }
 
-/// Helper: Kiểm tra checksum SHA1 của một file cục bộ
+/// Verifies the SHA1 checksum of a local file
 fn verify_file_sha1(path: &Path, expected_hex: &str) -> bool {
     let mut file = match fs::File::open(path) {
         Ok(f) => f,
@@ -110,7 +110,7 @@ pub async fn download_files_concurrently(
             DownloadProgressPayload {
                 stage: stage_name.to_string(),
                 percentage: target_percent,
-                current_file: "Tất cả tệp đã có sẵn trong bộ nhớ đệm".to_string(),
+                current_file: "All files are already cached".to_string(),
                 downloaded_bytes: 0,
                 total_bytes: 0,
                 speed_bps: 0,
@@ -136,7 +136,7 @@ pub async fn download_files_concurrently(
 
     for task in tasks_to_download {
         if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
-            return Err("Tải tài nguyên đã bị hủy bởi người dùng".to_string());
+            return Err("Download cancelled by the user".to_string());
         }
 
         let permit = semaphore.clone().acquire_owned().await.unwrap();
@@ -280,7 +280,7 @@ pub async fn download_files_concurrently(
     }
 
     if CANCEL_DOWNLOAD.load(Ordering::Relaxed) {
-        return Err("Tải tài nguyên đã bị hủy".to_string());
+        return Err("Download cancelled".to_string());
     }
 
     let total_failed = failed_count.load(Ordering::Relaxed);
@@ -289,7 +289,7 @@ pub async fn download_files_concurrently(
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2/WARN] Có {} tệp không tải thành công sau 3 lần thử lại.",
+                "[{}] [MCLv2/WARN] {} file(s) failed to download after 3 retries.",
                 chrono::Local::now().format("%H:%M:%S"),
                 total_failed
             ),

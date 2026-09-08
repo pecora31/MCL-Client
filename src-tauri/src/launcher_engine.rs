@@ -47,7 +47,7 @@ pub async fn launch_game(
     log::info!("Launching Minecraft instance {} with user {}", instance.name, username);
 
     Ok(format!(
-        "Đã khởi động tiến trình Minecraft thành công cho người chơi '{}' trên profile '{}' (MC {}).",
+        "Started Minecraft for player '{}' on profile '{}' (MC {}).",
         username, instance.name, instance.game_version
     ))
 }

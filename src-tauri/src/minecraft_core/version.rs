@@ -140,7 +140,7 @@ pub async fn get_version_details(
         .versions
         .into_iter()
         .find(|v| v.id == game_version)
-        .ok_or_else(|| format!("Phiên bản Minecraft {} không tìm thấy trên Mojang CDN", game_version))?;
+        .ok_or_else(|| format!("Minecraft version {} was not found on the Mojang CDN", game_version))?;
 
     // Fetch version details JSON
     let details: VersionDetails = client

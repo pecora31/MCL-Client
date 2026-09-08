@@ -48,7 +48,7 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
         return (
             "javaw.exe".to_string(),
             0,
-            "Không tìm thấy Java trên hệ thống. Hãy cài đặt Java.".to_string(),
+            "No Java runtime found on this system. Please install Java.".to_string(),
         );
     }
 
@@ -58,7 +58,7 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
             exact.path.clone(),
             exact.major_version,
             format!(
-                "Đã chọn {} (khớp chính xác Java {} cho MC {})",
+                "Selected {} (exact match: Java {} for MC {})",
                 exact.version_string, required, game_version
             ),
         );
@@ -76,7 +76,7 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
             best.path.clone(),
             best.major_version,
             format!(
-                "Đã chọn {} (Java {} ≥ yêu cầu Java {} cho MC {})",
+                "Selected {} (Java {} meets the Java {} requirement for MC {})",
                 best.version_string, best.major_version, required, game_version
             ),
         );
@@ -90,7 +90,7 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
         fallback.path.clone(),
         fallback.major_version,
         format!(
-            "⚠ Không tìm thấy Java {} trở lên. Sử dụng {} (Java {}) — game có thể không khởi chạy được!",
+            "⚠ No Java {} or newer found. Falling back to {} (Java {}); the game may fail to start.",
             required, fallback.version_string, fallback.major_version
         ),
     )

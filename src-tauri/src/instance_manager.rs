@@ -139,69 +139,7 @@ pub fn load_instances() -> Vec<GameInstance> {
         }
     }
 
-    // Default starting instances
-    vec![
-        GameInstance {
-            id: "server-instance-01".to_string(),
-            name: "Máy Chủ Nhóm Bạn".to_string(),
-            game_version: "1.21.4".to_string(),
-            loader: "fabric".to_string(),
-            loader_version: Some("0.16.10".to_string()),
-            java_path: None,
-            min_ram: 2048,
-            max_ram: 4096,
-            jvm_args: Some("-XX:+UseG1GC -XX:+ParallelRefProcEnabled".to_string()),
-            icon: "server".to_string(),
-            server_ip: Some("play.ourserver.mc".to_string()),
-            server_port: Some(25565),
-            custom_skin_path: None,
-            skin_model: Some("classic".to_string()),
-            enable_skin_in_game: true,
-            custom_dir: None,
-            last_played: Some("Hôm nay, 21:30".to_string()),
-            total_play_time: Some(1420),
-        },
-        GameInstance {
-            id: "instance-vanilla-latest".to_string(),
-            name: "Vanilla 1.21.4 (Gốc)".to_string(),
-            game_version: "1.21.4".to_string(),
-            loader: "vanilla".to_string(),
-            loader_version: None,
-            java_path: None,
-            min_ram: 2048,
-            max_ram: 4096,
-            jvm_args: None,
-            icon: "grass".to_string(),
-            server_ip: None,
-            server_port: None,
-            custom_skin_path: None,
-            skin_model: Some("classic".to_string()),
-            enable_skin_in_game: true,
-            custom_dir: None,
-            last_played: Some("Hôm qua".to_string()),
-            total_play_time: Some(320),
-        },
-        GameInstance {
-            id: "instance-forge-1201".to_string(),
-            name: "Sinh Tồn Forge 1.20.1".to_string(),
-            game_version: "1.20.1".to_string(),
-            loader: "forge".to_string(),
-            loader_version: Some("47.3.0".to_string()),
-            java_path: None,
-            min_ram: 4096,
-            max_ram: 8192,
-            jvm_args: None,
-            icon: "sword".to_string(),
-            server_ip: None,
-            server_port: None,
-            custom_skin_path: None,
-            skin_model: Some("classic".to_string()),
-            enable_skin_in_game: true,
-            custom_dir: None,
-            last_played: Some("3 ngày trước".to_string()),
-            total_play_time: Some(2540),
-        },
-    ]
+    Vec::new()
 }
 
 pub fn save_instances(instances: &[GameInstance]) -> Result<(), String> {
@@ -288,7 +226,7 @@ pub fn toggle_addon(instance_id: &str, addon_type: &str, file_name: &str, enable
     let current_path = dir.join(file_name);
 
     if !current_path.exists() {
-        return Err(format!("File '{}' không tồn tại", file_name));
+        return Err(format!("File '{}' does not exist", file_name));
     }
 
     let new_name = if enable {
@@ -350,7 +288,7 @@ pub async fn download_and_install_addon(
         .replace("..", "");
 
     if clean_file_name.is_empty() {
-        return Err("Tên file không hợp lệ".to_string());
+        return Err("Invalid file name".to_string());
     }
 
     let target_path = dir.join(&clean_file_name);
@@ -364,16 +302,16 @@ pub async fn download_and_install_addon(
         .get(url)
         .send()
         .await
-        .map_err(|e| format!("Tải file thất bại: {}", e))?;
+        .map_err(|e| format!("Download failed: {}", e))?;
     if !resp.status().is_success() {
-        return Err(format!("Lỗi server khi tải file: HTTP {}", resp.status()));
+        return Err(format!("Server error while downloading file: HTTP {}", resp.status()));
     }
 
     let bytes = resp
         .bytes()
         .await
-        .map_err(|e| format!("Không thể đọc dữ liệu file: {}", e))?;
-    fs::write(&target_path, &bytes).map_err(|e| format!("Không thể lưu file: {}", e))?;
+        .map_err(|e| format!("Cannot read file data: {}", e))?;
+    fs::write(&target_path, &bytes).map_err(|e| format!("Cannot save file: {}", e))?;
 
     let clean_name = clean_file_name
         .trim_end_matches(".jar")
@@ -460,7 +398,7 @@ pub fn delete_instance_and_data(instance_id: &str, delete_version_files: bool) -
     let target_pos = instances.iter().position(|i| i.id == instance_id);
     let target = match target_pos {
         Some(pos) => instances.remove(pos),
-        None => return Err(format!("Profile '{}' không tồn tại", instance_id)),
+        None => return Err(format!("Profile '{}' does not exist", instance_id)),
     };
 
     let mut freed_bytes = 0u64;
@@ -689,7 +627,7 @@ pub fn execute_storage_cleanup(
 
     let mb_freed = (bytes_freed as f64) / (1024.0 * 1024.0);
     let message = format!(
-        "Đã dọn dẹp thành công! Giải phóng {:.1} MB dung lượng ổ cứng.",
+        "Cleanup complete. Freed {:.1} MB of disk space.",
         mb_freed
     );
 
