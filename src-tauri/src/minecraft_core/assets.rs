@@ -87,7 +87,7 @@ pub async fn download_assets(
     // 1. Download essential assets first (fast, few seconds)
     download_files_concurrently(
         app_handle,
-        "Tải tài nguyên giao diện (UI Assets)",
+        "downloading",
         essential_tasks,
         16,
         base_percent,
@@ -97,7 +97,7 @@ pub async fn download_assets(
     // 2. Download sound/gameplay assets with 24 parallel streams
     let _ = download_files_concurrently(
         app_handle,
-        "Tải tài nguyên âm thanh (Sounds)",
+        "downloading",
         other_tasks,
         24,
         mid_percent,

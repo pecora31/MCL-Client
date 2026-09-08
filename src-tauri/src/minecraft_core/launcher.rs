@@ -48,7 +48,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
-            stage: "Kiểm tra phiên bản".to_string(),
+            stage: "preparing".to_string(),
             percentage: 5,
             current_file: format!("Mojang Version Manifest ({})", instance.game_version),
             downloaded_bytes: 0,
@@ -70,7 +70,7 @@ pub async fn prepare_and_launch(
         size: version_details.downloads.client.size,
         sha1: Some(version_details.downloads.client.sha1.clone()),
     };
-    download_files_concurrently(app_handle, "Đang tải Client JAR gốc", vec![client_task], 1, 5, 25).await?;
+    download_files_concurrently(app_handle, "downloading", vec![client_task], 1, 5, 25).await?;
 
     // 3. Download Libraries & Collect Classpaths (25% -> 60% / 70%)
     let mut classpath_entries: Vec<PathBuf> = Vec::new();
@@ -118,7 +118,7 @@ pub async fn prepare_and_launch(
     );
     let has_fabric = instance.loader == "fabric";
     let lib_target = if has_fabric { 60 } else { 70 };
-    download_files_concurrently(app_handle, "Đang tải thư viện Libraries", library_download_tasks, 12, 25, lib_target).await?;
+    download_files_concurrently(app_handle, "downloading", library_download_tasks, 12, 25, lib_target).await?;
 
     // 4. Mod Loader: Fabric handling
     let mut main_class = version_details.main_class.clone();
@@ -186,7 +186,7 @@ pub async fn prepare_and_launch(
                 }
             }
 
-            download_files_concurrently(app_handle, "Đang tải Fabric Libraries", fabric_tasks, 6, 60, 72).await?;
+            download_files_concurrently(app_handle, "downloading", fabric_tasks, 6, 60, 72).await?;
         }
     }
 
@@ -266,7 +266,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
-            stage: "Khởi động JVM".to_string(),
+            stage: "launching".to_string(),
             percentage: 95,
             current_file: "Đang khởi tạo máy ảo Java và nạp Minecraft...".to_string(),
             downloaded_bytes: 0,

@@ -139,7 +139,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
-            stage: "Đọc gói Modpack".to_string(),
+            stage: "preparing".to_string(),
             percentage: 2,
             current_file: "Đang phân tích modrinth.index.json...".to_string(),
             downloaded_bytes: 0,
@@ -200,7 +200,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
-            stage: "Giải nén cấu hình Modpack".to_string(),
+            stage: "extracting".to_string(),
             percentage: 5,
             current_file: "Trích xuất tệp overrides...".to_string(),
             downloaded_bytes: 0,
@@ -289,7 +289,7 @@ pub async fn install_mrpack(
 
     download_files_concurrently(
         app_handle,
-        "Tải tài nguyên Modpack",
+        "downloading",
         download_tasks,
         10,
         10,
@@ -326,7 +326,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "download-progress",
         DownloadProgressPayload {
-            stage: "Hoàn tất cài đặt".to_string(),
+            stage: "done".to_string(),
             percentage: 100,
             current_file: "Modpack đã sẵn sàng khởi chạy!".to_string(),
             downloaded_bytes: 0,

@@ -409,7 +409,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       onMouseLeave={() => setIsHoveringLoadingButton(false)}
                       title="Click to cancel download"
                       className={`w-[220px] h-[64px] px-4 rounded-2xl border transition-colors shadow-2xl flex items-center justify-center gap-3 group cursor-pointer shrink-0 outline-none relative overflow-hidden ${
-                        launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                        launchProgress.stage === 'error'
                           ? 'bg-red-950/80 border-red-500/60'
                           : 'bg-[#161616] border-[var(--accent-color)]/50 hover:border-red-500/60'
                       }`}
@@ -439,7 +439,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                             cy="18"
                             r={circleRadius}
                             className={`transition-all duration-300 ${
-                              launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                              launchProgress.stage === 'error'
                                 ? 'text-red-400'
                                 : 'text-[var(--accent-color)] group-hover:text-red-400'
                             }`}
@@ -456,7 +456,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                         <div className="absolute inset-0 flex items-center justify-center">
                           {isHoveringLoadingButton ? (
                             <Pause className="w-3.5 h-3.5 text-red-400 fill-current animate-pulse" />
-                          ) : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error' ? (
+                          ) : launchProgress.stage === 'error' ? (
                             <AlertCircle className="w-4 h-4 text-red-400" />
                           ) : (
                             <span className="text-[9px] font-mono font-bold text-[var(--accent-color)]">
@@ -471,13 +471,13 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                         <span className={`tracking-wider text-sm font-black uppercase transition-colors ${
                           isHoveringLoadingButton
                             ? 'text-red-300'
-                            : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                            : launchProgress.stage === 'error'
                             ? 'text-red-400'
                             : 'text-white'
                         }`}>
                           {isHoveringLoadingButton
                             ? (t.btnCancel || 'CANCEL')
-                            : launchProgress.stage === 'Lỗi' || launchProgress.stage === 'Error'
+                            : launchProgress.stage === 'error'
                             ? (t.error || 'ERROR')
                             : progressPercent >= 95
                             ? (t.startingGame || 'STARTING')

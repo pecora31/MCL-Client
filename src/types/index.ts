@@ -138,8 +138,21 @@ export interface LocalMod {
   addonType?: string;
 }
 
+// Machine tokens, not display text. Must match the stage values emitted by the
+// Rust backend; render them through the i18n table if they ever need a label.
+export type LaunchStage =
+  | 'idle'
+  | 'preparing'
+  | 'downloading'
+  | 'extracting'
+  | 'verifying'
+  | 'launching'
+  | 'running'
+  | 'done'
+  | 'error';
+
 export interface LaunchProgress {
-  stage: string;
+  stage: LaunchStage;
   percentage: number;
   currentFile: string;
   downloadedBytes: number;

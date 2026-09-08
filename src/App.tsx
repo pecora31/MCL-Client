@@ -535,7 +535,7 @@ export const App: React.FC = () => {
               percentage: nextPercent,
             };
           });
-          if (event.payload.stage === 'Lỗi' || event.payload.stage === 'Error') {
+          if (event.payload.stage === 'error') {
             setIsPreparing(false);
           }
         });
@@ -608,7 +608,7 @@ export const App: React.FC = () => {
     ]);
 
     setLaunchProgress({
-      stage: 'checking',
+      stage: 'preparing',
       percentage: 5,
       currentFile: 'Connecting to Mojang CDN and verifying assets...',
       downloadedBytes: 0,

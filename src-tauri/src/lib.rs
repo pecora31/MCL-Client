@@ -250,7 +250,7 @@ async fn launch_instance(
                 let _ = app_handle.emit(
                     "download-progress",
                     minecraft_core::downloader::DownloadProgressPayload {
-                        stage: "Error".to_string(),
+                        stage: "error".to_string(),
                         percentage: 0,
                         current_file: e,
                         downloaded_bytes: 0,
