@@ -99,6 +99,9 @@ jobs:
       - name: Announce on Discord
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          # A role id is not sensitive — it is just a number — so it is a plain repo
+          # variable rather than a secret.
+          DISCORD_RELEASE_ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
           RELEASE_NOTES: ${{ steps.notes.outputs.raw }}
         run: |
@@ -108,15 +111,19 @@ jobs:
           }
 
           $releaseUrl = "https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG"
-          $payload = @{
-            embeds = @(@{
-              title       = "MCL Client $env:RELEASE_TAG"
-              url         = $releaseUrl
-              description = $env:RELEASE_NOTES
-              color       = 5793266
-              footer      = @{ text = "Download from the Releases page — existing installs update themselves." }
-            })
-          } | ConvertTo-Json -Depth 5
+          $ping = if ($env:DISCORD_RELEASE_ROLE_ID) { "<@&$env:DISCORD_RELEASE_ROLE_ID> " } else { "" }
+          $content = "🚀 ${ping}**MCL Client $env:RELEASE_TAG** has been released!`n`n$env:RELEASE_NOTES`n`n🔗 $releaseUrl"
+
+          $payload = @{ content = $content }
+          if ($env:DISCORD_RELEASE_ROLE_ID) {
+            # Discord silently swallows role mentions in webhook messages unless the role
+            # is explicitly allowed here — without this the text shows but nobody is
+            # actually notified. Cast to [string[]] because PowerShell unwraps a
+            # single-element array back to a bare string when it comes out of an `if`,
+            # which Discord's API then rejects as the wrong type for this field.
+            $payload["allowed_mentions"] = @{ roles = [string[]]@($env:DISCORD_RELEASE_ROLE_ID) }
+          }
+          $payload = $payload | ConvertTo-Json -Depth 5
 
           try {
             Invoke-RestMethod -Uri $env:DISCORD_WEBHOOK_URL -Method Post `
