@@ -130,6 +130,52 @@ export async function fetchQuiltVersions(gameVersion: string): Promise<string[]>
   }
 }
 
+function readMavenVersions(xml: string): string[] {
+  return [...xml.matchAll(/<version>([^<]+)<\/version>/g)].map((match) => match[1]);
+}
+
+// Forge publishes one artifact per Minecraft version, named "<mc>-<forge>"
+export async function fetchForgeVersions(gameVersion: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      'https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml'
+    );
+    if (!res.ok) return [];
+    const prefix = `${gameVersion}-`;
+    return readMavenVersions(await res.text())
+      .filter((version) => version.startsWith(prefix))
+      .map((version) => version.slice(prefix.length))
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
+// NeoForge drops the leading "1." and tracks the Minecraft version in its own first two
+// components, so 1.21.1 maps to 21.1.x
+function neoForgePrefix(gameVersion: string): string {
+  const parts = gameVersion.split('.');
+  if (parts[0] === '1') {
+    return `${parts[1] ?? '0'}.${parts[2] ?? '0'}.`;
+  }
+  return `${gameVersion}.`;
+}
+
+export async function fetchNeoForgeVersions(gameVersion: string): Promise<string[]> {
+  try {
+    const res = await fetch(
+      'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml'
+    );
+    if (!res.ok) return [];
+    const prefix = neoForgePrefix(gameVersion);
+    return readMavenVersions(await res.text())
+      .filter((version) => version.startsWith(prefix))
+      .reverse();
+  } catch {
+    return [];
+  }
+}
+
 // Community CurseForge API Key used by open-source Minecraft launchers
 export const DEFAULT_CURSEFORGE_KEY = '$2a$10$wuAJuNZuted3NORVmpgUC.m8sI.pv1tOPKZyBgLFGjxFp/br0lZCC';
 

@@ -45,24 +45,49 @@ pub struct FabricMavenLibrary {
     pub url: String,
 }
 
-pub async fn get_fabric_meta(
+/// Quilt is a fork of Fabric and its meta API returns the same shape, so both loaders
+/// share one code path and differ only in these addresses.
+pub struct LoaderEndpoints {
+    pub meta_root: &'static str,
+    pub maven_root: &'static str,
+    pub display_name: &'static str,
+}
+
+pub fn loader_endpoints(loader: &str) -> Option<LoaderEndpoints> {
+    match loader {
+        "fabric" => Some(LoaderEndpoints {
+            meta_root: "https://meta.fabricmc.net/v2",
+            maven_root: "https://maven.fabricmc.net",
+            display_name: "Fabric",
+        }),
+        "quilt" => Some(LoaderEndpoints {
+            meta_root: "https://meta.quiltmc.org/v3",
+            maven_root: "https://maven.quiltmc.org/repository/release",
+            display_name: "Quilt",
+        }),
+        _ => None,
+    }
+}
+
+pub async fn get_loader_meta(
+    endpoints: &LoaderEndpoints,
     game_version: &str,
     loader_version: &str,
 ) -> Result<FabricLoaderResponse, String> {
     let client = reqwest::Client::new();
     let url = format!(
-        "https://meta.fabricmc.net/v2/versions/loader/{}/{}",
-        game_version, loader_version
+        "{}/versions/loader/{}/{}",
+        endpoints.meta_root, game_version, loader_version
     );
 
     let resp: FabricLoaderResponse = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("Fabric Meta API failed: {}", e))?
+        .map_err(|e| format!("{} meta API failed: {}", endpoints.display_name, e))?
         .json()
         .await
-        .map_err(|e| format!("Failed to parse Fabric Meta: {}", e))?;
+        .map_err(|e| format!("Failed to parse {} meta: {}", endpoints.display_name, e))?;
 
     Ok(resp)
 }

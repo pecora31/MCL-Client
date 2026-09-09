@@ -1,6 +1,6 @@
 use super::assets::download_assets;
 use super::downloader::{download_files_concurrently, DownloadProgressPayload, DownloadTask};
-use super::fabric::{get_fabric_meta, parse_maven_coord};
+use super::fabric::{get_loader_meta, loader_endpoints, parse_maven_coord};
 use super::version::{get_version_details, is_library_allowed_on_windows};
 use crate::instance_manager::{get_instance_dir, get_launcher_dir, setup_in_game_skin_support};
 use crate::models::GameInstance;
@@ -123,71 +123,80 @@ pub async fn prepare_and_launch(
     // 4. Mod Loader: Fabric handling
     let mut main_class = version_details.main_class.clone();
 
-    if instance.loader == "fabric" {
+    let mut extra_jvm_args: Vec<String> = Vec::new();
+    let mut extra_game_args: Vec<String> = Vec::new();
+
+    if let Some(endpoints) = loader_endpoints(&instance.loader) {
         let loader_ver = instance
             .loader_version
             .clone()
-            .unwrap_or_else(|| "0.16.10".to_string());
+            .ok_or_else(|| format!("This profile has no {} version selected.", endpoints.display_name))?;
 
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2] Setting up Fabric Loader v{}...",
+                "[{}] [MCLv2] Setting up {} Loader v{}...",
                 chrono::Local::now().format("%H:%M:%S"),
+                endpoints.display_name,
                 loader_ver
             ),
         );
 
-        if let Ok(fabric_meta) = get_fabric_meta(&instance.game_version, &loader_ver).await {
-            main_class = fabric_meta.launcher_meta.main_class.client;
+        let meta = get_loader_meta(&endpoints, &instance.game_version, &loader_ver)
+            .await
+            .map_err(|e| {
+                format!(
+                    "Could not set up {} {} for Minecraft {}: {}",
+                    endpoints.display_name, loader_ver, instance.game_version, e
+                )
+            })?;
 
-            let mut fabric_tasks = Vec::new();
+        main_class = meta.launcher_meta.main_class.client;
 
-            // Intermediary maven
-            if let Some((dest, url)) = parse_maven_coord(
-                "https://maven.fabricmc.net",
-                &libraries_dir,
-                &fabric_meta.intermediary.maven,
-            ) {
-                classpath_entries.push(dest.clone());
-                fabric_tasks.push(DownloadTask {
+        let mut loader_tasks = Vec::new();
+        let mut queue_maven = |coord: &str, base: &str, tasks: &mut Vec<DownloadTask>, cp: &mut Vec<PathBuf>| {
+            if let Some((dest, url)) = parse_maven_coord(base, &libraries_dir, coord) {
+                cp.push(dest.clone());
+                tasks.push(DownloadTask {
                     url,
                     destination: dest,
                     size: 0,
                     sha1: None,
                 });
             }
+        };
 
-            // Loader maven
-            if let Some((dest, url)) = parse_maven_coord(
-                "https://maven.fabricmc.net",
-                &libraries_dir,
-                &fabric_meta.loader.maven,
-            ) {
-                classpath_entries.push(dest.clone());
-                fabric_tasks.push(DownloadTask {
-                    url,
-                    destination: dest,
-                    size: 0,
-                    sha1: None,
-                });
-            }
-
-            // Common libraries
-            for lib in fabric_meta.launcher_meta.libraries.common {
-                if let Some((dest, url)) = parse_maven_coord(&lib.url, &libraries_dir, &lib.name) {
-                    classpath_entries.push(dest.clone());
-                    fabric_tasks.push(DownloadTask {
-                        url,
-                        destination: dest,
-                        size: 0,
-                        sha1: None,
-                    });
-                }
-            }
-
-            download_files_concurrently(app_handle, "downloading", fabric_tasks, 6, 60, 72).await?;
+        queue_maven(&meta.intermediary.maven, endpoints.maven_root, &mut loader_tasks, &mut classpath_entries);
+        queue_maven(&meta.loader.maven, endpoints.maven_root, &mut loader_tasks, &mut classpath_entries);
+        for lib in meta.launcher_meta.libraries.common {
+            queue_maven(&lib.name, &lib.url, &mut loader_tasks, &mut classpath_entries);
         }
+
+        download_files_concurrently(app_handle, "downloading", loader_tasks, 6, 60, 72).await?;
+    } else if instance.loader == "forge" || instance.loader == "neoforge" {
+        let loader_ver = instance
+            .loader_version
+            .clone()
+            .ok_or_else(|| "This profile has no loader version selected.".to_string())?;
+
+        let installed = super::forge::install_and_resolve(
+            app_handle,
+            &instance.loader,
+            &instance.game_version,
+            &loader_ver,
+            &common_dir,
+            &libraries_dir,
+        )
+        .await?;
+
+        main_class = installed.main_class;
+        // Forge's own libraries have to precede the vanilla ones: several of them are
+        // patched replacements and the first match on the classpath wins.
+        let mut merged = installed.classpath;
+        merged.append(&mut classpath_entries);
+        classpath_entries = merged;
+        extra_jvm_args = installed.jvm_args;
+        extra_game_args = installed.game_args;
     }
 
     // 5. Assets download (70%/72% -> 94%)
@@ -369,6 +378,12 @@ pub async fn prepare_and_launch(
         }
     }
 
+    // Forge and NeoForge need their own module-path and --add-opens flags, taken from the
+    // version profile the installer produced
+    for arg in &extra_jvm_args {
+        cmd.arg(arg);
+    }
+
     // Standard JVM settings
     cmd.arg("-Dfile.encoding=UTF-8");
     cmd.arg(format!("-Djava.library.path={}", natives_dir.display()));
@@ -394,6 +409,11 @@ pub async fn prepare_and_launch(
     cmd.arg("--accessToken").arg("0");
     cmd.arg("--userType").arg("mojang");
     cmd.arg("--versionType").arg("MCLv2");
+
+    // Forge identifies its own launch through these (--launchTarget, --fml.* and friends)
+    for arg in &extra_game_args {
+        cmd.arg(arg);
+    }
 
     // Window size, so players do not have to fix it inside the game every time
     if instance.fullscreen.unwrap_or(false) {

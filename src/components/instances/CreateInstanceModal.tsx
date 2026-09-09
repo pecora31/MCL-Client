@@ -1,7 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { X, Layers, Plus, ChevronDown, ShieldCheck, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
 import type { ModLoader, GameInstance, VersionItem, SystemInfo, JavaInstallation } from '../../types';
-import { fetchMojangVersions, fetchFabricVersions, fetchQuiltVersions, invokeCommand, isTauri } from '../../services/api';
+import {
+  fetchMojangVersions,
+  fetchFabricVersions,
+  fetchQuiltVersions,
+  fetchForgeVersions,
+  fetchNeoForgeVersions,
+  invokeCommand,
+  isTauri,
+} from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 
@@ -24,7 +32,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   const [name, setName] = useState('');
   const [gameVersion, setGameVersion] = useState('1.21.4');
   const [loader, setLoader] = useState<ModLoader>('fabric');
-  const [loaderVersion, setLoaderVersion] = useState('0.16.10');
+  const [loaderVersion, setLoaderVersion] = useState('');
   const [minRam, setMinRam] = useState(2048);
   const [maxRam, setMaxRam] = useState(4096);
   const [enableSkinInGame, setEnableSkinInGame] = useState(true);
@@ -34,6 +42,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
   const [versionList, setVersionList] = useState<VersionItem[]>([]);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
+  const [isLoadingLoaders, setIsLoadingLoaders] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [javaList, setJavaList] = useState<JavaInstallation[]>([]);
@@ -75,20 +84,29 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     const loadLoaders = async () => {
-      if (loader === 'fabric') {
-        const versions = await fetchFabricVersions(gameVersion);
+      const fetchers: Partial<Record<ModLoader, () => Promise<string[]>>> = {
+        fabric: () => fetchFabricVersions(gameVersion),
+        quilt: () => fetchQuiltVersions(gameVersion),
+        forge: () => fetchForgeVersions(gameVersion),
+        neoforge: () => fetchNeoForgeVersions(gameVersion),
+      };
+      const fetcher = fetchers[loader];
+      if (!fetcher) {
+        setLoaderVersions([]);
+        setLoaderVersion('');
+        return;
+      }
+      setIsLoadingLoaders(true);
+      try {
+        const versions = await fetcher();
         setLoaderVersions(versions);
-        if (versions.length > 0) setLoaderVersion(versions[0]);
-      } else if (loader === 'quilt') {
-        const versions = await fetchQuiltVersions(gameVersion);
-        setLoaderVersions(versions);
-        if (versions.length > 0) setLoaderVersion(versions[0]);
-      } else if (loader === 'forge') {
-        setLoaderVersions(['47.3.0 (Recommended)', '47.2.0']);
-        setLoaderVersion('47.3.0');
-      } else if (loader === 'neoforge') {
-        setLoaderVersions(['21.1.84 (Latest)', '21.1.70']);
-        setLoaderVersion('21.1.84');
+        setLoaderVersion(versions[0] ?? '');
+      } catch (err) {
+        console.error(`Failed to fetch ${loader} versions:`, err);
+        setLoaderVersions([]);
+        setLoaderVersion('');
+      } finally {
+        setIsLoadingLoaders(false);
       }
     };
     loadLoaders();
@@ -147,6 +165,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (loader !== 'vanilla' && !loaderVersion) return;
     onCreate({
       name: name.trim() || `Minecraft ${gameVersion}`,
       gameVersion,
@@ -297,8 +316,16 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               <select
                 value={loaderVersion}
                 onChange={(e) => setLoaderVersion(e.target.value)}
-                className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs text-white cursor-pointer focus:outline-none focus:border-amber-400"
+                disabled={loaderVersions.length === 0}
+                className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs text-white cursor-pointer focus:outline-none focus:border-amber-400 disabled:cursor-not-allowed disabled:text-slate-500"
               >
+                {loaderVersions.length === 0 && (
+                  <option value="" className="bg-slate-900 text-white">
+                    {isLoadingLoaders
+                      ? 'Loading versions...'
+                      : `No ${loader.toUpperCase()} build for ${gameVersion}`}
+                  </option>
+                )}
                 {loaderVersions.map((ver) => (
                   <option key={ver} value={ver} className="bg-slate-900 text-white">
                     {ver}
@@ -492,7 +519,8 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             </button>
             <button
               type="submit"
-              className="btn-primary px-6 py-2 rounded-xl text-xs font-bold font-riot flex items-center gap-2"
+              disabled={loader !== 'vanilla' && !loaderVersion}
+              className="btn-primary px-6 py-2 rounded-xl text-xs font-bold font-riot flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Create Profile</span>
