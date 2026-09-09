@@ -7,7 +7,7 @@ A custom Minecraft launcher built with **Tauri 2 (Rust) + React 19 + TypeScript*
 - **Profile management:** Create and switch between game profiles (Vanilla, Fabric, Forge, NeoForge, Quilt) with automatic mod loader installation.
 - **Server Hub:** Save servers, monitor live ping and player count, and connect directly on launch.
 - **3D Skin Studio:** Preview your skin in 3D (WebGL), supports Classic and Slim model types.
-- **Teammate skins in-game:** Automatically configures CustomSkinLoader so everyone on the server sees each other's skins, even on offline/cracked accounts.
+- **Teammate skins in-game:** Automatically configures CustomSkinLoader so everyone on the server sees each other's skins.
 - **Mod manager:** Browse and install mods from Modrinth, or drop in local `.jar` files.
 - **Performance settings:** RAM allocation slider, auto Java detection, built-in JVM optimization flags (Aikar's Flags).
 - **Storage cleanup:** Scan and remove unused game versions, orphaned instances, and temp cache in one click.
