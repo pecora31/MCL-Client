@@ -573,6 +573,27 @@ export const App: React.FC = () => {
 
     if (isTauri()) {
       try {
+        // The skin lives in the launcher, so it has to be handed to the instance before
+        // CustomSkinLoader can serve it in game
+        if (launchData.enableSkinInGame && launchData.loader !== 'vanilla' && account.skinUrl) {
+          try {
+            await invokeCommand('install_local_skin', {
+              instanceId: launchData.id,
+              username: account.username,
+              skin: account.skinUrl,
+            });
+            setConsoleLogs((prev) => [
+              ...prev,
+              `[${new Date().toLocaleTimeString()}] [MCL/INFO] Skin prepared for ${account.username}.`,
+            ]);
+          } catch (skinErr: any) {
+            setConsoleLogs((prev) => [
+              ...prev,
+              `[${new Date().toLocaleTimeString()}] [MCL/WARN] Could not prepare the skin: ${skinErr?.toString()}`,
+            ]);
+          }
+        }
+
         await invokeCommand('launch_instance', {
           instanceId: launchData.id,
           username: account.username,

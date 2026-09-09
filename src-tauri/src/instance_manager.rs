@@ -345,17 +345,23 @@ pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result
   "cache_expiry": 30,
   "skin_services": [
     {{
+      "name": "LocalSkin",
+      "type": "Legacy",
+      "enable": true,
+      "checkPNG": true,
+      "skin": "LocalSkin/skins/{{USERNAME}}.png",
+      "cape": "LocalSkin/capes/{{USERNAME}}.png",
+      "model": "auto"
+    }},
+    {{
+      "name": "Mojang",
       "type": "Mojang",
       "enable": true
     }},
     {{
+      "name": "ElyBy",
       "type": "ElyBy",
       "enable": true
-    }},
-    {{
-      "type": "CustomSkinAPI",
-      "enable": true,
-      "root": "https://skin.ely.by/skins/"
     }}
   ],
   "local_user": "{}"
@@ -366,7 +372,52 @@ pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result
     let config_file = custom_skin_loader_dir.join("CustomSkinLoader.json");
     fs::write(config_file, config_content).map_err(|e| e.to_string())?;
 
+    // The Legacy service above reads from these folders, so they must exist even when empty
+    fs::create_dir_all(custom_skin_loader_dir.join("LocalSkin").join("skins"))
+        .map_err(|e| e.to_string())?;
+    fs::create_dir_all(custom_skin_loader_dir.join("LocalSkin").join("capes"))
+        .map_err(|e| e.to_string())?;
+
     Ok(())
+}
+
+/// Writes the skin chosen in the launcher into the instance so CustomSkinLoader's local
+/// service can serve it. Accepts a `data:image/png;base64,...` URI or a plain file path.
+pub fn install_local_skin(instance_id: &str, username: &str, skin: &str) -> Result<String, String> {
+    use base64::Engine as _;
+
+    let safe_username: String = username
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect();
+    if safe_username.is_empty() {
+        return Err("The player name has no characters usable as a file name".to_string());
+    }
+
+    let skins_dir = get_instance_dir(instance_id)
+        .join("CustomSkinLoader")
+        .join("LocalSkin")
+        .join("skins");
+    fs::create_dir_all(&skins_dir).map_err(|e| e.to_string())?;
+
+    let bytes = if let Some(encoded) = skin.split("base64,").nth(1) {
+        base64::engine::general_purpose::STANDARD
+            .decode(encoded.trim())
+            .map_err(|e| format!("The skin image could not be decoded: {}", e))?
+    } else if Path::new(skin).exists() {
+        fs::read(skin).map_err(|e| format!("Cannot read the skin file: {}", e))?
+    } else {
+        return Err("No skin image was provided".to_string());
+    };
+
+    // A Minecraft skin is a PNG; anything else would silently fail to load in game
+    if bytes.len() < 8 || bytes[0..8] != [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A] {
+        return Err("The chosen skin is not a PNG image".to_string());
+    }
+
+    let target = skins_dir.join(format!("{}.png", safe_username));
+    fs::write(&target, &bytes).map_err(|e| format!("Cannot save the skin: {}", e))?;
+    Ok(target.to_string_lossy().to_string())
 }
 
 /// Calculate total size in bytes of a file or directory recursively

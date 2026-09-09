@@ -203,15 +203,42 @@ pub async fn prepare_and_launch(
 
     // 6. In-Game Skin Feature
     if instance.enable_skin_in_game {
-        let _ = setup_in_game_skin_support(&instance_dir, username);
-        let _ = app_handle.emit(
-            "mc-log",
-            format!(
-                "[{}] [CustomSkinLoader] Configured multiplayer skin loading for '{}'",
-                chrono::Local::now().format("%H:%M:%S"),
-                username
-            ),
-        );
+        if instance.loader == "vanilla" {
+            let _ = app_handle.emit(
+                "mc-log",
+                format!(
+                    "[{}] [CustomSkinLoader] Skipped: in-game skins need a mod loader, and this profile is vanilla.",
+                    chrono::Local::now().format("%H:%M:%S")
+                ),
+            );
+        } else {
+            let _ = setup_in_game_skin_support(&instance_dir, username);
+            match ensure_custom_skin_loader(&instance_dir, &instance.game_version, &instance.loader).await
+            {
+                Ok(file_name) => {
+                    let _ = app_handle.emit(
+                        "mc-log",
+                        format!(
+                            "[{}] [CustomSkinLoader] Ready for '{}' using {}",
+                            chrono::Local::now().format("%H:%M:%S"),
+                            username,
+                            file_name
+                        ),
+                    );
+                }
+                Err(err) => {
+                    // Skins are optional, so a failure here must never block the launch
+                    let _ = app_handle.emit(
+                        "mc-log",
+                        format!(
+                            "[{}] [CustomSkinLoader/WARN] Could not install the skin mod: {}. The game will start without in-game skins.",
+                            chrono::Local::now().format("%H:%M:%S"),
+                            err
+                        ),
+                    );
+                }
+            }
+        }
     }
 
     // Add client.jar to classpath
@@ -479,6 +506,101 @@ pub async fn prepare_and_launch(
     });
 
     Ok(())
+}
+
+/// Modrinth project id for CustomSkinLoader, the mod that renders everyone's skin on
+/// servers running in offline mode.
+const CUSTOM_SKIN_LOADER_PROJECT: &str = "idMHQ4n2";
+
+/// Makes sure the instance has a CustomSkinLoader build matching its loader and game
+/// version. Returns the jar name in use.
+async fn ensure_custom_skin_loader(
+    instance_dir: &Path,
+    game_version: &str,
+    loader: &str,
+) -> Result<String, String> {
+    let mods_dir = instance_dir.join("mods");
+    fs::create_dir_all(&mods_dir).map_err(|e| e.to_string())?;
+
+    if let Ok(entries) = fs::read_dir(&mods_dir) {
+        for entry in entries.filter_map(|e| e.ok()) {
+            let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+            if name.contains("customskinloader") && name.ends_with(".jar") {
+                return Ok(entry.file_name().to_string_lossy().to_string());
+            }
+        }
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("MCLv2-Launcher/1.0 (https://github.com/pecora31/MCLv2)")
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let versions: Vec<serde_json::Value> = client
+        .get(format!(
+            "https://api.modrinth.com/v2/project/{}/version",
+            CUSTOM_SKIN_LOADER_PROJECT
+        ))
+        .send()
+        .await
+        .map_err(|e| format!("Modrinth is unreachable: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Unexpected response from Modrinth: {}", e))?;
+
+    let matching = versions
+        .iter()
+        .find(|v| {
+            let versions_ok = v["game_versions"]
+                .as_array()
+                .map(|a| a.iter().any(|g| g.as_str() == Some(game_version)))
+                .unwrap_or(false);
+            let loader_ok = v["loaders"]
+                .as_array()
+                .map(|a| a.iter().any(|l| l.as_str() == Some(loader)))
+                .unwrap_or(false);
+            versions_ok && loader_ok
+        })
+        .ok_or_else(|| {
+            format!(
+                "no CustomSkinLoader build for {} on {}",
+                game_version, loader
+            )
+        })?;
+
+    let files = matching["files"].as_array().ok_or("no files listed")?;
+    let file = files
+        .iter()
+        .find(|f| f["primary"].as_bool().unwrap_or(false))
+        .or_else(|| files.first())
+        .ok_or("no downloadable file")?;
+
+    let url = file["url"].as_str().ok_or("file has no url")?;
+    let file_name = file["filename"].as_str().ok_or("file has no name")?;
+    let expected_sha1 = file["hashes"]["sha1"].as_str();
+
+    let bytes = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| format!("download failed: {}", e))?
+        .bytes()
+        .await
+        .map_err(|e| format!("download failed: {}", e))?;
+
+    if let Some(expected) = expected_sha1 {
+        use sha1::{Digest, Sha1};
+        let mut hasher = Sha1::new();
+        hasher.update(&bytes);
+        let actual = format!("{:x}", hasher.finalize());
+        if !actual.eq_ignore_ascii_case(expected) {
+            return Err("the downloaded file failed its checksum".to_string());
+        }
+    }
+
+    fs::write(mods_dir.join(file_name), &bytes)
+        .map_err(|e| format!("cannot save the mod: {}", e))?;
+    Ok(file_name.to_string())
 }
 
 pub fn kill_current_game() -> Result<bool, String> {

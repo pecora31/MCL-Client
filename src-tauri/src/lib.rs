@@ -177,6 +177,11 @@ fn detect_java() -> Vec<JavaInstallation> {
 }
 
 #[tauri::command]
+fn install_local_skin(instance_id: String, username: String, skin: String) -> Result<String, String> {
+    instance_manager::install_local_skin(&instance_id, &username, &skin)
+}
+
+#[tauri::command]
 fn get_system_info() -> SystemInfo {
     use sysinfo::System;
     let mut sys = System::new();
@@ -408,6 +413,7 @@ pub fn run() {
             detect_java,
             find_best_java,
             get_system_info,
+            install_local_skin,
             ping_minecraft_server,
             get_local_mods,
             get_installed_addons,

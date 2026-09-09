@@ -105,15 +105,19 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
     setName(`Minecraft ${gameVersion} ${newLoader !== 'vanilla' ? `(${newLoader.toUpperCase()})` : ''}`.trim());
   };
 
+  // Mirrors required_java_major() in src-tauri/src/java_detector.rs, which is what the
+  // launcher actually enforces. Versions outside the 1.x scheme are modern releases.
   const getRecommendedJava = () => {
     const parts = gameVersion.split('.').map(Number);
+    const major = parts[0] || 0;
     const minor = parts[1] || 0;
     const patch = parts[2] || 0;
 
-    if (minor >= 21 || (minor === 20 && patch >= 5)) return 'Java 21 LTS (Recommended)';
-    if (minor >= 18) return 'Java 17 LTS (Recommended)';
-    if (minor === 17) return 'Java 16';
-    return 'Java 8 (Recommended)';
+    if (major !== 1) return 'Java 21 LTS';
+    if (minor < 17) return 'Java 8';
+    if (minor < 20) return 'Java 17 LTS';
+    if (minor === 20 && patch <= 4) return 'Java 17 LTS';
+    return 'Java 21 LTS';
   };
 
   useEffect(() => {
@@ -385,14 +389,17 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               <div>
                 <div className="text-xs font-bold text-white">In-game Team Skin Sync</div>
                 <div className="text-[11px] text-slate-400">
-                  Automatically configure CustomSkinLoader so friends can see each other's custom skins
+                  {loader === 'vanilla'
+                    ? 'Needs a mod loader. Choose Fabric, Forge, NeoForge or Quilt to use this.'
+                    : "Installs CustomSkinLoader so friends can see each other's custom skins"}
                 </div>
               </div>
             </div>
             <ToggleSwitch
               size="md"
-              checked={enableSkinInGame}
+              checked={enableSkinInGame && loader !== 'vanilla'}
               onChange={setEnableSkinInGame}
+              disabled={loader === 'vanilla'}
               title="In-game Team Skin Sync"
             />
           </div>
