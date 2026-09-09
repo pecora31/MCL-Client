@@ -14,6 +14,7 @@ import defaultBgImage from './assets/1834105-final.png';
 import { ModStore } from './components/mods/ModStore';
 import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
 import { ConsoleModal } from './components/common/ConsoleModal';
+import { UpdateNotice } from './components/common/UpdateNotice';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer } from './types';
@@ -978,6 +979,8 @@ export const App: React.FC = () => {
             onClearLogs={() => setConsoleLogs([])}
             language={language}
           />
+
+          <UpdateNotice language={language} />
 
           <DeleteProfileModal
             isOpen={!!deleteTargetInstance}

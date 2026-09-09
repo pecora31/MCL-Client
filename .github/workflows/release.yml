@@ -1,0 +1,63 @@
+name: Release
+
+# Pushing a version tag is the whole release process: this builds the installer,
+# publishes it, and writes the latest.json the in-app updater reads.
+on:
+  push:
+    tags:
+      - 'v*'
+  # Lets a release be rebuilt from the Actions tab without moving the tag.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v0.3.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    # Matches the platform the launch pipeline targets
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      # Fails the release before anything is published rather than shipping a build
+      # that does not compile cleanly.
+      - name: Check
+        run: |
+          npx tsc -b
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Without these the bundle is unsigned and every existing install would
+          # refuse the update.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'MCLv2 __VERSION__'
+          releaseBody: 'Installers are attached below. Existing installs update themselves.'
+          # Published straight away: a draft release has no latest.json for the
+          # updater to read, so a forgotten draft looks like updates are broken.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

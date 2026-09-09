@@ -37,6 +37,15 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    },
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/pecora31/MCLv2/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5MDBCRTcwMzkxRjQ4OEYKUldTUFNCODVjTDRBU1Z2ZDdXKzh2ckNxYWdhb3o2ayt4WldJcXRFK1JkUXNaYXFPUXdQVG1rTnQK"
     }
   }
 }

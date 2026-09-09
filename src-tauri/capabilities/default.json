@@ -7,6 +7,9 @@
   ],
   "permissions": [
     "core:default",
-    "core:window:default"
+    "core:window:default",
+    "updater:default",
+    "core:app:allow-version",
+    "process:default"
   ]
 }
