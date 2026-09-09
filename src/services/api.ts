@@ -38,6 +38,7 @@ export const TAURI_COMMANDS = [
   'export_log',
   'ping_minecraft_server',
   'get_instance_stats',
+  'set_discord_rpc_enabled',
   'get_local_mods',
   'get_installed_addons',
   'toggle_addon',
@@ -832,6 +833,9 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { path: 'C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe', majorVersion: 17, versionString: 'Java 17.0.9 LTS', is64Bit: true },
         { path: 'C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe', majorVersion: 8, versionString: 'Java 8 Update 361', is64Bit: true },
       ] as unknown as T;
+
+    case 'set_discord_rpc_enabled':
+      return undefined as unknown as T;
 
     case 'get_instance_stats':
       return {

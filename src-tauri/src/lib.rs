@@ -1,3 +1,4 @@
+mod discord_rpc;
 mod game_stats;
 mod instance_manager;
 mod java_detector;
@@ -273,6 +274,11 @@ async fn download_and_install_addon(
 }
 
 #[tauri::command]
+fn set_discord_rpc_enabled(enabled: bool) {
+    discord_rpc::set_enabled(enabled);
+}
+
+#[tauri::command]
 fn get_instance_stats(instance_id: String) -> game_stats::InstanceStats {
     // The launcher's own tally lives on the profile, the rest comes off the game's files
     let tracked = instance_manager::load_instances()
@@ -454,6 +460,7 @@ pub fn run() {
             export_log,
             ping_minecraft_server,
             get_instance_stats,
+            set_discord_rpc_enabled,
             get_local_mods,
             get_installed_addons,
             toggle_addon,

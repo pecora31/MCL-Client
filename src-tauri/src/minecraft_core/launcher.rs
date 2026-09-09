@@ -452,6 +452,19 @@ pub async fn prepare_and_launch(
     CURRENT_GAME_PID.store(pid, Ordering::SeqCst);
     let session_start = std::time::Instant::now();
 
+    crate::discord_rpc::show_playing(crate::discord_rpc::PlayingInfo {
+        instance_name: instance.name.clone(),
+        game_version: instance.game_version.clone(),
+        loader: instance.loader.clone(),
+        // Mirrors the auto-connect above: an empty address means no server was set.
+        server: instance
+            .server_ip
+            .as_ref()
+            .filter(|ip| !ip.is_empty())
+            .cloned(),
+        started_at: crate::discord_rpc::now_unix_seconds(),
+    });
+
     let _ = app_handle.emit("game-started", pid);
 
     let _ = app_handle.emit(
@@ -496,6 +509,8 @@ pub async fn prepare_and_launch(
 
         // Counted however the game ended: a session that crashed after an hour was still
         // an hour of play. Minutes are truncated, so sessions under one are worth nothing.
+        crate::discord_rpc::show_idle();
+
         let played_minutes = session_start.elapsed().as_secs() / 60;
         if played_minutes > 0 {
             if let Err(e) =

@@ -250,6 +250,15 @@ export const App: React.FC = () => {
   });
 
   // Save to localStorage
+  // The backend owns the Discord connection, so it has to be told when the preference
+  // changes. Sending it on mount as well covers the launcher starting up already enabled.
+  useEffect(() => {
+    if (!isTauri()) return;
+    invokeCommand('set_discord_rpc_enabled', { enabled: settings.enableDiscordRpc }).catch((err) =>
+      console.warn('Could not update Discord Rich Presence:', err)
+    );
+  }, [settings.enableDiscordRpc]);
+
   // Reflected onto <html lang> so CSS can pick the right CJK font per language
   // via :lang() — Latin text always stays on Plus Jakarta Sans.
   useEffect(() => {
