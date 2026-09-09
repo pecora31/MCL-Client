@@ -484,6 +484,7 @@ export const App: React.FC = () => {
     let unlistenLogs: (() => void) | undefined;
     let unlistenStarted: (() => void) | undefined;
     let unlistenExit: (() => void) | undefined;
+    let unlistenSession: (() => void) | undefined;
     let unlistenCrash: (() => void) | undefined;
 
     const setupListeners = async () => {
@@ -515,6 +516,27 @@ export const App: React.FC = () => {
           setIsConsoleOpen(true);
         });
 
+        // The backend has already written this to instances.json; applying the same delta
+        // here keeps the running UI from saving a stale total back over it.
+        unlistenSession = await listen<{ instanceId: string; minutes: number }>(
+          'game-session-ended',
+          (event) => {
+            const { instanceId, minutes } = event.payload;
+            if (!minutes) return;
+            setInstances((prev) =>
+              prev.map((inst) =>
+                inst.id === instanceId
+                  ? {
+                      ...inst,
+                      totalPlayTime: (inst.totalPlayTime || 0) + minutes,
+                      lastPlayed: new Date().toISOString(),
+                    }
+                  : inst
+              )
+            );
+          }
+        );
+
         unlistenExit = await listen('game-exit', () => {
           setIsRunning(false);
           setIsPreparing(false);
@@ -536,6 +558,7 @@ export const App: React.FC = () => {
       unlistenLogs?.();
       unlistenStarted?.();
       unlistenExit?.();
+      unlistenSession?.();
       unlistenCrash?.();
     };
   }, []);
