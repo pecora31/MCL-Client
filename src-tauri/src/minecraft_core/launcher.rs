@@ -451,6 +451,7 @@ pub async fn prepare_and_launch(
     let app_exit = app_handle.clone();
     let game_version_for_exit = instance.game_version.clone();
     let instance_name_for_exit = instance.name.clone();
+    let instance_dir_for_exit = instance_dir.clone();
     std::thread::spawn(move || {
         let status = child.wait();
         CURRENT_GAME_PID.store(0, Ordering::SeqCst);
@@ -487,6 +488,20 @@ pub async fn prepare_and_launch(
                             crash_hint
                         ),
                     );
+
+                    // The game's own logs name the real cause far more precisely than the
+                    // exit code ever can, so translate them into something readable
+                    if let Some(diagnosis) = diagnose_crash(&instance_dir_for_exit) {
+                        let _ = app_exit.emit(
+                            "mc-log",
+                            format!(
+                                "[{}] [MCLv2/DIAGNOSIS] {}",
+                                chrono::Local::now().format("%H:%M:%S"),
+                                diagnosis
+                            ),
+                        );
+                    }
+
                     // Notify frontend to auto-open console on crash
                     let _ = app_exit.emit("game-crash", code);
                 }
@@ -506,6 +521,119 @@ pub async fn prepare_and_launch(
     });
 
     Ok(())
+}
+
+/// Reads the game's own logs after a crash and turns the known failure signatures into
+/// something a player can act on. Returns None when nothing recognisable is found.
+fn diagnose_crash(instance_dir: &Path) -> Option<String> {
+    let mut haystack = String::new();
+
+    if let Ok(text) = fs::read_to_string(instance_dir.join("logs").join("latest.log")) {
+        // Only the tail matters; the rest is startup noise
+        let start = text.len().saturating_sub(60_000);
+        haystack.push_str(&text[start..]);
+    }
+
+    if let Ok(entries) = fs::read_dir(instance_dir.join("crash-reports")) {
+        let mut reports: Vec<_> = entries
+            .filter_map(|e| e.ok())
+            .filter(|e| e.path().is_file())
+            .collect();
+        reports.sort_by_key(|e| e.metadata().and_then(|m| m.modified()).ok());
+        if let Some(newest) = reports.last() {
+            if let Ok(text) = fs::read_to_string(newest.path()) {
+                let start = text.len().saturating_sub(40_000);
+                haystack.push_str(&text[start..]);
+            }
+        }
+    }
+
+    explain_crash_text(&haystack)
+}
+
+/// Matches known failure signatures in game log text. Split out from file reading so the
+/// rules can be tested directly.
+fn explain_crash_text(haystack: &str) -> Option<String> {
+    if haystack.is_empty() {
+        return None;
+    }
+
+    let lower = haystack.to_ascii_lowercase();
+
+    // Ordered from most specific to most general
+    let rules: [(&str, &str); 9] = [
+        (
+            "unsupportedclassversionerror",
+            "The Java version is too old for this Minecraft build. Pick a newer Java in the profile settings, or install the version the profile asks for.",
+        ),
+        (
+            "duplicate mod",
+            "Two copies of the same mod are installed. Open Mods & Shaders and remove the older file.",
+        ),
+        (
+            "outofmemoryerror",
+            "The game ran out of memory. Raise the maximum RAM in the profile settings, or use fewer mods.",
+        ),
+        (
+            "could not reserve enough space for object heap",
+            "The requested RAM is more than this computer can provide. Lower the maximum RAM in the profile settings.",
+        ),
+        (
+            "requires the mod",
+            "A mod is missing a library it depends on. Reinstall it from Mods & Shaders so the required dependencies come with it.",
+        ),
+        (
+            "missing or unsupported mandatory dependencies",
+            "A mod is missing a library it depends on. Reinstall it from Mods & Shaders so the required dependencies come with it.",
+        ),
+        (
+            "incompatible mods found",
+            "Some installed mods do not work with this Minecraft version or loader. Remove the ones the lines above name.",
+        ),
+        (
+            "mixin apply failed",
+            "Two mods are patching the same part of the game and clash. Remove the mod named in the lines above and try again.",
+        ),
+        (
+            "unsatisfiedlinkerror",
+            "The graphics or native libraries failed to load. Update the graphics driver, then relaunch.",
+        ),
+    ];
+
+    for (needle, explanation) in rules {
+        if lower.contains(needle) {
+            return Some(explanation.to_string());
+        }
+    }
+
+    None
+}
+
+#[cfg(test)]
+mod crash_diagnosis_tests {
+    use super::explain_crash_text;
+
+    #[test]
+    fn recognises_known_failures() {
+        let java = explain_crash_text(
+            "Exception in thread \"main\" java.lang.UnsupportedClassVersionError: net/minecraft/client/main/Main",
+        )
+        .expect("java mismatch should be recognised");
+        assert!(java.contains("Java version is too old"));
+
+        let memory = explain_crash_text("java.lang.OutOfMemoryError: Java heap space")
+            .expect("out of memory should be recognised");
+        assert!(memory.contains("ran out of memory"));
+
+        assert!(explain_crash_text("Duplicate mod sodium found").is_some());
+        assert!(explain_crash_text("Mixin apply failed for someMod.mixins.json").is_some());
+    }
+
+    #[test]
+    fn stays_quiet_when_nothing_matches() {
+        assert_eq!(explain_crash_text(""), None);
+        assert_eq!(explain_crash_text("[Render thread/INFO]: Stopping worker threads"), None);
+    }
 }
 
 /// Modrinth project id for CustomSkinLoader, the mod that renders everyone's skin on
