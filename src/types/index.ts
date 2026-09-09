@@ -24,6 +24,29 @@ export interface GameInstance {
   totalPlayTime?: number; // in minutes
 }
 
+export interface WorldStats {
+  worldName: string;
+  playTimeMinutes: number;
+  deaths: number;
+  mobKills: number;
+  blocksMined: number;
+}
+
+export interface InstanceStats {
+  /** Wall-clock minutes the launcher measured itself, so multiplayer is included. */
+  trackedPlayMinutes: number;
+  /** Minutes Minecraft recorded, which only ever covers singleplayer worlds. */
+  inGamePlayMinutes: number;
+  deaths: number;
+  mobKills: number;
+  playerKills: number;
+  blocksMined: number;
+  itemsCrafted: number;
+  distanceWalkedKm: number;
+  jumps: number;
+  worlds: WorldStats[];
+}
+
 export interface MrpackManifestSummary {
   name: string;
   summary: string;

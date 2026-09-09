@@ -158,6 +158,24 @@ pub fn get_instances_file() -> PathBuf {
     primary
 }
 
+/// Adds a finished session to an instance's running total.
+///
+/// This is written from the Rust side rather than the UI because the launcher window may
+/// well be closed while the game is still running, and a session that ends then would
+/// otherwise never be counted.
+pub fn record_play_session(instance_id: &str, minutes: u64) -> Result<(), String> {
+    let mut instances = load_instances();
+    let Some(instance) = instances.iter_mut().find(|i| i.id == instance_id) else {
+        return Err(format!("No profile with id '{}'", instance_id));
+    };
+
+    let previous = instance.total_play_time.unwrap_or(0) as u64;
+    instance.total_play_time = Some(previous.saturating_add(minutes).min(u32::MAX as u64) as u32);
+    instance.last_played = Some(chrono::Local::now().to_rfc3339());
+
+    save_instances(&instances)
+}
+
 pub fn get_instance_dir(instance_id: &str) -> PathBuf {
     let instances = load_instances();
     if let Some(inst) = instances.iter().find(|i| i.id == instance_id) {

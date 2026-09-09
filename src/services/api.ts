@@ -2,6 +2,7 @@ import type {
   VersionItem,
   ModrinthMod,
   ServerStatus,
+  InstanceStats,
   AddonContentType,
   AddonSource,
   AddonItem,
@@ -36,6 +37,7 @@ export const TAURI_COMMANDS = [
   'backup_worlds',
   'export_log',
   'ping_minecraft_server',
+  'get_instance_stats',
   'get_local_mods',
   'get_installed_addons',
   'toggle_addon',
@@ -783,6 +785,10 @@ export async function deleteAddon(
 }
 
 // Ping Minecraft Server (SLP)
+export async function getInstanceStats(instanceId: string): Promise<InstanceStats> {
+  return await invokeCommand<InstanceStats>('get_instance_stats', { instanceId });
+}
+
 export async function pingServer(host: string, port = 25565): Promise<ServerStatus> {
   if (isTauri()) {
     return await invokeCommand<ServerStatus>('ping_minecraft_server', { host, port });
@@ -826,6 +832,20 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { path: 'C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe', majorVersion: 17, versionString: 'Java 17.0.9 LTS', is64Bit: true },
         { path: 'C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe', majorVersion: 8, versionString: 'Java 8 Update 361', is64Bit: true },
       ] as unknown as T;
+
+    case 'get_instance_stats':
+      return {
+        trackedPlayMinutes: 0,
+        inGamePlayMinutes: 0,
+        deaths: 0,
+        mobKills: 0,
+        playerKills: 0,
+        blocksMined: 0,
+        itemsCrafted: 0,
+        distanceWalkedKm: 0,
+        jumps: 0,
+        worlds: [],
+      } as unknown as T;
 
     case 'launch_instance':
       console.log('Mock launch instance:', args);

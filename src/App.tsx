@@ -250,6 +250,12 @@ export const App: React.FC = () => {
   });
 
   // Save to localStorage
+  // Reflected onto <html lang> so CSS can pick the right CJK font per language
+  // via :lang() — Latin text always stays on Plus Jakarta Sans.
+  useEffect(() => {
+    document.documentElement.lang = language;
+  }, [language]);
+
   useEffect(() => {
     localStorage.setItem('mcl_instances', JSON.stringify(instances));
   }, [instances]);

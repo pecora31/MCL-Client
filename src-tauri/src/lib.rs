@@ -1,3 +1,4 @@
+mod game_stats;
 mod instance_manager;
 mod java_detector;
 mod launcher_engine;
@@ -272,6 +273,17 @@ async fn download_and_install_addon(
 }
 
 #[tauri::command]
+fn get_instance_stats(instance_id: String) -> game_stats::InstanceStats {
+    // The launcher's own tally lives on the profile, the rest comes off the game's files
+    let tracked = instance_manager::load_instances()
+        .iter()
+        .find(|i| i.id == instance_id)
+        .and_then(|i| i.total_play_time)
+        .unwrap_or(0) as u64;
+    game_stats::read_instance_stats(&instance_id, tracked)
+}
+
+#[tauri::command]
 async fn launch_instance(
     app: tauri::AppHandle,
     instance_id: String,
@@ -441,6 +453,7 @@ pub fn run() {
             backup_worlds,
             export_log,
             ping_minecraft_server,
+            get_instance_stats,
             get_local_mods,
             get_installed_addons,
             toggle_addon,

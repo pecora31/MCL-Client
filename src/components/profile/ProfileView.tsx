@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Shield, Clock, HardDrive, Edit3, Check, Upload, Shirt, Trash2, Award, Zap, Heart } from 'lucide-react';
-import type { Account, GameInstance } from '../../types';
+import React, { useEffect, useState } from 'react';
+import { Shield, Clock, HardDrive, Edit3, Check, Upload, Shirt, Trash2, Award, Zap, Heart, Skull, Swords, Pickaxe, Footprints, Hammer, Globe2 } from 'lucide-react';
+import type { Account, GameInstance, InstanceStats } from '../../types';
+import { getInstanceStats } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 
 interface ProfileViewProps {
@@ -9,6 +10,49 @@ interface ProfileViewProps {
   onNavigateSkin: () => void;
   instances: GameInstance[];
   language: Language;
+}
+
+const EMPTY_STATS: InstanceStats = {
+  trackedPlayMinutes: 0,
+  inGamePlayMinutes: 0,
+  deaths: 0,
+  mobKills: 0,
+  playerKills: 0,
+  blocksMined: 0,
+  itemsCrafted: 0,
+  distanceWalkedKm: 0,
+  jumps: 0,
+  worlds: [],
+};
+
+function formatPlayTime(minutes: number): string {
+  if (minutes < 60) return `${minutes} min`;
+  const hours = minutes / 60;
+  return hours < 10 ? `${hours.toFixed(1)} hrs` : `${Math.round(hours)} hrs`;
+}
+
+function formatCount(value: number): string {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}K`;
+  return value.toString();
+}
+
+/// The loader the player actually reaches for, rather than a fixed recommendation.
+function mostUsedLoader(instances: GameInstance[]): string | null {
+  const counts = new Map<string, number>();
+  for (const instance of instances) {
+    if (instance.loader === 'vanilla') continue;
+    counts.set(instance.loader, (counts.get(instance.loader) || 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [loader, count] of counts) {
+    if (count > bestCount) {
+      best = loader;
+      bestCount = count;
+    }
+  }
+  return best;
 }
 
 // Preset Minecraft Icons
@@ -38,6 +82,46 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [usernameInput, setUsernameInput] = useState(account.username);
   const [isEditingName, setIsEditingName] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [stats, setStats] = useState<InstanceStats>(EMPTY_STATS);
+
+  // Minecraft writes these per world, so the totals only add up once every profile has been
+  // read. They are all local file reads, and a profile that has never been played simply
+  // contributes zeros.
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadStats = async () => {
+      const totals: InstanceStats = { ...EMPTY_STATS, worlds: [] };
+
+      for (const instance of instances) {
+        try {
+          const instanceStats = await getInstanceStats(instance.id);
+          totals.trackedPlayMinutes += instanceStats.trackedPlayMinutes;
+          totals.inGamePlayMinutes += instanceStats.inGamePlayMinutes;
+          totals.deaths += instanceStats.deaths;
+          totals.mobKills += instanceStats.mobKills;
+          totals.playerKills += instanceStats.playerKills;
+          totals.blocksMined += instanceStats.blocksMined;
+          totals.itemsCrafted += instanceStats.itemsCrafted;
+          totals.distanceWalkedKm += instanceStats.distanceWalkedKm;
+          totals.jumps += instanceStats.jumps;
+          totals.worlds.push(...instanceStats.worlds);
+        } catch (err) {
+          console.warn(`Could not read statistics for '${instance.name}':`, err);
+        }
+      }
+
+      totals.worlds.sort((a, b) => b.playTimeMinutes - a.playTimeMinutes);
+      if (!cancelled) setStats(totals);
+    };
+
+    loadStats();
+    return () => {
+      cancelled = true;
+    };
+  }, [instances]);
+
+  const topLoader = mostUsedLoader(instances);
 
   const handleSaveName = () => {
     if (!usernameInput.trim()) return;
@@ -281,7 +365,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   <Clock className="w-4 h-4 text-amber-400" />
                   <span>Total Play Time:</span>
                 </div>
-                <span className="font-mono text-xs font-bold text-white">42.5 hrs</span>
+                <span className="font-mono text-xs font-bold text-white">
+                  {formatPlayTime(stats.trackedPlayMinutes)}
+                </span>
               </div>
 
               <div className="p-3 rounded-2xl bg-black/30 border border-white/5 flex items-center justify-between">
@@ -295,11 +381,70 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <div className="p-3 rounded-2xl bg-black/30 border border-white/5 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-xs text-slate-400">
                   <Zap className="w-4 h-4 text-cyan-400" />
-                  <span>Recommended Loader:</span>
+                  <span>Most Used Loader:</span>
                 </div>
-                <span className="font-mono text-xs font-bold text-cyan-300">Fabric Loader</span>
+                <span className="font-mono text-xs font-bold text-cyan-300">
+                  {topLoader ? topLoader.charAt(0).toUpperCase() + topLoader.slice(1) : 'Vanilla'}
+                </span>
               </div>
             </div>
+          </div>
+
+          {/* Numbers Minecraft recorded itself, so they cover singleplayer worlds only */}
+          <div className="minimal-panel rounded-2xl p-6 border border-white/[0.06] space-y-4">
+            <div>
+              <h3 className="text-sm font-bold text-white font-riot tracking-wide flex items-center gap-2">
+                <Globe2 className="w-4 h-4 text-emerald-400" />
+                <span>In-Game Records</span>
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Read from your singleplayer worlds &mdash; server play is recorded by the server.
+              </p>
+            </div>
+
+            {stats.worlds.length === 0 ? (
+              <p className="text-xs text-slate-500 py-2">
+                No world statistics yet. Play a singleplayer world and they will show up here.
+              </p>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 gap-2.5">
+                  {[
+                    { icon: Clock, color: 'text-amber-400', label: 'In-game time', value: formatPlayTime(stats.inGamePlayMinutes) },
+                    { icon: Swords, color: 'text-rose-400', label: 'Mobs killed', value: formatCount(stats.mobKills) },
+                    { icon: Pickaxe, color: 'text-cyan-400', label: 'Blocks mined', value: formatCount(stats.blocksMined) },
+                    { icon: Hammer, color: 'text-orange-400', label: 'Items crafted', value: formatCount(stats.itemsCrafted) },
+                    { icon: Footprints, color: 'text-emerald-400', label: 'Distance walked', value: `${stats.distanceWalkedKm.toFixed(1)} km` },
+                    { icon: Skull, color: 'text-slate-300', label: 'Deaths', value: formatCount(stats.deaths) },
+                  ].map((entry) => (
+                    <div key={entry.label} className="p-3 rounded-2xl bg-black/30 border border-white/5">
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                        <entry.icon className={`w-3.5 h-3.5 ${entry.color}`} />
+                        <span className="truncate">{entry.label}</span>
+                      </div>
+                      <div className="font-mono text-sm font-bold text-white mt-1">{entry.value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-1.5 pt-1">
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                    Most played worlds
+                  </div>
+                  {stats.worlds.slice(0, 4).map((world) => (
+                    <div
+                      key={`${world.worldName}-${world.playTimeMinutes}`}
+                      className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-black/20 border border-white/5"
+                    >
+                      <span className="text-xs text-slate-300 truncate">{world.worldName}</span>
+                      <span className="font-mono text-[11px] text-slate-400 shrink-0">
+                        {formatPlayTime(world.playTimeMinutes)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
 
           <div className="rounded-3xl p-5 bg-gradient-to-br from-indigo-950/40 via-slate-900/60 to-purple-950/30 border border-indigo-500/20 space-y-2">

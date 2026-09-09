@@ -450,6 +450,7 @@ pub async fn prepare_and_launch(
         .map_err(|e| format!("Cannot start Java ({}): {}", console_java_bin, e))?;
     let pid = child.id();
     CURRENT_GAME_PID.store(pid, Ordering::SeqCst);
+    let session_start = std::time::Instant::now();
 
     let _ = app_handle.emit("game-started", pid);
 
@@ -488,9 +489,28 @@ pub async fn prepare_and_launch(
     let game_version_for_exit = instance.game_version.clone();
     let instance_name_for_exit = instance.name.clone();
     let instance_dir_for_exit = instance_dir.clone();
+    let instance_id_for_exit = instance.id.clone();
     std::thread::spawn(move || {
         let status = child.wait();
         CURRENT_GAME_PID.store(0, Ordering::SeqCst);
+
+        // Counted however the game ended: a session that crashed after an hour was still
+        // an hour of play. Minutes are truncated, so sessions under one are worth nothing.
+        let played_minutes = session_start.elapsed().as_secs() / 60;
+        if played_minutes > 0 {
+            if let Err(e) =
+                crate::instance_manager::record_play_session(&instance_id_for_exit, played_minutes)
+            {
+                let _ = app_exit.emit(
+                    "mc-log",
+                    format!(
+                        "[{}] [MCLv2/WARN] Could not record playtime: {}",
+                        chrono::Local::now().format("%H:%M:%S"),
+                        e
+                    ),
+                );
+            }
+        }
 
         match &status {
             Ok(exit_status) => {
@@ -553,6 +573,12 @@ pub async fn prepare_and_launch(
                 );
             }
         }
+        // Carries the delta so the running UI can add it without re-reading the file it
+        // may be about to overwrite with its own copy of the profile list.
+        let _ = app_exit.emit(
+            "game-session-ended",
+            serde_json::json!({ "instanceId": instance_id_for_exit, "minutes": played_minutes }),
+        );
         let _ = app_exit.emit("game-exit", ());
     });
 

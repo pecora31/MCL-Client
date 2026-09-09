@@ -26,6 +26,20 @@ const PAGE_SIZE = 12;
 
 function formatLastPlayed(lastPlayed: string | undefined, t: any): string {
   if (!lastPlayed) return t.neverPlayed || 'Never';
+
+  // The backend stamps a real timestamp when a session ends; older profiles still carry the
+  // free-form strings the UI used to write, so both shapes are handled.
+  const stamped = new Date(lastPlayed);
+  if (!Number.isNaN(stamped.getTime())) {
+    const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const days = Math.round((startOfDay(new Date()) - startOfDay(stamped)) / 86_400_000);
+    const time = stamped.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (days <= 0) return `${t.todayAt || 'Today'}, ${time}`;
+    if (days === 1) return t.yesterday || 'Yesterday';
+    if (days < 30) return `${days} ${t.daysAgo || 'days ago'}`;
+    return stamped.toLocaleDateString();
+  }
+
   const lower = lastPlayed.toLowerCase();
   if (lower.includes('hôm nay') || lower.includes('today')) {
     const timePart = lastPlayed.split(/,\s*/)[1] || '';
