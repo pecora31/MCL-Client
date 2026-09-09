@@ -179,8 +179,35 @@ export async function fetchNeoForgeVersions(gameVersion: string): Promise<string
   }
 }
 
-// Community CurseForge API Key used by open-source Minecraft launchers
-export const DEFAULT_CURSEFORGE_KEY = '$2a$10$wuAJuNZuted3NORVmpgUC.m8sI.pv1tOPKZyBgLFGjxFp/br0lZCC';
+// CurseForge's terms forbid disclosing an API key to third parties, and a key shipped inside
+// an open-source launcher is disclosed to everyone who reads the repository. So this build
+// carries no key: requests go to MCL's own service, which holds the key server-side.
+//
+// A player who enters their own key in Settings bypasses the proxy entirely and talks to
+// CurseForge directly, spending their own quota instead of the shared one.
+const CURSEFORGE_DIRECT_ROOT = 'https://api.curseforge.com';
+// Same Worker the skin service runs on; kept in step with SKIN_SERVICE_ROOT in
+// src-tauri/src/instance_manager.rs.
+const MCL_SERVICE_ROOT = 'https://mcl-skin-service.nazarick112.workers.dev';
+const CURSEFORGE_PROXY_ROOT = `${MCL_SERVICE_ROOT}/v1/curseforge`;
+
+function curseForgeRequest(
+  path: string,
+  query: string,
+  personalApiKey?: string
+): { url: string; headers: Record<string, string> } {
+  const key = personalApiKey?.trim();
+  if (key) {
+    return {
+      url: `${CURSEFORGE_DIRECT_ROOT}${path}?${query}`,
+      headers: { Accept: 'application/json', 'x-api-key': key },
+    };
+  }
+  return {
+    url: `${CURSEFORGE_PROXY_ROOT}${path}?${query}`,
+    headers: { Accept: 'application/json' },
+  };
+}
 
 // Map loader string to CurseForge modLoaderType
 // 0 = Any, 1 = Forge, 2 = Cauldron, 3 = LiteLoader, 4 = Fabric, 5 = Quilt, 6 = NeoForge
@@ -402,7 +429,6 @@ export async function searchCurseForge(
   limit = 20,
   offset = 0
 ): Promise<{ items: AddonItem[]; total: number }> {
-  const apiKey = (customApiKey && customApiKey.trim()) || DEFAULT_CURSEFORGE_KEY;
   const classId = getCurseForgeClassId(contentType);
   const modLoaderType = contentType === 'mods' ? getCurseForgeLoaderType(loader) : 0;
 
@@ -449,12 +475,8 @@ export async function searchCurseForge(
       params.append('categoryId', cfCategoryMap[categoryFilter].toString());
     }
 
-    const res = await fetch(`https://api.curseforge.com/v1/mods/search?${params.toString()}`, {
-      headers: {
-        Accept: 'application/json',
-        'x-api-key': apiKey,
-      },
-    });
+    const request = curseForgeRequest('/v1/mods/search', params.toString(), customApiKey);
+    const res = await fetch(request.url, { headers: request.headers });
 
     if (!res.ok) {
       console.warn(`CurseForge API returned HTTP ${res.status}`);
@@ -676,7 +698,6 @@ export async function getCurseForgeDownloadInfo(
   loader?: string,
   customApiKey?: string
 ): Promise<{ url: string | null; fileName: string; directAllowed: boolean }> {
-  const apiKey = (customApiKey && customApiKey.trim()) || DEFAULT_CURSEFORGE_KEY;
   const modLoaderType = getCurseForgeLoaderType(loader);
 
   try {
@@ -686,12 +707,8 @@ export async function getCurseForgeDownloadInfo(
     if (gameVersion) params.append('gameVersion', gameVersion);
     if (modLoaderType > 0) params.append('modLoaderType', modLoaderType.toString());
 
-    const res = await fetch(`https://api.curseforge.com/v1/mods/${modId}/files?${params.toString()}`, {
-      headers: {
-        Accept: 'application/json',
-        'x-api-key': apiKey,
-      },
-    });
+    const request = curseForgeRequest(`/v1/mods/${modId}/files`, params.toString(), customApiKey);
+    const res = await fetch(request.url, { headers: request.headers });
 
     if (!res.ok) return { url: null, fileName: '', directAllowed: false };
     const data = await res.json();
