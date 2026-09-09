@@ -1,3 +1,4 @@
+mod addon_registry;
 mod discord_rpc;
 mod game_stats;
 mod instance_manager;
@@ -262,6 +263,8 @@ async fn download_and_install_addon(
     addon_type: String,
     sha1: Option<String>,
     project_id: Option<String>,
+    source: Option<String>,
+    version_id: Option<String>,
 ) -> Result<LocalMod, String> {
     instance_manager::download_and_install_addon(
         &instance_id,
@@ -270,6 +273,8 @@ async fn download_and_install_addon(
         &addon_type,
         sha1.as_deref(),
         project_id.as_deref(),
+        source.as_deref(),
+        version_id.as_deref(),
     )
     .await
 }

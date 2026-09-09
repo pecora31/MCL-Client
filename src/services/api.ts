@@ -379,6 +379,8 @@ export async function getModrinthDownloadInfo(
   url: string;
   fileName: string;
   sha1?: string;
+  /** The exact version chosen, so a shared profile can ask for this one again. */
+  versionId?: string;
   requiredDependencies?: string[];
 } | null> {
   try {
@@ -407,6 +409,7 @@ export async function getModrinthDownloadInfo(
         url: primaryFile.url,
         fileName: primaryFile.filename,
         sha1: primaryFile.hashes?.sha1,
+        versionId: target.id,
         requiredDependencies: (target.dependencies || [])
           .filter((d: any) => d.dependency_type === 'required' && d.project_id)
           .map((d: any) => d.project_id as string),
@@ -699,7 +702,13 @@ export async function getCurseForgeDownloadInfo(
   gameVersion?: string,
   loader?: string,
   customApiKey?: string
-): Promise<{ url: string | null; fileName: string; directAllowed: boolean }> {
+): Promise<{
+  url: string | null;
+  fileName: string;
+  directAllowed: boolean;
+  /** CurseForge's file id, its equivalent of a version id. */
+  versionId?: string;
+}> {
   const modLoaderType = getCurseForgeLoaderType(loader);
 
   try {
@@ -731,6 +740,7 @@ export async function getCurseForgeDownloadInfo(
       url: downloadUrl,
       fileName: file.fileName || `${modId}.jar`,
       directAllowed: Boolean(downloadUrl),
+      versionId: file.id ? String(file.id) : undefined,
     };
   } catch (err) {
     console.error('Failed to get CurseForge download info:', err);
@@ -744,7 +754,7 @@ export async function installAddon(
   url: string,
   fileName: string,
   addonType: AddonContentType,
-  options?: { sha1?: string; projectId?: string }
+  options?: { sha1?: string; projectId?: string; source?: AddonSource; versionId?: string }
 ): Promise<LocalMod> {
   if (isTauri()) {
     return await invokeCommand<LocalMod>('download_and_install_addon', {
@@ -754,6 +764,8 @@ export async function installAddon(
       addonType,
       sha1: options?.sha1,
       projectId: options?.projectId,
+      source: options?.source,
+      versionId: options?.versionId,
     });
   }
   // Browser preview fallback

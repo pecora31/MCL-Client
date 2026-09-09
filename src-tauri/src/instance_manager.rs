@@ -1,3 +1,4 @@
+use crate::addon_registry;
 use crate::models::{
     GameInstance, LocalMod, StorageCleanupReport, StorageCleanupScanResult, VersionCleanupInfo,
 };
@@ -326,19 +327,6 @@ pub fn delete_addon(instance_id: &str, addon_type: &str, file_name: &str) -> Res
     Ok(())
 }
 
-/// Tracks which file each Modrinth/CurseForge project installed, so replacing a mod does
-/// not leave the previous jar behind and crash the game with a duplicate mod id.
-fn addon_registry_path(instance_id: &str) -> PathBuf {
-    get_instance_dir(instance_id).join(".mcl-addons.json")
-}
-
-fn read_addon_registry(instance_id: &str) -> std::collections::HashMap<String, String> {
-    fs::read_to_string(addon_registry_path(instance_id))
-        .ok()
-        .and_then(|raw| serde_json::from_str(&raw).ok())
-        .unwrap_or_default()
-}
-
 pub async fn download_and_install_addon(
     instance_id: &str,
     url: &str,
@@ -346,6 +334,8 @@ pub async fn download_and_install_addon(
     addon_type: &str,
     expected_sha1: Option<&str>,
     project_id: Option<&str>,
+    source: Option<&str>,
+    version_id: Option<&str>,
 ) -> Result<LocalMod, String> {
     let folder_name = match addon_type {
         "shaderpacks" | "shaders" => "shaderpacks",
@@ -402,10 +392,17 @@ pub async fn download_and_install_addon(
 
     // Drop the previous file of this same project so both versions never load at once
     if let Some(project) = project_id {
-        let mut registry = read_addon_registry(instance_id);
-        if let Some(previous) = registry.get(project) {
-            if previous != &clean_file_name {
-                for candidate in [previous.clone(), format!("{}.disabled", previous)] {
+        let instance_dir = get_instance_dir(instance_id);
+        let source = source.unwrap_or("modrinth");
+        let key = addon_registry::registry_key(source, project);
+
+        let mut registry = addon_registry::read(&instance_dir);
+        if let Some(previous) = registry.addons.get(&key) {
+            if previous.file_name != clean_file_name {
+                for candidate in [
+                    previous.file_name.clone(),
+                    format!("{}.disabled", previous.file_name),
+                ] {
                     let stale = dir.join(&candidate);
                     if stale.exists() {
                         let _ = fs::remove_file(stale);
@@ -413,10 +410,18 @@ pub async fn download_and_install_addon(
                 }
             }
         }
-        registry.insert(project.to_string(), clean_file_name.clone());
-        if let Ok(serialized) = serde_json::to_string_pretty(&registry) {
-            let _ = fs::write(addon_registry_path(instance_id), serialized);
-        }
+        registry.addons.insert(
+            key,
+            addon_registry::AddonRecord {
+                source: source.to_string(),
+                project_id: project.to_string(),
+                version_id: version_id.map(str::to_string),
+                file_name: clean_file_name.clone(),
+                addon_type: folder_name.to_string(),
+            },
+        );
+        // A registry that cannot be written costs a stale jar later, not this install.
+        let _ = addon_registry::write(&instance_dir, &registry);
     }
 
     fs::write(&target_path, &bytes).map_err(|e| format!("Cannot save file: {}", e))?;

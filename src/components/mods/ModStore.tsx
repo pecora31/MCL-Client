@@ -1023,6 +1023,10 @@ export const ModStore: React.FC<ModStoreProps> = ({
       let fileName = '';
       let fileSha1: string | undefined;
       let installedProjectId: string | undefined;
+      // Recorded alongside the project id so a shared profile can ask the right platform
+      // for the right file, rather than guessing from a file name.
+      let installedSource: AddonSource | undefined;
+      let installedVersionId: string | undefined;
       let requiredDependencies: string[] = [];
 
       // 1. If available on Modrinth, attempt Modrinth direct download first
@@ -1037,6 +1041,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
           fileName = info.fileName;
           fileSha1 = info.sha1;
           installedProjectId = item.modrinthId || item.id;
+          installedSource = 'modrinth';
+          installedVersionId = info.versionId;
           requiredDependencies = info.requiredDependencies || [];
         }
       }
@@ -1052,6 +1058,9 @@ export const ModStore: React.FC<ModStoreProps> = ({
         if (info.url) {
           downloadUrl = info.url;
           fileName = info.fileName;
+          installedProjectId = item.curseforgeId || item.id;
+          installedSource = 'curseforge';
+          installedVersionId = info.versionId;
         } else if (!info.directAllowed) {
           window.open(item.webUrl, '_blank');
           setNotification({
@@ -1080,6 +1089,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
       const installed = await installAddon(activeInstance.id, downloadUrl, fileName, contentType, {
         sha1: fileSha1,
         projectId: installedProjectId,
+        source: installedSource,
+        versionId: installedVersionId,
       });
       setInstalledItems((prev) => [installed, ...prev]);
       item.isInstalled = true;
@@ -1099,7 +1110,12 @@ export const ModStore: React.FC<ModStoreProps> = ({
             depInfo.url,
             depInfo.fileName,
             contentType,
-            { sha1: depInfo.sha1, projectId: dependencyId }
+            {
+              sha1: depInfo.sha1,
+              projectId: dependencyId,
+              source: 'modrinth',
+              versionId: depInfo.versionId,
+            }
           );
           setInstalledItems((prev) =>
             prev.some((p) => p.fileName === depInstalled.fileName) ? prev : [depInstalled, ...prev]
