@@ -95,8 +95,8 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
               const isCrash = log.includes('CRASH') || log.includes('crash');
               const isWarn = log.includes('WARN');
               const isInfo = log.includes('INFO');
-              const isMCL = log.includes('[MCLv2]') || log.includes('[MCLv2/');
-              const isJavaSelect = log.includes('[MCLv2/Java]');
+              const isMCL = log.includes('[MCL]') || log.includes('[MCL/');
+              const isJavaSelect = log.includes('[MCL/Java]');
 
               return (
                 <div

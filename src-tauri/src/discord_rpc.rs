@@ -58,7 +58,7 @@ fn build_activity(presence: &Presence) -> activity::Activity<'_> {
     let base = activity::Activity::new().assets(
         activity::Assets::new()
             .large_image(LARGE_IMAGE_KEY)
-            .large_text("MCLv2"),
+            .large_text("MCL Client"),
     );
 
     match presence {

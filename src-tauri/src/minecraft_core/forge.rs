@@ -236,7 +236,7 @@ async fn run_installer(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Running the {} installer for {} (first launch of this profile only)...",
+            "[{}] [MCL] Running the {} installer for {} (first launch of this profile only)...",
             chrono::Local::now().format("%H:%M:%S"),
             display,
             loader_version
@@ -252,7 +252,7 @@ async fn run_installer(
 
     if !installer_path.exists() {
         let client = reqwest::Client::builder()
-            .user_agent("MCLv2-Launcher/1.0")
+            .user_agent("MCLClient-Launcher/1.0")
             .build()
             .map_err(|e| e.to_string())?;
         let response = client
@@ -318,7 +318,7 @@ async fn run_installer(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] {} {} installed.",
+            "[{}] [MCL] {} {} installed.",
             chrono::Local::now().format("%H:%M:%S"),
             display,
             loader_version

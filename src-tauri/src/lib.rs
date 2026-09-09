@@ -346,7 +346,7 @@ async fn launch_instance(
         tokio::spawn(async move {
             if let Err(e) = minecraft_core::launcher::prepare_and_launch(&app_handle, &inst, &username).await {
                 log::error!("Failed to launch the game: {}", e);
-                let _ = app_handle.emit("mc-log", format!("[MCLv2/ERROR] {}", e));
+                let _ = app_handle.emit("mc-log", format!("[MCL/ERROR] {}", e));
                 let _ = app_handle.emit(
                     "download-progress",
                     minecraft_core::downloader::DownloadProgressPayload {

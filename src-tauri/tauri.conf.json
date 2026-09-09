@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "MCLv2",
-  "version": "0.3.0",
-  "identifier": "com.pecora.mclv2",
+  "productName": "MCL Client",
+  "version": "0.4.0",
+  "identifier": "com.pecora.mclclient",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:5173",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "MCLv2 - Minecraft Launcher",
+        "title": "MCL Client - Minecraft Launcher",
         "width": 1600,
         "height": 900,
         "resizable": false,
@@ -43,7 +43,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/pecora31/MCLv2/releases/latest/download/latest.json"
+        "https://github.com/pecora31/MCL-Client/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ5MDBCRTcwMzkxRjQ4OEYKUldTUFNCODVjTDRBU1Z2ZDdXKzh2ckNxYWdhb3o2ayt4WldJcXRFK1JkUXNaYXFPUXdQVG1rTnQK"
     }

@@ -454,7 +454,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-slate-200">{t.useDefaultDir}</div>
                   <div className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
-                    {defaultGameDir ? `${defaultGameDir}\\instances\\...` : '%APPDATA%\\MCLv2\\instances\\...'}
+                    {defaultGameDir ? `${defaultGameDir}\\instances\\...` : '%APPDATA%\\MCL Client\\instances\\...'}
                   </div>
                 </div>
               </label>

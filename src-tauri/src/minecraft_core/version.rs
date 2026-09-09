@@ -107,7 +107,7 @@ pub async fn get_version_details(
     game_version: &str,
 ) -> Result<VersionDetails, String> {
     let client = reqwest::Client::builder()
-        .user_agent("MCLv2/1.0")
+        .user_agent("MCLClient/1.0")
         .build()
         .map_err(|e| e.to_string())?;
 

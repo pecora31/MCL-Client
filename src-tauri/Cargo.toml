@@ -1,10 +1,10 @@
 [package]
 name = "mcl-client"
-version = "0.3.0"
+version = "0.4.0"
 description = "Custom Minecraft Launcher with high performance optimization, direct server connection, and unified profile management."
 authors = ["pecora31"]
 license = "GPL-3.0"
-repository = "https://github.com/pecora31/MCLv2"
+repository = "https://github.com/pecora31/MCL-Client"
 edition = "2021"
 rust-version = "1.77.2"
 

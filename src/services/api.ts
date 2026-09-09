@@ -301,7 +301,7 @@ export async function searchModrinth(
 
     const res = await fetch(`https://api.modrinth.com/v2/search?${params.toString()}`, {
       headers: {
-        'User-Agent': 'MCLv2-Launcher/1.0.0 (https://github.com/pecora31/MCLv2)',
+        'User-Agent': 'MCLClient-Launcher/1.0.0 (https://github.com/pecora31/MCL-Client)',
       },
     });
     if (!res.ok) throw new Error('Modrinth API failed');
@@ -387,7 +387,7 @@ export async function getModrinthDownloadInfo(
   try {
     const res = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`, {
       headers: {
-        'User-Agent': 'MCLv2-Launcher/1.0.0 (https://github.com/pecora31/MCLv2)',
+        'User-Agent': 'MCLClient-Launcher/1.0.0 (https://github.com/pecora31/MCL-Client)',
       },
     });
     if (!res.ok) return null;

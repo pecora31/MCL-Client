@@ -24,6 +24,32 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
+          # The release notes are read out of the tag's own message, which a shallow
+          # checkout does not carry.
+          fetch-depth: 0
+
+      # What the release page says about this version. Writing it into the tag keeps the
+      # notes with the thing they describe:
+      #   git tag -a v0.4.0 -m "Summary" -m "- first change" -m "- second change"
+      - name: Read the release notes from the tag
+        id: notes
+        shell: bash
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          git fetch --force origin "refs/tags/$TAG:refs/tags/$TAG" 2>/dev/null || true
+          NOTES=$(git tag -l --format='%(contents)' "$TAG")
+          # A lightweight tag carries no message, so fall back rather than publishing blank
+          if [ -z "$(echo "$NOTES" | tr -d '[:space:]')" ]; then
+            NOTES="Installers are attached below. Existing installs update themselves."
+          fi
+          {
+            echo "body<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo ""
+            echo "---"
+            echo "Installers are attached below. Existing installs update themselves."
+            echo "RELEASE_NOTES_EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4
         with:
@@ -54,8 +80,8 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'MCLv2 __VERSION__'
-          releaseBody: 'Installers are attached below. Existing installs update themselves.'
+          releaseName: 'MCL Client __VERSION__'
+          releaseBody: ${{ steps.notes.outputs.body }}
           # Published straight away: a draft release has no latest.json for the
           # updater to read, so a forgotten draft looks like updates are broken.
           releaseDraft: false

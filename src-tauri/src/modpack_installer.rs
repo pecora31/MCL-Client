@@ -280,7 +280,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/Modpack] Downloading {} mod file(s) for modpack '{}'...",
+            "[{}] [MCL/Modpack] Downloading {} mod file(s) for modpack '{}'...",
             chrono::Local::now().format("%H:%M:%S"),
             download_tasks.len(),
             final_name
@@ -341,7 +341,7 @@ pub async fn install_mrpack(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/Modpack] Modpack installed: ID={}",
+            "[{}] [MCL/Modpack] Modpack installed: ID={}",
             chrono::Local::now().format("%H:%M:%S"),
             instance_id
         ),

@@ -33,7 +33,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Preparing resources for profile: {} (Minecraft {})",
+            "[{}] [MCL] Preparing resources for profile: {} (Minecraft {})",
             chrono::Local::now().format("%H:%M:%S"),
             instance.name,
             instance.game_version
@@ -43,7 +43,7 @@ pub async fn prepare_and_launch(
     // 1. Fetch Version Details from Mojang
     let _ = app_handle.emit(
         "mc-log",
-        format!("[{}] [MCLv2] Fetching the version manifest from the Mojang CDN...", chrono::Local::now().format("%H:%M:%S")),
+        format!("[{}] [MCL] Fetching the version manifest from the Mojang CDN...", chrono::Local::now().format("%H:%M:%S")),
     );
     let _ = app_handle.emit(
         "download-progress",
@@ -112,7 +112,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Downloading dependencies (libraries, LWJGL, Fastutil)...",
+            "[{}] [MCL] Downloading dependencies (libraries, LWJGL, Fastutil)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -135,7 +135,7 @@ pub async fn prepare_and_launch(
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2] Setting up {} Loader v{}...",
+                "[{}] [MCL] Setting up {} Loader v{}...",
                 chrono::Local::now().format("%H:%M:%S"),
                 endpoints.display_name,
                 loader_ver
@@ -203,7 +203,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Checking and downloading assets (audio and textures)...",
+            "[{}] [MCL] Checking and downloading assets (audio and textures)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -265,7 +265,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Extracting native libraries (LWJGL, OpenAL)...",
+            "[{}] [MCL] Extracting native libraries (LWJGL, OpenAL)...",
             chrono::Local::now().format("%H:%M:%S")
         ),
     );
@@ -285,7 +285,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/Java] {}",
+            "[{}] [MCL/Java] {}",
             chrono::Local::now().format("%H:%M:%S"),
             java_reason
         ),
@@ -312,7 +312,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2] Starting Minecraft with Java: {} (v{})",
+            "[{}] [MCL] Starting Minecraft with Java: {} (v{})",
             chrono::Local::now().format("%H:%M:%S"),
             java_bin,
             if java_major > 0 { java_major.to_string() } else { "custom".to_string() }
@@ -388,7 +388,7 @@ pub async fn prepare_and_launch(
     cmd.arg("-Dfile.encoding=UTF-8");
     cmd.arg(format!("-Djava.library.path={}", natives_dir.display()));
     cmd.arg(format!("-Dminecraft.applet.TargetDirectory={}", instance_dir.display()));
-    cmd.arg(format!("-Dminecraft.launcher.brand=MCLv2"));
+    cmd.arg(format!("-Dminecraft.launcher.brand=MCL Client"));
     cmd.arg(format!("-Dminecraft.launcher.version=2.0.0"));
 
     // Classpath
@@ -408,7 +408,7 @@ pub async fn prepare_and_launch(
     cmd.arg("--uuid").arg(&uuid);
     cmd.arg("--accessToken").arg("0");
     cmd.arg("--userType").arg("mojang");
-    cmd.arg("--versionType").arg("MCLv2");
+    cmd.arg("--versionType").arg("MCL Client");
 
     // Forge identifies its own launch through these (--launchTarget, --fml.* and friends)
     for arg in &extra_game_args {
@@ -470,7 +470,7 @@ pub async fn prepare_and_launch(
     let _ = app_handle.emit(
         "mc-log",
         format!(
-            "[{}] [MCLv2/INFO] Minecraft process started (PID: {}).",
+            "[{}] [MCL/INFO] Minecraft process started (PID: {}).",
             chrono::Local::now().format("%H:%M:%S"),
             pid
         ),
@@ -519,7 +519,7 @@ pub async fn prepare_and_launch(
                 let _ = app_exit.emit(
                     "mc-log",
                     format!(
-                        "[{}] [MCLv2/WARN] Could not record playtime: {}",
+                        "[{}] [MCL/WARN] Could not record playtime: {}",
                         chrono::Local::now().format("%H:%M:%S"),
                         e
                     ),
@@ -535,7 +535,7 @@ pub async fn prepare_and_launch(
                     let _ = app_exit.emit(
                         "mc-log",
                         format!(
-                            "[{}] [MCLv2/INFO] Minecraft '{}' (MC {}) exited normally.",
+                            "[{}] [MCL/INFO] Minecraft '{}' (MC {}) exited normally.",
                             chrono::Local::now().format("%H:%M:%S"),
                             instance_name_for_exit,
                             game_version_for_exit
@@ -553,7 +553,7 @@ pub async fn prepare_and_launch(
                     let _ = app_exit.emit(
                         "mc-log",
                         format!(
-                            "[{}] [MCLv2/ERROR] ⚠ Minecraft crashed. Exit code: {}. {}",
+                            "[{}] [MCL/ERROR] ⚠ Minecraft crashed. Exit code: {}. {}",
                             chrono::Local::now().format("%H:%M:%S"),
                             code,
                             crash_hint
@@ -566,7 +566,7 @@ pub async fn prepare_and_launch(
                         let _ = app_exit.emit(
                             "mc-log",
                             format!(
-                                "[{}] [MCLv2/DIAGNOSIS] {}",
+                                "[{}] [MCL/DIAGNOSIS] {}",
                                 chrono::Local::now().format("%H:%M:%S"),
                                 diagnosis
                             ),
@@ -581,7 +581,7 @@ pub async fn prepare_and_launch(
                 let _ = app_exit.emit(
                     "mc-log",
                     format!(
-                        "[{}] [MCLv2/ERROR] Error while waiting for the Minecraft process: {}",
+                        "[{}] [MCL/ERROR] Error while waiting for the Minecraft process: {}",
                         chrono::Local::now().format("%H:%M:%S"),
                         e
                     ),
@@ -737,7 +737,7 @@ async fn ensure_custom_skin_loader(
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("MCLv2-Launcher/1.0 (https://github.com/pecora31/MCLv2)")
+        .user_agent("MCLClient-Launcher/1.0 (https://github.com/pecora31/MCL-Client)")
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -920,7 +920,7 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2] Extracted {} native file(s) (DLL/SO) into natives/",
+                "[{}] [MCL] Extracted {} native file(s) (DLL/SO) into natives/",
                 chrono::Local::now().format("%H:%M:%S"),
                 extracted_count
             ),

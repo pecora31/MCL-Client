@@ -73,7 +73,7 @@ pub async fn download_files_concurrently(
 
     // HTTP Client with network timeouts
     let client = reqwest::Client::builder()
-        .user_agent("MCLv2-Downloader/1.0")
+        .user_agent("MCLClient-Downloader/1.0")
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(60))
         .build()
@@ -289,7 +289,7 @@ pub async fn download_files_concurrently(
         let _ = app_handle.emit(
             "mc-log",
             format!(
-                "[{}] [MCLv2/WARN] {} file(s) failed to download after 3 retries.",
+                "[{}] [MCL/WARN] {} file(s) failed to download after 3 retries.",
                 chrono::Local::now().format("%H:%M:%S"),
                 total_failed
             ),

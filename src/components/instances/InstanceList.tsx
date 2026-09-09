@@ -207,7 +207,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
               className="text-xs font-mono text-amber-300/90 truncate max-w-xl mt-0.5"
               title={defaultGameDir || ''}
             >
-              {defaultGameDir || '%APPDATA%\\MCLv2'}
+              {defaultGameDir || '%APPDATA%\\MCL Client'}
             </div>
           </div>
         </div>

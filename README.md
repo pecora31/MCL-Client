@@ -21,7 +21,7 @@ A custom Minecraft launcher built with **Tauri 2 (Rust) + React 19 + TypeScript*
 
 **Install**
 
-Download the latest `.msi` or `.exe` from the [Releases](https://github.com/pecora31/MCLv2/releases) page and run it. No additional setup required.
+Download the latest `.msi` or `.exe` from the [Releases](https://github.com/pecora31/MCL-Client/releases) page and run it. No additional setup required.
 
 ## For Developers & Modders
 
@@ -39,8 +39,8 @@ Install Rust via [rustup.rs](https://rustup.rs/) if you don't have it yet.
 
 ```bash
 # Clone the repo
-git clone https://github.com/pecora31/MCLv2.git
-cd MCLv2
+git clone https://github.com/pecora31/MCL-Client.git
+cd MCL Client
 
 # Install frontend dependencies
 npm install
