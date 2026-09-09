@@ -11,6 +11,38 @@ pub struct LauncherConfig {
 }
 
 #[cfg(test)]
+mod skin_config_tests {
+    use super::{setup_in_game_skin_support, SKIN_SERVICE_ROOT};
+
+    // A malformed config is ignored by CustomSkinLoader without any error, which would
+    // silently kill the whole feature, so the generated file must be checked.
+    #[test]
+    fn writes_a_valid_config_pointing_at_the_service() {
+        let dir = std::env::temp_dir().join(format!("mcl-skin-cfg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        setup_in_game_skin_support(&dir, "Player_Hero").expect("config should be written");
+
+        let raw = std::fs::read_to_string(dir.join("CustomSkinLoader").join("CustomSkinLoader.json"))
+            .expect("config file should exist");
+        let parsed: serde_json::Value =
+            serde_json::from_str(&raw).expect("config must be valid JSON");
+
+        let services = parsed["skin_services"].as_array().expect("services array");
+        let names: Vec<&str> = services.iter().filter_map(|s| s["name"].as_str()).collect();
+        assert_eq!(names, vec!["LocalSkin", "MCL", "Mojang", "ElyBy"]);
+
+        let mcl = services.iter().find(|s| s["name"] == "MCL").unwrap();
+        assert_eq!(
+            mcl["skin"].as_str().unwrap(),
+            format!("{}/v1/skins/{{USERNAME}}.png", SKIN_SERVICE_ROOT)
+        );
+        assert_eq!(parsed["local_user"].as_str().unwrap(), "Player_Hero");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
 mod safe_join_tests {
     use super::safe_join;
     use std::path::Path;
@@ -402,6 +434,14 @@ pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result
       "model": "auto"
     }},
     {{
+      "name": "MCL",
+      "type": "Legacy",
+      "enable": true,
+      "checkPNG": true,
+      "skin": "{}/v1/skins/{{USERNAME}}.png",
+      "model": "auto"
+    }},
+    {{
       "name": "Mojang",
       "type": "Mojang",
       "enable": true
@@ -414,7 +454,7 @@ pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result
   ],
   "local_user": "{}"
 }}"#,
-        username
+        SKIN_SERVICE_ROOT, username
     );
 
     let config_file = custom_skin_loader_dir.join("CustomSkinLoader.json");
@@ -429,9 +469,88 @@ pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result
     Ok(())
 }
 
+/// MCL's own skin service. Players see each other's skins on offline servers because
+/// every MCLv2 install resolves unknown names through this same address.
+pub const SKIN_SERVICE_ROOT: &str = "https://mcl-skin-service.nazarick112.workers.dev";
+
+fn skin_tokens_file() -> PathBuf {
+    get_app_config_dir().join("skin-tokens.json")
+}
+
+/// The service hands out a token the first time a name is claimed, and refuses to
+/// overwrite that name later without it. Losing this file means losing the claim.
+fn read_skin_tokens() -> std::collections::HashMap<String, String> {
+    fs::read_to_string(skin_tokens_file())
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_skin_token(username: &str, token: &str) {
+    let mut tokens = read_skin_tokens();
+    tokens.insert(username.to_ascii_lowercase(), token.to_string());
+    if let Ok(serialized) = serde_json::to_string_pretty(&tokens) {
+        let _ = fs::create_dir_all(get_app_config_dir());
+        let _ = fs::write(skin_tokens_file(), serialized);
+    }
+}
+
+async fn publish_skin(username: &str, bytes: Vec<u8>) -> Result<(), String> {
+    let client = reqwest::Client::builder()
+        .user_agent("MCLv2-Launcher/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("{}/v1/skins/{}", SKIN_SERVICE_ROOT, username);
+
+    if let Some(token) = read_skin_tokens().get(&username.to_ascii_lowercase()) {
+        let response = client
+            .put(&url)
+            .bearer_auth(token)
+            .body(bytes.clone())
+            .send()
+            .await
+            .map_err(|e| format!("cannot reach the skin service: {}", e))?;
+        if response.status().is_success() {
+            return Ok(());
+        }
+        // A rejected token means the claim no longer exists, so fall through and re-claim
+    }
+
+    let response = client
+        .post(&url)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach the skin service: {}", e))?;
+    let status = response.status();
+    let body: serde_json::Value = response.json().await.unwrap_or(serde_json::Value::Null);
+
+    if status.as_u16() == 409 {
+        return Err(format!(
+            "the name '{}' is already claimed from another computer",
+            username
+        ));
+    }
+    if !status.is_success() {
+        return Err(body["error"]
+            .as_str()
+            .unwrap_or("the skin service rejected the upload")
+            .to_string());
+    }
+
+    if let Some(token) = body["token"].as_str() {
+        save_skin_token(username, token);
+    }
+    Ok(())
+}
+
 /// Writes the skin chosen in the launcher into the instance so CustomSkinLoader's local
-/// service can serve it. Accepts a `data:image/png;base64,...` URI or a plain file path.
-pub fn install_local_skin(instance_id: &str, username: &str, skin: &str) -> Result<String, String> {
+/// service can serve it, then publishes it so other players resolve the same image.
+pub async fn install_local_skin(
+    instance_id: &str,
+    username: &str,
+    skin: &str,
+) -> Result<String, String> {
     use base64::Engine as _;
 
     let safe_username: String = username
@@ -465,7 +584,16 @@ pub fn install_local_skin(instance_id: &str, username: &str, skin: &str) -> Resu
 
     let target = skins_dir.join(format!("{}.png", safe_username));
     fs::write(&target, &bytes).map_err(|e| format!("Cannot save the skin: {}", e))?;
-    Ok(target.to_string_lossy().to_string())
+
+    // Publishing is best-effort: the player still sees their own skin from the local copy
+    // even when the service is unreachable, so this must never fail the launch.
+    match publish_skin(&safe_username, bytes).await {
+        Ok(()) => Ok(format!("Skin saved and published for {}.", safe_username)),
+        Err(err) => Ok(format!(
+            "Skin saved locally, but other players will not see it: {}",
+            err
+        )),
+    }
 }
 
 /// Zips the instance's saves folder into backups/ so a bad mod change cannot cost a world.

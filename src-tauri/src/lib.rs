@@ -177,8 +177,12 @@ fn detect_java() -> Vec<JavaInstallation> {
 }
 
 #[tauri::command]
-fn install_local_skin(instance_id: String, username: String, skin: String) -> Result<String, String> {
-    instance_manager::install_local_skin(&instance_id, &username, &skin)
+async fn install_local_skin(
+    instance_id: String,
+    username: String,
+    skin: String,
+) -> Result<String, String> {
+    instance_manager::install_local_skin(&instance_id, &username, &skin).await
 }
 
 #[tauri::command]

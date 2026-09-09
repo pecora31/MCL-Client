@@ -577,14 +577,14 @@ export const App: React.FC = () => {
         // CustomSkinLoader can serve it in game
         if (launchData.enableSkinInGame && launchData.loader !== 'vanilla' && account.skinUrl) {
           try {
-            await invokeCommand('install_local_skin', {
+            const skinResult = await invokeCommand<string>('install_local_skin', {
               instanceId: launchData.id,
               username: account.username,
               skin: account.skinUrl,
             });
             setConsoleLogs((prev) => [
               ...prev,
-              `[${new Date().toLocaleTimeString()}] [MCL/INFO] Skin prepared for ${account.username}.`,
+              `[${new Date().toLocaleTimeString()}] [MCL/INFO] ${skinResult}`,
             ]);
           } catch (skinErr: any) {
             setConsoleLogs((prev) => [
