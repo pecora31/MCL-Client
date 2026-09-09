@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Sliders, Cpu, Save, ShieldCheck, FolderOpen } from 'lucide-react';
-import type { GameInstance } from '../../types';
+import type { GameInstance, SystemInfo, JavaInstallation } from '../../types';
+import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 
@@ -27,6 +28,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
   const [maxRam, setMaxRam] = useState(4096);
   const [jvmArgs, setJvmArgs] = useState('');
   const [enableSkinInGame, setEnableSkinInGame] = useState(true);
+  const [javaPath, setJavaPath] = useState('');
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [javaList, setJavaList] = useState<JavaInstallation[]>([]);
 
   useEffect(() => {
     if (instance) {
@@ -35,8 +39,19 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       setMaxRam(instance.maxRam || 4096);
       setJvmArgs(instance.jvmArgs || '');
       setEnableSkinInGame(instance.enableSkinInGame ?? true);
+      setJavaPath(instance.javaPath || '');
     }
   }, [instance, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    invokeCommand<SystemInfo>('get_system_info')
+      .then(setSystemInfo)
+      .catch((err) => console.warn('Could not read system info:', err));
+    invokeCommand<JavaInstallation[]>('detect_java')
+      .then((list) => setJavaList(list || []))
+      .catch((err) => console.warn('Could not detect Java:', err));
+  }, [isOpen]);
 
   if (!isOpen || !instance) return null;
 
@@ -48,6 +63,7 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       minRam,
       maxRam,
       jvmArgs: jvmArgs.trim() || undefined,
+      javaPath: javaPath || undefined,
       enableSkinInGame,
     });
     onClose();
@@ -111,17 +127,19 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
             <div className="space-y-2">
               <div className="flex justify-between text-[11px] text-slate-400">
                 <span>Maximum RAM: {maxRam} MB</span>
-                <span>(Recommended: 4096 - 8192 MB)</span>
+                {systemInfo && <span>({(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed)</span>}
               </div>
               {(() => {
-                const ramPct = Math.round(((maxRam - 2048) / (16384 - 2048)) * 100);
+                const sliderMax = systemInfo?.recommendedMaxRamMb ?? 16384;
+                const span = Math.max(sliderMax - 2048, 512);
+                const ramPct = Math.round(((Math.min(maxRam, sliderMax) - 2048) / span) * 100);
                 return (
                   <input
                     type="range"
                     min={2048}
-                    max={16384}
+                    max={sliderMax}
                     step={512}
-                    value={maxRam}
+                    value={Math.min(maxRam, sliderMax)}
                     style={{
                       background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
                     }}
@@ -130,12 +148,31 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                   />
                 );
               })()}
-              <div className="flex justify-between text-[10px] text-slate-500 font-mono">
-                <span>2 GB</span>
-                <span>4 GB</span>
-                <span>8 GB</span>
-                <span>16 GB</span>
-              </div>
+              {systemInfo && maxRam > systemInfo.recommendedMaxRamMb && (
+                <p className="text-[10px] text-amber-300 leading-relaxed">
+                  This profile asks for more RAM than the computer can spare. Minecraft will refuse to
+                  start until it is lowered to {(systemInfo.recommendedMaxRamMb / 1024).toFixed(0)} GB or less.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[11px] text-slate-400">Java Runtime</div>
+              <select
+                value={javaPath}
+                onChange={(e) => setJavaPath(e.target.value)}
+                className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs font-mono text-white cursor-pointer"
+              >
+                <option value="" className="bg-slate-900 font-sans">
+                  Automatic — pick the right Java for this version
+                </option>
+                {javaList.map((j) => (
+                  <option key={j.path} value={j.path} className="bg-slate-900 font-sans">
+                    {j.versionString}
+                    {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 

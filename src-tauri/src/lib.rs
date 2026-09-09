@@ -8,7 +8,7 @@ mod server_ping;
 
 use models::{
     GameInstance, JavaInstallation, LocalMod, ServerStatus, StorageCleanupReport,
-    StorageCleanupScanResult,
+    StorageCleanupScanResult, SystemInfo,
 };
 use base64::Engine as _;
 use tauri::Manager;
@@ -174,6 +174,32 @@ fn detect_java() -> Vec<JavaInstallation> {
     let javas = java_detector::detect_installed_javas();
     *lock = javas.clone();
     javas
+}
+
+#[tauri::command]
+fn get_system_info() -> SystemInfo {
+    use sysinfo::System;
+    let mut sys = System::new();
+    sys.refresh_memory();
+    sys.refresh_cpu_usage();
+
+    let total_ram_mb = (sys.total_memory() / 1024 / 1024) as u32;
+    let available_ram_mb = (sys.available_memory() / 1024 / 1024) as u32;
+    let cpu_count = sys.cpus().len().max(1) as u32;
+
+    // Windows and background apps need headroom, and the JVM reserves memory beyond the heap
+    let reserved_mb = (total_ram_mb / 4).clamp(2048, 8192);
+    let recommended_max_ram_mb = total_ram_mb.saturating_sub(reserved_mb).max(1024);
+    // Minecraft rarely benefits past 8 GB, and oversized heaps make garbage collection worse
+    let recommended_ram_mb = recommended_max_ram_mb.min(4096).max(1024);
+
+    SystemInfo {
+        total_ram_mb,
+        available_ram_mb,
+        cpu_count,
+        recommended_max_ram_mb,
+        recommended_ram_mb,
+    }
 }
 
 #[tauri::command]
@@ -381,6 +407,7 @@ pub fn run() {
             execute_storage_cleanup,
             detect_java,
             find_best_java,
+            get_system_info,
             ping_minecraft_server,
             get_local_mods,
             get_installed_addons,

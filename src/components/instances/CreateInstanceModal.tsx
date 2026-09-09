@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Layers, Plus, ChevronDown, ShieldCheck, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
-import type { ModLoader, GameInstance, VersionItem } from '../../types';
+import type { ModLoader, GameInstance, VersionItem, SystemInfo, JavaInstallation } from '../../types';
 import { fetchMojangVersions, fetchFabricVersions, fetchQuiltVersions, invokeCommand, isTauri } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
@@ -35,6 +35,23 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   const [versionList, setVersionList] = useState<VersionItem[]>([]);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [javaList, setJavaList] = useState<JavaInstallation[]>([]);
+  const [javaPath, setJavaPath] = useState('');
+
+  // Read the machine's specs so RAM cannot be set beyond what it actually has
+  useEffect(() => {
+    if (!isOpen) return;
+    invokeCommand<SystemInfo>('get_system_info')
+      .then((info) => {
+        setSystemInfo(info);
+        setMaxRam((current) => Math.min(current, info.recommendedMaxRamMb));
+      })
+      .catch((err) => console.warn('Could not read system info:', err));
+    invokeCommand<JavaInstallation[]>('detect_java')
+      .then((list) => setJavaList(list || []))
+      .catch((err) => console.warn('Could not detect Java:', err));
+  }, [isOpen]);
 
   // Load Mojang versions
   useEffect(() => {
@@ -133,6 +150,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
       loaderVersion: loader !== 'vanilla' ? loaderVersion : undefined,
       minRam,
       maxRam,
+      javaPath: javaPath || undefined,
       enableSkinInGame,
       icon: loader === 'fabric' ? 'fabric' : loader === 'forge' ? 'forge' : 'grass',
       customDir: useCustomDir && customDirPath.trim() ? customDirPath.trim() : undefined,
@@ -293,14 +311,16 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               <span className="text-[var(--accent-color)] font-mono text-sm font-bold">{(maxRam / 1024).toFixed(1)} GB RAM</span>
             </div>
             {(() => {
-              const ramPct = Math.round(((maxRam - 2048) / (16384 - 2048)) * 100);
+              const sliderMax = systemInfo?.recommendedMaxRamMb ?? 16384;
+              const span = Math.max(sliderMax - 2048, 1024);
+              const ramPct = Math.round(((maxRam - 2048) / span) * 100);
               return (
                 <input
                   type="range"
                   min="2048"
-                  max="16384"
+                  max={sliderMax}
                   step="1024"
-                  value={maxRam}
+                  value={Math.min(maxRam, sliderMax)}
                   style={{
                     background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
                   }}
@@ -311,10 +331,51 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             })()}
             <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
               <span>2 GB</span>
-              <span>4 GB (Standard)</span>
-              <span>8 GB (Modded)</span>
-              <span>16 GB</span>
+              {systemInfo ? (
+                <>
+                  <span className="text-slate-400">
+                    {(systemInfo.recommendedRamMb / 1024).toFixed(0)} GB recommended
+                  </span>
+                  <span>{(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed</span>
+                </>
+              ) : (
+                <>
+                  <span>4 GB (Standard)</span>
+                  <span>8 GB (Modded)</span>
+                </>
+              )}
             </div>
+            {systemInfo && (
+              <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
+                Capped at {(systemInfo.recommendedMaxRamMb / 1024).toFixed(0)} GB so Windows and the game
+                itself keep enough memory to run.
+              </p>
+            )}
+          </div>
+
+          {/* Java Runtime */}
+          <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Java Runtime</div>
+            <select
+              value={javaPath}
+              onChange={(e) => setJavaPath(e.target.value)}
+              className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs font-mono text-white cursor-pointer"
+            >
+              <option value="" className="bg-slate-900 font-sans">
+                Automatic — pick the right Java for this version
+              </option>
+              {javaList.map((j) => (
+                <option key={j.path} value={j.path} className="bg-slate-900 font-sans">
+                  {j.versionString}
+                  {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+                </option>
+              ))}
+            </select>
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+              {javaList.length === 0
+                ? 'No Java runtime detected on this computer yet.'
+                : `Automatic selects ${getRecommendedJava()} for Minecraft ${gameVersion}.`}
+            </p>
           </div>
 
           {/* In-Game Skin Feature Toggle */}

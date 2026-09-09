@@ -254,6 +254,25 @@ pub async fn prepare_and_launch(
             java_reason
         ),
     );
+
+    // Refuse to start on a Java too old for this Minecraft build. Launching anyway only
+    // produces an UnsupportedClassVersionError that is hard for players to interpret.
+    let required_java = crate::java_detector::required_java_major(&instance.game_version);
+    if java_major > 0 && java_major < required_java {
+        return Err(format!(
+            "Minecraft {} requires Java {}, but only Java {} was found on this computer. \
+             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher. \
+             You can also pick a Java runtime manually in the profile settings.",
+            instance.game_version, required_java, java_major, required_java, required_java
+        ));
+    }
+    if java_major == 0 && !Path::new(&java_bin).exists() {
+        return Err(format!(
+            "No Java runtime was found on this computer. Minecraft {} requires Java {}. \
+             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher.",
+            instance.game_version, required_java, required_java, required_java
+        ));
+    }
     let _ = app_handle.emit(
         "mc-log",
         format!(
@@ -275,7 +294,42 @@ pub async fn prepare_and_launch(
         },
     );
 
-    let mut cmd = Command::new(&java_bin);
+    // A heap larger than the machine has stops the JVM before Minecraft ever loads
+    {
+        let mut sys = sysinfo::System::new();
+        sys.refresh_memory();
+        let total_ram_mb = (sys.total_memory() / 1024 / 1024) as u32;
+        if total_ram_mb > 0 && instance.max_ram >= total_ram_mb {
+            return Err(format!(
+                "This profile is set to use {} MB of RAM, but the computer only has {} MB in total. \
+                 Lower the maximum RAM in the profile settings to about {} MB.",
+                instance.max_ram,
+                total_ram_mb,
+                (total_ram_mb / 2).max(1024)
+            ));
+        }
+    }
+
+    // javaw.exe reports fatal startup errors in a Windows dialog and never writes them to
+    // stderr, so java.exe is used instead and its console is suppressed below.
+    let console_java_bin = {
+        let path = Path::new(&java_bin);
+        let sibling = path.with_file_name("java.exe");
+        if sibling.exists() {
+            sibling.to_string_lossy().to_string()
+        } else {
+            java_bin.clone()
+        }
+    };
+
+    let mut cmd = Command::new(&console_java_bin);
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     // Memory arguments
     cmd.arg(format!("-Xms{}M", instance.min_ram));
@@ -328,7 +382,9 @@ pub async fn prepare_and_launch(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
-    let mut child = cmd.spawn().map_err(|e| format!("Cannot start Java ({}): {}", java_bin, e))?;
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Cannot start Java ({}): {}", console_java_bin, e))?;
     let pid = child.id();
     CURRENT_GAME_PID.store(pid, Ordering::SeqCst);
 
@@ -390,7 +446,8 @@ pub async fn prepare_and_launch(
                     // Crash detected
                     let crash_hint = match code {
                         -1 => "The process was killed or hit a system error.".to_string(),
-                        1 => "Generic error, likely conflicting mods or corrupted game files.".to_string(),
+                        1 => "The game stopped during startup. The lines above this one carry the real cause."
+                            .to_string(),
                         -805306369 => "Out of memory. Increase the maximum RAM in the profile settings.".to_string(),
                         _ => format!("Exit code: {}. Check the console log for details.", code),
                     };

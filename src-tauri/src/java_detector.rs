@@ -7,7 +7,7 @@ use walkdir::WalkDir;
 /// - MC < 1.17   → Java 8
 /// - MC 1.17–1.20.4 → Java 17
 /// - MC >= 1.20.5 → Java 21
-fn required_java_major(game_version: &str) -> u32 {
+pub fn required_java_major(game_version: &str) -> u32 {
     // Parse the numeric components: "1.20.4" → [1, 20, 4]
     let parts: Vec<u32> = game_version
         .split('.')
@@ -132,12 +132,13 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
                         visited_paths.insert(p_str.clone());
                         // Try to detect actual version from the sibling java.exe
                         let java_exe = path_buf.with_file_name("java.exe");
-                        let (major, ver_str) = detect_version_from_executable(&java_exe, "System PATH");
+                        let (major, ver_str, is_64_bit) =
+                            detect_version_from_executable(&java_exe, "System PATH");
                         results.push(JavaInstallation {
                             path: p_str,
                             major_version: major,
                             version_string: ver_str,
-                            is_64_bit: true,
+                            is_64_bit,
                         });
                     }
                 }
@@ -161,16 +162,8 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
         }
     }
 
-    // If nothing found, provide a graceful default
-    if results.is_empty() {
-        results.push(JavaInstallation {
-            path: "javaw.exe".to_string(),
-            major_version: 21,
-            version_string: "Default System Java".to_string(),
-            is_64_bit: true,
-        });
-    }
-
+    // Deliberately returns an empty list when nothing is installed: reporting a
+    // fake Java 21 here would defeat the version check done before launching.
     results
 }
 
@@ -198,19 +191,19 @@ fn check_and_add(
 
     let folder_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
     let java_exe = dir.join("bin").join("java.exe");
-    let (major, version_str) = detect_version_from_executable(&java_exe, folder_name);
+    let (major, version_str, is_64_bit) = detect_version_from_executable(&java_exe, folder_name);
 
     results.push(JavaInstallation {
         path: path_str,
         major_version: major,
         version_string: version_str,
-        is_64_bit: true,
+        is_64_bit,
     });
 }
 
 /// Runs `java -version` to get the actual version string and parse the major version.
 /// Falls back to directory name heuristics if the command fails.
-fn detect_version_from_executable(java_exe: &Path, folder_hint: &str) -> (u32, String) {
+fn detect_version_from_executable(java_exe: &Path, folder_hint: &str) -> (u32, String, bool) {
     // Try running java -version (output goes to stderr)
     if java_exe.exists() {
         if let Ok(output) = Command::new(java_exe)
@@ -227,13 +220,16 @@ fn detect_version_from_executable(java_exe: &Path, folder_hint: &str) -> (u32, S
                     .trim()
                     .trim_matches('"')
                     .to_string();
-                return (major, format!("Java {} ({})", major, display));
+                // The JVM prints "64-Bit Server VM" on 64-bit builds and omits it on 32-bit ones
+                let is_64_bit = version_output.to_ascii_lowercase().contains("64-bit");
+                return (major, format!("Java {} ({})", major, display), is_64_bit);
             }
         }
     }
 
-    // Fallback: guess from folder name
-    parse_version_from_folder_name(folder_hint)
+    // Fallback: guess from folder name, assuming 64-bit since it cannot be measured here
+    let (major, version_str) = parse_version_from_folder_name(folder_hint);
+    (major, version_str, true)
 }
 
 /// Parses the major version number from `java -version` stderr output.

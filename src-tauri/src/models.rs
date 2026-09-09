@@ -35,6 +35,17 @@ pub struct GameInstance {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SystemInfo {
+    pub total_ram_mb: u32,
+    pub available_ram_mb: u32,
+    pub cpu_count: u32,
+    /// Largest heap the launcher will offer, leaving room for the OS and the JVM itself
+    pub recommended_max_ram_mb: u32,
+    pub recommended_ram_mb: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JavaInstallation {
     pub path: String,
     pub major_version: u32,

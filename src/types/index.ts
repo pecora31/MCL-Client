@@ -151,6 +151,14 @@ export type LaunchStage =
   | 'done'
   | 'error';
 
+export interface SystemInfo {
+  totalRamMb: number;
+  availableRamMb: number;
+  cpuCount: number;
+  recommendedMaxRamMb: number;
+  recommendedRamMb: number;
+}
+
 export interface LaunchProgress {
   stage: LaunchStage;
   percentage: number;

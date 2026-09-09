@@ -31,6 +31,7 @@ export const TAURI_COMMANDS = [
   'execute_storage_cleanup',
   'detect_java',
   'find_best_java',
+  'get_system_info',
   'ping_minecraft_server',
   'get_local_mods',
   'get_installed_addons',
@@ -778,6 +779,15 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { fileName: 'voicechat-fabric-1.21.4-2.5.28.jar', name: 'Simple Voice Chat', version: '2.5.28', enabled: true, sizeBytes: 4200000 },
         { fileName: 'appleskin-fabric-mc1.21.4-3.0.5.jar', name: 'AppleSkin', version: '3.0.5', enabled: false, sizeBytes: 310000 },
       ] as unknown as T;
+
+    case 'get_system_info':
+      return {
+        totalRamMb: 16384,
+        availableRamMb: 9216,
+        cpuCount: 8,
+        recommendedMaxRamMb: 12288,
+        recommendedRamMb: 4096,
+      } as unknown as T;
 
     case 'get_game_data_dir':
       return 'C:\\Users\\Player\\AppData\\Roaming\\mclv2' as unknown as T;

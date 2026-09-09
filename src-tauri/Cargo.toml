@@ -34,4 +34,5 @@ uuid = { version = "1.10", features = ["v4"] }
 futures-util = "0.3"
 rfd = "0.17.2"
 base64 = "0.22"
+sysinfo = "0.32"
 
