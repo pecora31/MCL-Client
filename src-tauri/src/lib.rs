@@ -243,8 +243,18 @@ async fn download_and_install_addon(
     url: String,
     file_name: String,
     addon_type: String,
+    sha1: Option<String>,
+    project_id: Option<String>,
 ) -> Result<LocalMod, String> {
-    instance_manager::download_and_install_addon(&instance_id, &url, &file_name, &addon_type).await
+    instance_manager::download_and_install_addon(
+        &instance_id,
+        &url,
+        &file_name,
+        &addon_type,
+        sha1.as_deref(),
+        project_id.as_deref(),
+    )
+    .await
 }
 
 #[tauri::command]

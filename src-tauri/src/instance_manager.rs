@@ -266,11 +266,26 @@ pub fn delete_addon(instance_id: &str, addon_type: &str, file_name: &str) -> Res
     Ok(())
 }
 
+/// Tracks which file each Modrinth/CurseForge project installed, so replacing a mod does
+/// not leave the previous jar behind and crash the game with a duplicate mod id.
+fn addon_registry_path(instance_id: &str) -> PathBuf {
+    get_instance_dir(instance_id).join(".mcl-addons.json")
+}
+
+fn read_addon_registry(instance_id: &str) -> std::collections::HashMap<String, String> {
+    fs::read_to_string(addon_registry_path(instance_id))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
 pub async fn download_and_install_addon(
     instance_id: &str,
     url: &str,
     file_name: &str,
     addon_type: &str,
+    expected_sha1: Option<&str>,
+    project_id: Option<&str>,
 ) -> Result<LocalMod, String> {
     let folder_name = match addon_type {
         "shaderpacks" | "shaders" => "shaderpacks",
@@ -311,6 +326,39 @@ pub async fn download_and_install_addon(
         .bytes()
         .await
         .map_err(|e| format!("Cannot read file data: {}", e))?;
+
+    // A truncated download produces a jar that fails at load time with a confusing error
+    if let Some(expected) = expected_sha1 {
+        use sha1::{Digest, Sha1};
+        let mut hasher = Sha1::new();
+        hasher.update(&bytes);
+        let actual = format!("{:x}", hasher.finalize());
+        if !actual.eq_ignore_ascii_case(expected.trim()) {
+            return Err(
+                "The downloaded file is corrupted (checksum mismatch). Please try again.".to_string(),
+            );
+        }
+    }
+
+    // Drop the previous file of this same project so both versions never load at once
+    if let Some(project) = project_id {
+        let mut registry = read_addon_registry(instance_id);
+        if let Some(previous) = registry.get(project) {
+            if previous != &clean_file_name {
+                for candidate in [previous.clone(), format!("{}.disabled", previous)] {
+                    let stale = dir.join(&candidate);
+                    if stale.exists() {
+                        let _ = fs::remove_file(stale);
+                    }
+                }
+            }
+        }
+        registry.insert(project.to_string(), clean_file_name.clone());
+        if let Ok(serialized) = serde_json::to_string_pretty(&registry) {
+            let _ = fs::write(addon_registry_path(instance_id), serialized);
+        }
+    }
+
     fs::write(&target_path, &bytes).map_err(|e| format!("Cannot save file: {}", e))?;
 
     let clean_name = clean_file_name

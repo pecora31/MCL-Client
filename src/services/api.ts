@@ -295,7 +295,12 @@ export async function getModrinthDownloadInfo(
   projectId: string,
   gameVersion?: string,
   loader?: string
-): Promise<{ url: string; fileName: string } | null> {
+): Promise<{
+  url: string;
+  fileName: string;
+  sha1?: string;
+  requiredDependencies?: string[];
+} | null> {
   try {
     const res = await fetch(`https://api.modrinth.com/v2/project/${projectId}/version`, {
       headers: {
@@ -306,22 +311,26 @@ export async function getModrinthDownloadInfo(
     const versions: any[] = await res.json();
     if (!Array.isArray(versions) || versions.length === 0) return null;
 
-    let target = versions.find((v) => {
+    // Both the game version and the loader must match. Falling back to any other build
+    // installs a jar that cannot load and crashes the game with an unrelated error.
+    const target = versions.find((v) => {
       const matchVer = !gameVersion || (v.game_versions && v.game_versions.includes(gameVersion));
       const matchLoader = !loader || loader === 'vanilla' || (v.loaders && v.loaders.includes(loader));
       return matchVer && matchLoader;
     });
 
-    if (!target) {
-      target = versions.find((v) => !gameVersion || (v.game_versions && v.game_versions.includes(gameVersion)));
-    }
-    if (!target) {
-      target = versions[0];
-    }
+    if (!target) return null;
 
     const primaryFile = (target.files || []).find((f: any) => f.primary) || target.files?.[0];
     if (primaryFile && primaryFile.url) {
-      return { url: primaryFile.url, fileName: primaryFile.filename };
+      return {
+        url: primaryFile.url,
+        fileName: primaryFile.filename,
+        sha1: primaryFile.hashes?.sha1,
+        requiredDependencies: (target.dependencies || [])
+          .filter((d: any) => d.dependency_type === 'required' && d.project_id)
+          .map((d: any) => d.project_id as string),
+      };
     }
     return null;
   } catch (err) {
@@ -664,7 +673,8 @@ export async function installAddon(
   instanceId: string,
   url: string,
   fileName: string,
-  addonType: AddonContentType
+  addonType: AddonContentType,
+  options?: { sha1?: string; projectId?: string }
 ): Promise<LocalMod> {
   if (isTauri()) {
     return await invokeCommand<LocalMod>('download_and_install_addon', {
@@ -672,6 +682,8 @@ export async function installAddon(
       url,
       fileName,
       addonType,
+      sha1: options?.sha1,
+      projectId: options?.projectId,
     });
   }
   // Browser preview fallback

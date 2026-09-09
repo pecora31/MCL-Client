@@ -1021,6 +1021,9 @@ export const ModStore: React.FC<ModStoreProps> = ({
     try {
       let downloadUrl: string | null = null;
       let fileName = '';
+      let fileSha1: string | undefined;
+      let installedProjectId: string | undefined;
+      let requiredDependencies: string[] = [];
 
       // 1. If available on Modrinth, attempt Modrinth direct download first
       if (item.modrinthId || item.source === 'modrinth') {
@@ -1032,6 +1035,9 @@ export const ModStore: React.FC<ModStoreProps> = ({
         if (info && info.url) {
           downloadUrl = info.url;
           fileName = info.fileName;
+          fileSha1 = info.sha1;
+          installedProjectId = item.modrinthId || item.id;
+          requiredDependencies = info.requiredDependencies || [];
         }
       }
 
@@ -1071,9 +1077,37 @@ export const ModStore: React.FC<ModStoreProps> = ({
         return;
       }
 
-      const installed = await installAddon(activeInstance.id, downloadUrl, fileName, contentType);
+      const installed = await installAddon(activeInstance.id, downloadUrl, fileName, contentType, {
+        sha1: fileSha1,
+        projectId: installedProjectId,
+      });
       setInstalledItems((prev) => [installed, ...prev]);
       item.isInstalled = true;
+
+      // Mods such as Sodium refuse to load without their required libraries, so pull those
+      // in as well rather than letting the game crash on startup
+      for (const dependencyId of requiredDependencies) {
+        try {
+          const depInfo = await getModrinthDownloadInfo(
+            dependencyId,
+            effectiveVersion || activeInstance.gameVersion,
+            effectiveLoader || activeInstance.loader
+          );
+          if (!depInfo?.url) continue;
+          const depInstalled = await installAddon(
+            activeInstance.id,
+            depInfo.url,
+            depInfo.fileName,
+            contentType,
+            { sha1: depInfo.sha1, projectId: dependencyId }
+          );
+          setInstalledItems((prev) =>
+            prev.some((p) => p.fileName === depInstalled.fileName) ? prev : [depInstalled, ...prev]
+          );
+        } catch (depErr) {
+          console.warn('Could not install a required dependency:', dependencyId, depErr);
+        }
+      }
 
       setNotification({
         type: 'success',
