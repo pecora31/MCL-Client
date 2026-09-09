@@ -279,6 +279,22 @@ async fn download_and_install_addon(
     .await
 }
 
+/// Builds the manifest for sharing a profile. Returns it alongside the files that cannot
+/// be shared, so the UI can say which ones the recipient will have to install themselves
+/// rather than letting them find out when a mod is simply missing.
+#[tauri::command]
+fn build_share_manifest(
+    instance_id: String,
+) -> Result<(addon_registry::ShareManifest, Vec<String>), String> {
+    let instances = instance_manager::load_instances();
+    let instance = instances
+        .iter()
+        .find(|i| i.id == instance_id)
+        .ok_or_else(|| format!("No profile with id '{}'", instance_id))?;
+    let dir = instance_manager::get_instance_dir(&instance_id);
+    Ok(addon_registry::build_manifest(instance, &dir))
+}
+
 #[tauri::command]
 fn check_mod_conflicts(instance_id: String) -> Vec<mod_conflicts::ModConflict> {
     mod_conflicts::check_instance(&instance_id)
@@ -476,6 +492,7 @@ pub fn run() {
             get_instance_stats,
             set_discord_rpc_enabled,
             check_mod_conflicts,
+            build_share_manifest,
             get_local_mods,
             get_installed_addons,
             toggle_addon,

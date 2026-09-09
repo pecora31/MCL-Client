@@ -41,6 +41,7 @@ export const TAURI_COMMANDS = [
   'get_instance_stats',
   'set_discord_rpc_enabled',
   'check_mod_conflicts',
+  'build_share_manifest',
   'get_local_mods',
   'get_installed_addons',
   'toggle_addon',
@@ -190,7 +191,7 @@ export async function fetchNeoForgeVersions(gameVersion: string): Promise<string
 const CURSEFORGE_DIRECT_ROOT = 'https://api.curseforge.com';
 // Same Worker the skin service runs on; kept in step with SKIN_SERVICE_ROOT in
 // src-tauri/src/instance_manager.rs.
-const MCL_SERVICE_ROOT = 'https://mcl-skin-service.nazarick112.workers.dev';
+export const MCL_SERVICE_ROOT = 'https://mcl-skin-service.nazarick112.workers.dev';
 const CURSEFORGE_PROXY_ROOT = `${MCL_SERVICE_ROOT}/v1/curseforge`;
 
 function curseForgeRequest(
@@ -868,6 +869,9 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { path: 'C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe', majorVersion: 17, versionString: 'Java 17.0.9 LTS', is64Bit: true },
         { path: 'C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe', majorVersion: 8, versionString: 'Java 8 Update 361', is64Bit: true },
       ] as unknown as T;
+
+    case 'build_share_manifest':
+      return [{ name: '', gameVersion: '', loader: 'vanilla', addons: [] }, []] as unknown as T;
 
     case 'check_mod_conflicts':
       return [] as unknown as T;

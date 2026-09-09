@@ -47,6 +47,31 @@ export interface InstanceStats {
   worlds: WorldStats[];
 }
 
+export interface SharedAddon {
+  source: 'modrinth' | 'curseforge';
+  projectId: string;
+  versionId?: string;
+  addonType: string;
+  fileName?: string;
+}
+
+export interface ShareManifest {
+  name: string;
+  gameVersion: string;
+  loader: string;
+  loaderVersion?: string;
+  minRam?: number;
+  maxRam?: number;
+  addons: SharedAddon[];
+}
+
+/** Progress while rebuilding a shared profile, so a long import is not a frozen dialog. */
+export interface ImportProgress {
+  done: number;
+  total: number;
+  currentName: string;
+}
+
 export interface ModConflict {
   /** "breaks" is a declared crash, "conflicts" a declared misbehaviour, "missing" an
    *  unsatisfied required dependency. */

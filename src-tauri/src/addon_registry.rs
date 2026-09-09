@@ -90,6 +90,88 @@ pub fn write(instance_dir: &std::path::Path, registry: &AddonRegistry) -> Result
     fs::write(registry_path(instance_dir), serialized).map_err(|e| e.to_string())
 }
 
+/// What a profile hands to the share service. Only references — which mod, from which
+/// platform, at which version — never the files themselves: the importing launcher fetches
+/// those the same way a manual install would, so nothing is ever redistributed here.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ShareManifest {
+    pub name: String,
+    pub game_version: String,
+    pub loader: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub loader_version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_ram: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ram: Option<u32>,
+    pub addons: Vec<SharedAddon>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedAddon {
+    pub source: String,
+    pub project_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub version_id: Option<String>,
+    pub addon_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file_name: Option<String>,
+}
+
+/// Builds the manifest for a profile.
+///
+/// Only addons the registry knows the origin of are included. A jar dropped into the folder
+/// by hand has no project behind it, so the importing launcher would have nowhere to fetch
+/// it from; those are reported separately rather than silently dropped.
+pub fn build_manifest(
+    instance: &crate::models::GameInstance,
+    instance_dir: &std::path::Path,
+) -> (ShareManifest, Vec<String>) {
+    let registry = read(instance_dir);
+
+    let mut addons = Vec::new();
+    let mut tracked_files = std::collections::HashSet::new();
+    for record in registry.addons.values() {
+        tracked_files.insert(record.file_name.clone());
+        addons.push(SharedAddon {
+            source: record.source.clone(),
+            project_id: record.project_id.clone(),
+            version_id: record.version_id.clone(),
+            addon_type: record.addon_type.clone(),
+            file_name: Some(record.file_name.clone()),
+        });
+    }
+
+    let mut untracked = Vec::new();
+    for folder in ["mods", "resourcepacks", "shaderpacks", "datapacks"] {
+        let Ok(entries) = fs::read_dir(instance_dir.join(folder)) else { continue };
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_string();
+            // A disabled file is not part of what the profile actually runs.
+            if name.ends_with(".disabled") {
+                continue;
+            }
+            if !tracked_files.contains(&name) {
+                untracked.push(name);
+            }
+        }
+    }
+    untracked.sort();
+
+    let manifest = ShareManifest {
+        name: instance.name.clone(),
+        game_version: instance.game_version.clone(),
+        loader: instance.loader.clone(),
+        loader_version: instance.loader_version.clone(),
+        min_ram: Some(instance.min_ram),
+        max_ram: Some(instance.max_ram),
+        addons,
+    };
+    (manifest, untracked)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

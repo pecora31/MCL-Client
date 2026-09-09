@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Play, Trash2, Edit3, Clock, Layers, HardDrive, FolderOpen, Search, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, ChevronDown, Check, BrushCleaning, Copy, Archive } from 'lucide-react';
+import { Plus, Play, Trash2, Edit3, Clock, Layers, HardDrive, FolderOpen, Search, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, ChevronDown, Check, BrushCleaning, Copy, Archive, Share2, Download } from 'lucide-react';
 import type { GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 
@@ -14,6 +14,8 @@ interface InstanceListProps {
   onRequestDeleteInstance: (instance: GameInstance) => void;
   onOpenInstanceDir: (id: string) => void;
   onOpenCreateModal: () => void;
+  onShareInstance: (instance: GameInstance) => void;
+  onImportShareCode: () => void;
   onOpenCleanStorageModal?: () => void;
   isRunning: boolean;
   defaultGameDir?: string;
@@ -69,6 +71,8 @@ export const InstanceList: React.FC<InstanceListProps> = ({
   onRequestDeleteInstance,
   onOpenInstanceDir,
   onOpenCreateModal,
+  onShareInstance,
+  onImportShareCode,
   onOpenCleanStorageModal,
   isRunning,
   defaultGameDir,
@@ -169,6 +173,15 @@ export const InstanceList: React.FC<InstanceListProps> = ({
               <span>{t.btnCleanStorage || 'Clean Storage & Cache'}</span>
             </button>
           )}
+
+          <button
+            onClick={onImportShareCode}
+            title={t.importTitle || 'Import a profile'}
+            className="h-11 px-4 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 border border-white/10 text-white transition shrink-0 cursor-pointer active:scale-95"
+          >
+            <Download className="w-4 h-4" />
+            <span>{t.importStart || 'Import profile'}</span>
+          </button>
 
           <button
             onClick={onOpenCreateModal}
@@ -472,6 +485,14 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                         className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
                         <Copy className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => onShareInstance(inst)}
+                        title={t.shareTitle || 'Share this profile'}
+                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                      >
+                        <Share2 className="w-4 h-4" />
                       </button>
 
                       <button

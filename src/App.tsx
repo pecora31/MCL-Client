@@ -16,9 +16,10 @@ import { SettingsView, setPrewarmedJavaList } from './components/settings/Settin
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
 import { ModConflictModal } from './components/instances/ModConflictModal';
+import { ShareProfileModal } from './components/instances/ShareProfileModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
-import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict } from './types';
+import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict, ShareManifest } from './types';
 import { invokeCommand, isTauri, checkModConflicts } from './services/api';
 import { readStoredJson, writeStoredJson } from './services/storage';
 import { listen } from '@tauri-apps/api/event';
@@ -236,6 +237,8 @@ export const App: React.FC = () => {
   const [deleteTargetInstance, setDeleteTargetInstance] = useState<GameInstance | null>(null);
   const [isStorageCleanupModalOpen, setIsStorageCleanupModalOpen] = useState(false);
   const [modConflicts, setModConflicts] = useState<ModConflict[]>([]);
+  const [shareMode, setShareMode] = useState<'share' | 'import' | null>(null);
+  const [sharingInstanceId, setSharingInstanceId] = useState<string>('');
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
 
@@ -386,6 +389,35 @@ export const App: React.FC = () => {
     if (isTauri()) {
       invokeCommand('save_instances', { instances: updated }).catch(console.warn);
     }
+  };
+
+  /// Creates the profile a share code describes and hands back its id, so the addons the
+  /// manifest lists have somewhere to be installed into.
+  const handleImportedProfile = async (manifest: ShareManifest): Promise<string> => {
+    const imported: GameInstance = {
+      id: `instance-${Date.now()}`,
+      name: manifest.name,
+      gameVersion: manifest.gameVersion,
+      loader: manifest.loader as GameInstance['loader'],
+      loaderVersion: manifest.loaderVersion,
+      // The sender's RAM settings are a suggestion, not a fit for this machine, so the
+      // local defaults win when they are lower.
+      minRam: Math.min(manifest.minRam || settings.defaultMinRam, settings.defaultMinRam),
+      maxRam: Math.min(manifest.maxRam || settings.defaultMaxRam, settings.defaultMaxRam),
+      jvmArgs: settings.defaultJvmArgs,
+      icon: manifest.loader === 'fabric' ? 'fabric' : manifest.loader === 'forge' ? 'forge' : 'grass',
+      enableSkinInGame: true,
+      lastPlayed: undefined,
+      totalPlayTime: 0,
+    };
+
+    const updated = [imported, ...instances];
+    setInstances(updated);
+    setSelectedInstanceId(imported.id);
+    if (isTauri()) {
+      await invokeCommand('save_instances', { instances: updated }).catch(console.warn);
+    }
+    return imported.id;
   };
 
   const handleChangeDefaultGameDir = async () => {
@@ -924,6 +956,11 @@ export const App: React.FC = () => {
                             setCurrentTab('home');
                             handleLaunch();
                           }}
+                          onShareInstance={(inst) => {
+                            setSharingInstanceId(inst.id);
+                            setShareMode('share');
+                          }}
+                          onImportShareCode={() => setShareMode('import')}
                           onEditInstance={handleEditInstance}
                           onDuplicateInstance={handleDuplicateInstance}
                           onBackupWorlds={handleBackupWorlds}
@@ -1015,6 +1052,16 @@ export const App: React.FC = () => {
               setModConflicts([]);
               handleLaunch({ skipConflictCheck: true });
             }}
+          />
+
+          <ShareProfileModal
+            isOpen={shareMode !== null}
+            mode={shareMode || 'share'}
+            instance={instances.find((i) => i.id === sharingInstanceId)}
+            curseForgeApiKey={settings.curseForgeApiKey}
+            language={language}
+            onClose={() => setShareMode(null)}
+            onImported={handleImportedProfile}
           />
 
           <UpdateNotice language={language} />
