@@ -100,97 +100,12 @@ pub fn safe_join(base: &Path, relative: &str) -> Option<PathBuf> {
 /// strings handed to Java, and there is nothing to gain from testing how every one of those
 /// handles spaces.
 const DATA_DIR_NAME: &str = "MCLClient";
-/// What the folder was called when the launcher was named MCLv2. This is a historical
-/// value and must never be renamed along with the product, or an existing install's
-/// profiles and downloads would be left behind.
-const LEGACY_DATA_DIR_NAME: &str = "MCLv2";
 
 pub fn get_app_config_dir() -> PathBuf {
-    let Some(base) = dirs::data_dir() else {
-        return PathBuf::from("MCLClient_Data");
-    };
-    resolve_data_dir(&base)
-}
-
-/// Split out from `get_app_config_dir` so the migration can be tested against a temporary
-/// directory rather than the real one belonging to whoever runs the tests.
-fn resolve_data_dir(base: &Path) -> PathBuf {
-    let current = base.join(DATA_DIR_NAME);
-    if current.exists() {
-        return current;
-    }
-
-    // Renaming the launcher must not orphan an existing install's profiles and its
-    // gigabytes of downloaded game files. Moving the folder is instant on the same volume,
-    // and only ever happens once, since the check above wins from then on.
-    let legacy = base.join(LEGACY_DATA_DIR_NAME);
-    if legacy.exists() {
-        match fs::rename(&legacy, &current) {
-            Ok(()) => return current,
-            Err(e) => {
-                // Better to keep using the old folder than to silently start empty and
-                // re-download everything.
-                log::warn!("Could not move the data folder to its new name: {}", e);
-                return legacy;
-            }
-        }
-    }
-
-    current
-}
-
-#[cfg(test)]
-mod data_dir_tests {
-    use super::*;
-
-    fn temp_base() -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mcl-datadir-{}", uuid::Uuid::new_v4()));
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn moves_an_existing_mclv2_folder_rather_than_starting_empty() {
-        let base = temp_base();
-        let legacy = base.join(LEGACY_DATA_DIR_NAME);
-        fs::create_dir_all(&legacy).unwrap();
-        fs::write(legacy.join("instances.json"), "[{\"id\":\"keep-me\"}]").unwrap();
-
-        let resolved = resolve_data_dir(&base);
-
-        assert_eq!(resolved, base.join(DATA_DIR_NAME));
-        assert!(!legacy.exists(), "the old folder should have been moved, not copied");
-        let carried = fs::read_to_string(resolved.join("instances.json")).unwrap();
-        assert!(carried.contains("keep-me"), "profiles must survive the rename");
-
-        fs::remove_dir_all(&base).ok();
-    }
-
-    #[test]
-    fn leaves_an_already_migrated_folder_alone() {
-        let base = temp_base();
-        let current = base.join(DATA_DIR_NAME);
-        fs::create_dir_all(&current).unwrap();
-        fs::write(current.join("instances.json"), "current").unwrap();
-        // A stale folder under the old name must not overwrite what is already in use
-        let legacy = base.join(LEGACY_DATA_DIR_NAME);
-        fs::create_dir_all(&legacy).unwrap();
-        fs::write(legacy.join("instances.json"), "stale").unwrap();
-
-        let resolved = resolve_data_dir(&base);
-
-        assert_eq!(resolved, current);
-        assert_eq!(fs::read_to_string(current.join("instances.json")).unwrap(), "current");
-        assert!(legacy.exists(), "the stale folder is left untouched, not deleted");
-
-        fs::remove_dir_all(&base).ok();
-    }
-
-    #[test]
-    fn uses_the_new_name_on_a_fresh_install() {
-        let base = temp_base();
-        assert_eq!(resolve_data_dir(&base), base.join(DATA_DIR_NAME));
-        fs::remove_dir_all(&base).ok();
+    if let Some(app_data) = dirs::data_dir() {
+        app_data.join(DATA_DIR_NAME)
+    } else {
+        PathBuf::from("MCLClient_Data")
     }
 }
 
