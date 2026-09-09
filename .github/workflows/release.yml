@@ -43,6 +43,12 @@ jobs:
             NOTES="Installers are attached below. Existing installs update themselves."
           fi
           {
+            # Just what was written in the tag — used as-is for the Discord announcement,
+            # which adds its own link and footer rather than repeating the installer line.
+            echo "raw<<RELEASE_NOTES_EOF"
+            echo "$NOTES"
+            echo "RELEASE_NOTES_EOF"
+
             echo "body<<RELEASE_NOTES_EOF"
             echo "$NOTES"
             echo ""
@@ -87,3 +93,37 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
+
+      # Posts the same notes written into the tag straight to Discord. Skipped rather than
+      # failed when no webhook is configured, so a fork or a repo without one still releases.
+      - name: Announce on Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+          RELEASE_NOTES: ${{ steps.notes.outputs.raw }}
+        run: |
+          if (-not $env:DISCORD_WEBHOOK_URL) {
+            Write-Host "DISCORD_WEBHOOK_URL not set, skipping Discord announcement."
+            exit 0
+          }
+
+          $releaseUrl = "https://github.com/${{ github.repository }}/releases/tag/$env:RELEASE_TAG"
+          $payload = @{
+            embeds = @(@{
+              title       = "MCL Client $env:RELEASE_TAG"
+              url         = $releaseUrl
+              description = $env:RELEASE_NOTES
+              color       = 5793266
+              footer      = @{ text = "Download from the Releases page — existing installs update themselves." }
+            })
+          } | ConvertTo-Json -Depth 5
+
+          try {
+            Invoke-RestMethod -Uri $env:DISCORD_WEBHOOK_URL -Method Post `
+              -ContentType 'application/json; charset=utf-8' `
+              -Body ([System.Text.Encoding]::UTF8.GetBytes($payload))
+          } catch {
+            # The release itself already succeeded and is already published; a Discord
+            # hiccup should be visible in the log, not turn a good release red.
+            Write-Warning "Discord announcement failed: $_"
+          }
