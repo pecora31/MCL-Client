@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { ImageCropModal } from '../common/ImageCropModal';
 import {
   Copy,
   Check,
@@ -129,6 +130,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   const hotInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+  const [bannerCropSource, setBannerCropSource] = useState<string | null>(null);
 
   const t = getTranslation(language);
   const isVi = language === 'vi';
@@ -213,15 +215,22 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Optimize to max 640x240 (~25KB)
-    const optimized = await optimizeImage(file, 640, 240, 0.82);
-    if (optimized) {
-      onUpdateAccount({
-        ...account,
-        customBanner: optimized,
-      });
-    }
+    // Let the player choose which part of the picture becomes the banner
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      if (result) setBannerCropSource(result);
+    };
+    reader.readAsDataURL(file);
     if (bannerInputRef.current) bannerInputRef.current.value = '';
+  };
+
+  const handleBannerCropped = (dataUrl: string) => {
+    setBannerCropSource(null);
+    onUpdateAccount({
+      ...account,
+      customBanner: dataUrl,
+    });
   };
 
   const handleSelectPresetBanner = (gradientStyle: string) => {
@@ -244,6 +253,18 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 
   return (
     <>
+      {bannerCropSource && (
+        <ImageCropModal
+          isOpen
+          src={bannerCropSource}
+          aspect={310 / 96}
+          outputWidth={960}
+          title="Frame your banner"
+          onCancel={() => setBannerCropSource(null)}
+          onCropped={handleBannerCropped}
+        />
+      )}
+
       {/* Invisible backdrop to catch clicks outside the card (Transparent, never dims the app) */}
       <div
         className="fixed inset-0 z-[89] bg-transparent"

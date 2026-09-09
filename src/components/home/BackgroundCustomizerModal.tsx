@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { ImageCropModal } from '../common/ImageCropModal';
 import {
   X,
   Image as ImageIcon,
@@ -95,6 +96,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [customUrlInput, setCustomUrlInput] = useState('');
   const [urlError, setUrlError] = useState('');
+  const [cropSource, setCropSource] = useState<string | null>(null);
 
   // Local state for 60fps instant fluid slider response
   const [localOpacity, setLocalOpacity] = useState<number>(() => Math.round((settings.bgOpacity ?? 0.3) * 100));
@@ -133,28 +135,32 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
 
   const handleFileUpload = async (file: File) => {
     const isVideo = file.type.startsWith('video/') || /\.(mp4|webm|mkv|mov)$/i.test(file.name);
-    
-    // Read file as Data URL (or local path if available)
+
     const reader = new FileReader();
     reader.onload = (e) => {
       const result = e.target?.result as string;
-      if (result) {
-        if (isVideo) {
-          onUpdateSettings({
-            bgType: 'video',
-            customVideoUrl: result,
-            customBgImage: undefined,
-          });
-        } else {
-          onUpdateSettings({
-            bgType: 'image',
-            customBgImage: result,
-            customVideoUrl: undefined,
-          });
-        }
+      if (!result) return;
+      if (isVideo) {
+        onUpdateSettings({
+          bgType: 'video',
+          customVideoUrl: result,
+          customBgImage: undefined,
+        });
+      } else {
+        // Let the player frame the picture instead of stretching whatever they picked
+        setCropSource(result);
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropped = (dataUrl: string) => {
+    setCropSource(null);
+    onUpdateSettings({
+      bgType: 'image',
+      customBgImage: dataUrl,
+      customVideoUrl: undefined,
+    });
   };
 
   const handleBrowseNativeFile = async () => {
@@ -238,6 +244,17 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+      {cropSource && (
+        <ImageCropModal
+          isOpen
+          src={cropSource}
+          aspect={16 / 9}
+          outputWidth={1920}
+          title="Frame your background"
+          onCancel={() => setCropSource(null)}
+          onCropped={handleCropped}
+        />
+      )}
       <div
         className="w-full max-w-2xl rounded-3xl border-2 border-white/[0.08] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp"
         style={{ background: 'rgba(12,12,14,0.96)', fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
