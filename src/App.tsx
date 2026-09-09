@@ -15,10 +15,11 @@ import { ModStore } from './components/mods/ModStore';
 import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
+import { ModConflictModal } from './components/instances/ModConflictModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
-import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer } from './types';
-import { invokeCommand, isTauri } from './services/api';
+import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict } from './types';
+import { invokeCommand, isTauri, checkModConflicts } from './services/api';
 import { readStoredJson, writeStoredJson } from './services/storage';
 import { listen } from '@tauri-apps/api/event';
 import type { Language } from './locales/i18n';
@@ -234,6 +235,7 @@ export const App: React.FC = () => {
   const [editingInstance, setEditingInstance] = useState<GameInstance | null>(null);
   const [deleteTargetInstance, setDeleteTargetInstance] = useState<GameInstance | null>(null);
   const [isStorageCleanupModalOpen, setIsStorageCleanupModalOpen] = useState(false);
+  const [modConflicts, setModConflicts] = useState<ModConflict[]>([]);
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
 
@@ -574,11 +576,35 @@ export const App: React.FC = () => {
   }, []);
 
   // Launch Engine Handler
-  const handleLaunch = async () => {
+  // Runs the declared-incompatibility check first. Only a declared crash or a missing
+  // dependency interrupts: both stop the game from working at all. Softer "discouraged"
+  // pairings are logged, because a dialog on every single launch is one people stop reading.
+  // Takes an options object rather than a bare boolean: passed straight to onClick, a
+  // positional flag would receive the click event and read as "skip", silently disabling
+  // the check. An event has no skipConflictCheck field, so this fails safe.
+  const handleLaunch = async (options?: { skipConflictCheck?: boolean }) => {
+    const skipConflictCheck = options?.skipConflictCheck === true;
     const targetInstance = instances.find((i) => i.id === selectedInstanceId) || instances[0];
     if (!targetInstance) {
       setIsCreateModalOpen(true);
       return;
+    }
+
+    if (isTauri() && !skipConflictCheck) {
+      try {
+        const found = await checkModConflicts(targetInstance.id);
+        const blocking = found.filter((c) => c.kind === 'breaks' || c.kind === 'missing');
+        if (blocking.length > 0) {
+          setModConflicts(found);
+          return;
+        }
+        for (const soft of found) {
+          console.info(`Mod advisory: ${soft.sourceName} vs ${soft.targetName}`);
+        }
+      } catch (err) {
+        // A check that cannot run is not a reason to stop someone playing.
+        console.warn('Could not check for mod conflicts:', err);
+      }
     }
 
     const currentServer = savedServers.find((s) => s.id === activeServerId) || savedServers[0];
@@ -978,6 +1004,17 @@ export const App: React.FC = () => {
             logs={consoleLogs}
             onClearLogs={() => setConsoleLogs([])}
             language={language}
+          />
+
+          <ModConflictModal
+            isOpen={modConflicts.length > 0}
+            conflicts={modConflicts}
+            language={language}
+            onClose={() => setModConflicts([])}
+            onLaunchAnyway={() => {
+              setModConflicts([]);
+              handleLaunch({ skipConflictCheck: true });
+            }}
           />
 
           <UpdateNotice language={language} />

@@ -5,6 +5,7 @@ mod java_detector;
 mod launcher_engine;
 mod minecraft_core;
 mod modpack_installer;
+mod mod_conflicts;
 mod models;
 mod server_ping;
 
@@ -274,6 +275,11 @@ async fn download_and_install_addon(
 }
 
 #[tauri::command]
+fn check_mod_conflicts(instance_id: String) -> Vec<mod_conflicts::ModConflict> {
+    mod_conflicts::check_instance(&instance_id)
+}
+
+#[tauri::command]
 fn set_discord_rpc_enabled(enabled: bool) {
     discord_rpc::set_enabled(enabled);
 }
@@ -464,6 +470,7 @@ pub fn run() {
             ping_minecraft_server,
             get_instance_stats,
             set_discord_rpc_enabled,
+            check_mod_conflicts,
             get_local_mods,
             get_installed_addons,
             toggle_addon,

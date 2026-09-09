@@ -47,6 +47,16 @@ export interface InstanceStats {
   worlds: WorldStats[];
 }
 
+export interface ModConflict {
+  /** "breaks" is a declared crash, "conflicts" a declared misbehaviour, "missing" an
+   *  unsatisfied required dependency. */
+  kind: 'breaks' | 'conflicts' | 'missing';
+  sourceName: string;
+  targetId: string;
+  targetName: string;
+  fileName: string;
+}
+
 export interface MrpackManifestSummary {
   name: string;
   summary: string;

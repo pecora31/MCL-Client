@@ -38,4 +38,5 @@ sysinfo = "0.32"
 discord-rich-presence = "1.1.0"
 tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
+toml = "1.0.7"
 

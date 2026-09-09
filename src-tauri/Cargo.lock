@@ -2164,6 +2164,7 @@ dependencies = [
  "tauri-plugin-process",
  "tauri-plugin-updater",
  "tokio",
+ "toml 1.1.5+spec-1.1.0",
  "uuid 1.26.0",
  "walkdir",
  "zip 2.4.2",

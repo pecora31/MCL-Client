@@ -3,6 +3,7 @@ import type {
   ModrinthMod,
   ServerStatus,
   InstanceStats,
+  ModConflict,
   AddonContentType,
   AddonSource,
   AddonItem,
@@ -39,6 +40,7 @@ export const TAURI_COMMANDS = [
   'ping_minecraft_server',
   'get_instance_stats',
   'set_discord_rpc_enabled',
+  'check_mod_conflicts',
   'get_local_mods',
   'get_installed_addons',
   'toggle_addon',
@@ -803,6 +805,10 @@ export async function deleteAddon(
 }
 
 // Ping Minecraft Server (SLP)
+export async function checkModConflicts(instanceId: string): Promise<ModConflict[]> {
+  return await invokeCommand<ModConflict[]>('check_mod_conflicts', { instanceId });
+}
+
 export async function getInstanceStats(instanceId: string): Promise<InstanceStats> {
   return await invokeCommand<InstanceStats>('get_instance_stats', { instanceId });
 }
@@ -850,6 +856,9 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { path: 'C:\\Program Files\\Eclipse Adoptium\\jdk-17\\bin\\javaw.exe', majorVersion: 17, versionString: 'Java 17.0.9 LTS', is64Bit: true },
         { path: 'C:\\Program Files\\Java\\jre1.8.0_361\\bin\\javaw.exe', majorVersion: 8, versionString: 'Java 8 Update 361', is64Bit: true },
       ] as unknown as T;
+
+    case 'check_mod_conflicts':
+      return [] as unknown as T;
 
     case 'set_discord_rpc_enabled':
       return undefined as unknown as T;
