@@ -13,7 +13,7 @@ pub async fn launch_game(
 
     // If skin in game is enabled, ensure CustomSkinLoader config is set up
     if instance.enable_skin_in_game {
-        let _ = setup_in_game_skin_support(&instance_dir, username);
+        let _ = setup_in_game_skin_support(&instance_dir);
     }
 
     // Determine java executable

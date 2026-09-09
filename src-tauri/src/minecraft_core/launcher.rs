@@ -212,7 +212,7 @@ pub async fn prepare_and_launch(
                 ),
             );
         } else {
-            let _ = setup_in_game_skin_support(&instance_dir, username);
+            let _ = setup_in_game_skin_support(&instance_dir);
             match ensure_custom_skin_loader(&instance_dir, &instance.game_version, &instance.loader).await
             {
                 Ok(file_name) => {

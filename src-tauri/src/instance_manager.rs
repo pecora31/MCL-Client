@@ -14,29 +14,39 @@ pub struct LauncherConfig {
 mod skin_config_tests {
     use super::{setup_in_game_skin_support, SKIN_SERVICE_ROOT};
 
-    // A malformed config is ignored by CustomSkinLoader without any error, which would
-    // silently kill the whole feature, so the generated file must be checked.
+    // CustomSkinLoader ignores anything it cannot parse without reporting an error, so a
+    // wrong field name here would kill the feature silently. These assertions are written
+    // against the mod's real schema (SkinSiteProfile), not a shape invented here.
     #[test]
-    fn writes_a_valid_config_pointing_at_the_service() {
+    fn registers_the_service_through_extralist() {
         let dir = std::env::temp_dir().join(format!("mcl-skin-cfg-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        setup_in_game_skin_support(&dir, "Player_Hero").expect("config should be written");
+        setup_in_game_skin_support(&dir).expect("setup should succeed");
 
-        let raw = std::fs::read_to_string(dir.join("CustomSkinLoader").join("CustomSkinLoader.json"))
-            .expect("config file should exist");
-        let parsed: serde_json::Value =
-            serde_json::from_str(&raw).expect("config must be valid JSON");
+        let csl = dir.join("CustomSkinLoader");
+        let raw = std::fs::read_to_string(csl.join("ExtraList").join("mcl-skin-service.json"))
+            .expect("an ExtraList entry should be written");
+        let entry: serde_json::Value =
+            serde_json::from_str(&raw).expect("the entry must be valid JSON");
 
-        let services = parsed["skin_services"].as_array().expect("services array");
-        let names: Vec<&str> = services.iter().filter_map(|s| s["name"].as_str()).collect();
-        assert_eq!(names, vec!["LocalSkin", "MCL", "Mojang", "ElyBy"]);
-
-        let mcl = services.iter().find(|s| s["name"] == "MCL").unwrap();
+        assert_eq!(entry["name"].as_str(), Some("MCL"));
+        // Legacy is the source type that takes a direct URL; the others expect a JSON API
+        assert_eq!(entry["type"].as_str(), Some("Legacy"));
         assert_eq!(
-            mcl["skin"].as_str().unwrap(),
+            entry["skin"].as_str().unwrap(),
             format!("{}/v1/skins/{{USERNAME}}.png", SKIN_SERVICE_ROOT)
         );
-        assert_eq!(parsed["local_user"].as_str().unwrap(), "Player_Hero");
+        // The mod substitutes this per player; losing it would serve everyone one skin
+        assert!(entry["skin"].as_str().unwrap().contains("{USERNAME}"));
+
+        assert!(csl.join("LocalSkin").join("skins").is_dir());
+
+        // The mod's own defaults (Mojang, ElyBy, TLauncher, LittleSkin) must stay intact,
+        // which only holds while this launcher leaves CustomSkinLoader.json alone
+        assert!(
+            !csl.join("CustomSkinLoader.json").exists(),
+            "the mod's config must not be overwritten"
+        );
 
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -409,58 +419,32 @@ pub async fn download_and_install_addon(
     })
 }
 
-// Configures CustomSkinLoader so in-game offline & online skins are resolved
-pub fn setup_in_game_skin_support(instance_dir: &Path, username: &str) -> Result<(), String> {
+// Registers MCL's skin service with CustomSkinLoader.
+//
+// This drops a file into ExtraList rather than writing CustomSkinLoader.json: ExtraList
+// adds a source while leaving the mod's own defaults in place, so players keep resolving
+// skins from Mojang, ElyBy, TLauncher and LittleSkin without this launcher having to
+// track those addresses itself.
+pub fn setup_in_game_skin_support(instance_dir: &Path) -> Result<(), String> {
     let custom_skin_loader_dir = instance_dir.join("CustomSkinLoader");
-    fs::create_dir_all(&custom_skin_loader_dir).map_err(|e| e.to_string())?;
+    let extra_list_dir = custom_skin_loader_dir.join("ExtraList");
+    fs::create_dir_all(&extra_list_dir).map_err(|e| e.to_string())?;
 
-    // CustomSkinLoader.json config file
-    let config_content = format!(
+    // "Legacy" is the direct-URL source type; the mod substitutes {USERNAME} per player
+    let entry = format!(
         r#"{{
-  "version": "14.21",
-  "load_skin": true,
-  "load_cape": true,
-  "load_elytra": true,
-  "enable_cache_auto_clean": true,
-  "cache_expiry": 30,
-  "skin_services": [
-    {{
-      "name": "LocalSkin",
-      "type": "Legacy",
-      "enable": true,
-      "checkPNG": true,
-      "skin": "LocalSkin/skins/{{USERNAME}}.png",
-      "cape": "LocalSkin/capes/{{USERNAME}}.png",
-      "model": "auto"
-    }},
-    {{
-      "name": "MCL",
-      "type": "Legacy",
-      "enable": true,
-      "checkPNG": true,
-      "skin": "{}/v1/skins/{{USERNAME}}.png",
-      "model": "auto"
-    }},
-    {{
-      "name": "Mojang",
-      "type": "Mojang",
-      "enable": true
-    }},
-    {{
-      "name": "ElyBy",
-      "type": "ElyBy",
-      "enable": true
-    }}
-  ],
-  "local_user": "{}"
+  "name": "MCL",
+  "type": "Legacy",
+  "checkPNG": true,
+  "model": "auto",
+  "skin": "{}/v1/skins/{{USERNAME}}.png"
 }}"#,
-        SKIN_SERVICE_ROOT, username
+        SKIN_SERVICE_ROOT
     );
+    fs::write(extra_list_dir.join("mcl-skin-service.json"), entry).map_err(|e| e.to_string())?;
 
-    let config_file = custom_skin_loader_dir.join("CustomSkinLoader.json");
-    fs::write(config_file, config_content).map_err(|e| e.to_string())?;
-
-    // The Legacy service above reads from these folders, so they must exist even when empty
+    // The mod's built-in LocalSkin source reads from here, which is where this launcher
+    // writes the player's own skin so it shows even with no network
     fs::create_dir_all(custom_skin_loader_dir.join("LocalSkin").join("skins"))
         .map_err(|e| e.to_string())?;
     fs::create_dir_all(custom_skin_loader_dir.join("LocalSkin").join("capes"))
