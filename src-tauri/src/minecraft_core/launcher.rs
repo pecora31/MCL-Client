@@ -395,6 +395,22 @@ pub async fn prepare_and_launch(
     cmd.arg("--userType").arg("mojang");
     cmd.arg("--versionType").arg("MCLv2");
 
+    // Window size, so players do not have to fix it inside the game every time
+    if instance.fullscreen.unwrap_or(false) {
+        cmd.arg("--fullscreen");
+    } else {
+        if let Some(width) = instance.window_width {
+            if width >= 320 {
+                cmd.arg("--width").arg(width.to_string());
+            }
+        }
+        if let Some(height) = instance.window_height {
+            if height >= 240 {
+                cmd.arg("--height").arg(height.to_string());
+            }
+        }
+    }
+
     // Auto-connect to server if configured
     if let Some(server_ip) = &instance.server_ip {
         if !server_ip.is_empty() {

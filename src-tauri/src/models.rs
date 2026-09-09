@@ -28,6 +28,12 @@ pub struct GameInstance {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub custom_dir: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_height: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fullscreen: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub last_played: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_play_time: Option<u32>,

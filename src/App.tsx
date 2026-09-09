@@ -675,6 +675,69 @@ export const App: React.FC = () => {
     setSettings(newSettings);
   };
 
+  const handleDuplicateInstance = (source: GameInstance) => {
+    const copy: GameInstance = {
+      ...source,
+      id: `instance-${Date.now()}`,
+      name: `${source.name} (copy)`,
+      // A copy starts fresh: it has its own folder, so nothing has been played in it yet
+      customDir: undefined,
+      lastPlayed: undefined,
+      totalPlayTime: 0,
+    };
+    const updated = [...instances, copy];
+    setInstances(updated);
+    setSelectedInstanceId(copy.id);
+    if (isTauri()) {
+      invokeCommand('save_instances', { instances: updated }).catch(console.warn);
+    }
+    setConsoleLogs((prev) => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] [MCL/INFO] Duplicated profile "${source.name}". Mods and settings were copied; world files were not.`,
+    ]);
+  };
+
+  const handleBackupWorlds = async (target: GameInstance) => {
+    if (!isTauri()) return;
+    try {
+      const path = await invokeCommand<string>('backup_worlds', { instanceId: target.id });
+      setConsoleLogs((prev) => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] [MCL/INFO] Worlds of "${target.name}" backed up to ${path}`,
+      ]);
+      setIsConsoleOpen(true);
+    } catch (err: any) {
+      setConsoleLogs((prev) => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] [MCL/WARN] Backup failed: ${err?.toString()}`,
+      ]);
+      setIsConsoleOpen(true);
+    }
+  };
+
+  const handleExportLog = async () => {
+    const contents = consoleLogs.join('\n');
+    if (!isTauri()) {
+      console.log('Export log (browser mode):', contents.slice(0, 200));
+      return;
+    }
+    try {
+      const path = await invokeCommand<string>('export_log', {
+        instanceId: activeInstance?.id || '',
+        contents,
+      });
+      setConsoleLogs((prev) => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] [MCL/INFO] Log saved to ${path}`,
+      ]);
+    } catch (err: any) {
+      setConsoleLogs((prev) => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] [MCL/WARN] Could not save the log: ${err?.toString()}`,
+      ]);
+    }
+  };
+
   const activeInstance = instances.find((i) => i.id === selectedInstanceId) || instances[0];
 
   return (
@@ -797,6 +860,8 @@ export const App: React.FC = () => {
                             handleLaunch();
                           }}
                           onEditInstance={handleEditInstance}
+                          onDuplicateInstance={handleDuplicateInstance}
+                          onBackupWorlds={handleBackupWorlds}
                           onRequestDeleteInstance={(inst) => setDeleteTargetInstance(inst)}
                           onOpenInstanceDir={handleOpenInstanceDir}
                           onOpenCreateModal={() => setIsCreateModalOpen(true)}
@@ -870,6 +935,7 @@ export const App: React.FC = () => {
           <ConsoleModal
             isOpen={isConsoleOpen}
             onClose={() => setIsConsoleOpen(false)}
+            onExportLog={handleExportLog}
             logs={consoleLogs}
             onClearLogs={() => setConsoleLogs([])}
             language={language}

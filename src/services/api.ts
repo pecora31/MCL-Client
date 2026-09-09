@@ -33,6 +33,8 @@ export const TAURI_COMMANDS = [
   'find_best_java',
   'get_system_info',
   'install_local_skin',
+  'backup_worlds',
+  'export_log',
   'ping_minecraft_server',
   'get_local_mods',
   'get_installed_addons',
@@ -792,6 +794,13 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         { fileName: 'voicechat-fabric-1.21.4-2.5.28.jar', name: 'Simple Voice Chat', version: '2.5.28', enabled: true, sizeBytes: 4200000 },
         { fileName: 'appleskin-fabric-mc1.21.4-3.0.5.jar', name: 'AppleSkin', version: '3.0.5', enabled: false, sizeBytes: 310000 },
       ] as unknown as T;
+
+    case 'backup_worlds':
+      return 'mock/backups/saves-20260909-120000.zip' as unknown as T;
+
+    case 'export_log':
+      console.log('Mock export log:', args);
+      return 'mock/mcl-log-20260909-120000.txt' as unknown as T;
 
     case 'install_local_skin':
       console.log('Mock install local skin:', args);

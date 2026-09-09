@@ -31,6 +31,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
   const [javaPath, setJavaPath] = useState('');
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [javaList, setJavaList] = useState<JavaInstallation[]>([]);
+  const [windowWidth, setWindowWidth] = useState('');
+  const [windowHeight, setWindowHeight] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
 
   useEffect(() => {
     if (instance) {
@@ -40,6 +43,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       setJvmArgs(instance.jvmArgs || '');
       setEnableSkinInGame(instance.enableSkinInGame ?? true);
       setJavaPath(instance.javaPath || '');
+      setWindowWidth(instance.windowWidth ? String(instance.windowWidth) : '');
+      setWindowHeight(instance.windowHeight ? String(instance.windowHeight) : '');
+      setFullscreen(instance.fullscreen ?? false);
     }
   }, [instance, isOpen]);
 
@@ -64,6 +70,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       maxRam,
       jvmArgs: jvmArgs.trim() || undefined,
       javaPath: javaPath || undefined,
+      windowWidth: Number(windowWidth) || undefined,
+      windowHeight: Number(windowHeight) || undefined,
+      fullscreen: fullscreen || undefined,
       enableSkinInGame,
     });
     onClose();
@@ -154,6 +163,41 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                   start until it is lowered to {(systemInfo.recommendedMaxRamMb / 1024).toFixed(0)} GB or less.
                 </p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] text-slate-400">Game Window</div>
+                <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={fullscreen}
+                    onChange={(e) => setFullscreen(e.target.checked)}
+                    className="cursor-pointer"
+                  />
+                  Fullscreen
+                </label>
+              </div>
+              {!fullscreen && (
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    value={windowWidth}
+                    onChange={(e) => setWindowWidth(e.target.value)}
+                    placeholder="Width (e.g. 1280)"
+                    className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
+                  />
+                  <span className="text-slate-500 text-xs">×</span>
+                  <input
+                    type="number"
+                    value={windowHeight}
+                    onChange={(e) => setWindowHeight(e.target.value)}
+                    placeholder="Height (e.g. 720)"
+                    className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
+                  />
+                </div>
+              )}
+              <p className="text-[10px] text-slate-500">Leave empty to let Minecraft decide.</p>
             </div>
 
             <div className="space-y-2">

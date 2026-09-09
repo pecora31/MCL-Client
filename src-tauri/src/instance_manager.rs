@@ -468,6 +468,73 @@ pub fn install_local_skin(instance_id: &str, username: &str, skin: &str) -> Resu
     Ok(target.to_string_lossy().to_string())
 }
 
+/// Zips the instance's saves folder into backups/ so a bad mod change cannot cost a world.
+pub fn backup_worlds(instance_id: &str) -> Result<String, String> {
+    use std::io::Write;
+
+    let instance_dir = get_instance_dir(instance_id);
+    let saves_dir = instance_dir.join("saves");
+    if !saves_dir.exists() {
+        return Err("This profile has no worlds to back up yet.".to_string());
+    }
+
+    let backups_dir = instance_dir.join("backups");
+    fs::create_dir_all(&backups_dir).map_err(|e| e.to_string())?;
+
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let archive_path = backups_dir.join(format!("saves-{}.zip", stamp));
+    let file = fs::File::create(&archive_path).map_err(|e| e.to_string())?;
+    let mut zip = zip::ZipWriter::new(file);
+    let options: zip::write::FileOptions<'_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+
+    let mut files_added = 0u32;
+    for entry in walkdir::WalkDir::new(&saves_dir).into_iter().filter_map(|e| e.ok()) {
+        let path = entry.path();
+        let relative = match path.strip_prefix(&saves_dir) {
+            Ok(rel) => rel,
+            Err(_) => continue,
+        };
+        if relative.as_os_str().is_empty() {
+            continue;
+        }
+        let name = relative.to_string_lossy().replace('\\', "/");
+
+        if path.is_dir() {
+            let _ = zip.add_directory(format!("{}/", name), options);
+        } else if path.is_file() {
+            zip.start_file(name, options).map_err(|e| e.to_string())?;
+            let bytes = fs::read(path).map_err(|e| e.to_string())?;
+            zip.write_all(&bytes).map_err(|e| e.to_string())?;
+            files_added += 1;
+        }
+    }
+
+    zip.finish().map_err(|e| e.to_string())?;
+
+    if files_added == 0 {
+        let _ = fs::remove_file(&archive_path);
+        return Err("This profile has no worlds to back up yet.".to_string());
+    }
+
+    Ok(archive_path.to_string_lossy().to_string())
+}
+
+/// Writes the launcher console to a file the player can attach to a bug report.
+pub fn export_log(instance_id: &str, contents: &str) -> Result<String, String> {
+    let dir = if instance_id.is_empty() {
+        get_launcher_dir()
+    } else {
+        get_instance_dir(instance_id)
+    };
+    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let path = dir.join(format!("mcl-log-{}.txt", stamp));
+    fs::write(&path, contents).map_err(|e| format!("Cannot write the log file: {}", e))?;
+    Ok(path.to_string_lossy().to_string())
+}
+
 /// Calculate total size in bytes of a file or directory recursively
 pub fn dir_size(path: &Path) -> u64 {
     if !path.exists() {

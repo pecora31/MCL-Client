@@ -182,6 +182,16 @@ fn install_local_skin(instance_id: String, username: String, skin: String) -> Re
 }
 
 #[tauri::command]
+fn backup_worlds(instance_id: String) -> Result<String, String> {
+    instance_manager::backup_worlds(&instance_id)
+}
+
+#[tauri::command]
+fn export_log(instance_id: String, contents: String) -> Result<String, String> {
+    instance_manager::export_log(&instance_id, &contents)
+}
+
+#[tauri::command]
 fn get_system_info() -> SystemInfo {
     use sysinfo::System;
     let mut sys = System::new();
@@ -424,6 +434,8 @@ pub fn run() {
             find_best_java,
             get_system_info,
             install_local_skin,
+            backup_worlds,
+            export_log,
             ping_minecraft_server,
             get_local_mods,
             get_installed_addons,

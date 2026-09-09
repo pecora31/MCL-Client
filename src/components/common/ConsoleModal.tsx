@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { X, Terminal, Copy, Trash2, Check } from 'lucide-react';
+import { X, Terminal, Copy, Trash2, Check, Download } from 'lucide-react';
 import { getTranslation, type Language } from '../../locales/i18n';
 
 interface ConsoleModalProps {
@@ -7,6 +7,7 @@ interface ConsoleModalProps {
   onClose: () => void;
   logs: string[];
   onClearLogs: () => void;
+  onExportLog?: () => void;
   language?: Language;
 }
 
@@ -15,6 +16,7 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
   onClose,
   logs,
   onClearLogs,
+  onExportLog,
   language = 'en',
 }) => {
   const t = getTranslation(language);
@@ -56,6 +58,15 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
             >
               {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
             </button>
+            {onExportLog && (
+              <button
+                onClick={onExportLog}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"
+                title="Save this log to a file"
+              >
+                <Download className="w-4 h-4" />
+              </button>
+            )}
             <button
               onClick={onClearLogs}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition"

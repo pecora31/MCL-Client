@@ -14,6 +14,9 @@ export interface GameInstance {
   serverIp?: string;
   serverPort?: number;
   customSkinPath?: string;
+  windowWidth?: number;
+  windowHeight?: number;
+  fullscreen?: boolean;
   skinModel?: 'classic' | 'slim';
   enableSkinInGame: boolean;
   customDir?: string;

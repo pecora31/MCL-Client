@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Plus, Play, Trash2, Edit3, Clock, Layers, HardDrive, FolderOpen, Search, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, ChevronDown, Check, BrushCleaning } from 'lucide-react';
+import { Plus, Play, Trash2, Edit3, Clock, Layers, HardDrive, FolderOpen, Search, X, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, ChevronDown, Check, BrushCleaning, Copy, Archive } from 'lucide-react';
 import type { GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 
@@ -9,6 +9,8 @@ interface InstanceListProps {
   onSelectInstance: (id: string) => void;
   onLaunchInstance: (id: string) => void;
   onEditInstance: (instance: GameInstance) => void;
+  onDuplicateInstance: (instance: GameInstance) => void;
+  onBackupWorlds: (instance: GameInstance) => void;
   onRequestDeleteInstance: (instance: GameInstance) => void;
   onOpenInstanceDir: (id: string) => void;
   onOpenCreateModal: () => void;
@@ -48,6 +50,8 @@ export const InstanceList: React.FC<InstanceListProps> = ({
   onSelectInstance,
   onLaunchInstance,
   onEditInstance,
+  onDuplicateInstance,
+  onBackupWorlds,
   onRequestDeleteInstance,
   onOpenInstanceDir,
   onOpenCreateModal,
@@ -446,6 +450,22 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                         className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
                         <Edit3 className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => onDuplicateInstance(inst)}
+                        title="Duplicate Profile"
+                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+
+                      <button
+                        onClick={() => onBackupWorlds(inst)}
+                        title="Back up worlds"
+                        className="p-2.5 rounded-xl text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition cursor-pointer"
+                      >
+                        <Archive className="w-4 h-4" />
                       </button>
 
                       <button
