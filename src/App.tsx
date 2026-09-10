@@ -154,6 +154,13 @@ const DEFAULT_ACCOUNT: Account = {
   active: true,
 };
 
+// Google Fonts family names for the CJK faces, fetched only when their language is in use
+const CJK_FONT_FAMILIES: Partial<Record<Language, string>> = {
+  zh: 'Noto+Sans+SC',
+  ja: 'Noto+Sans+JP',
+  ko: 'Noto+Sans+KR',
+};
+
 const DEFAULT_SETTINGS: LauncherSettings = {
   defaultMinRam: 2048,
   defaultMaxRam: 4096,
@@ -262,10 +269,19 @@ export const App: React.FC = () => {
     );
   }, [settings.enableDiscordRpc]);
 
-  // Reflected onto <html lang> so CSS can pick the right CJK font per language
-  // via :lang() — Latin text always stays on Plus Jakarta Sans.
+  // Reflected onto <html lang> so CSS can pick the right CJK font per language via :lang().
+  // Latin text uses the Plus Jakarta Sans bundled with the app; the Noto CJK faces are large,
+  // so only the one this language needs is fetched, the first time someone switches to it —
+  // and the system's own CJK fonts cover it while offline.
   useEffect(() => {
     document.documentElement.lang = language;
+    const family = CJK_FONT_FAMILIES[language];
+    if (!family || document.getElementById(`cjk-font-${language}`)) return;
+    const link = document.createElement('link');
+    link.id = `cjk-font-${language}`;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${family}:wght@400;500;600;700&display=swap`;
+    document.head.appendChild(link);
   }, [language]);
 
   // Checked once on launch, quietly — a manual check from Settings surfaces its own result,
