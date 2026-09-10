@@ -748,6 +748,7 @@ pub async fn install_local_skin(
     instance_id: &str,
     username: &str,
     skin: &str,
+    publish: bool,
 ) -> Result<SkinInstallResult, String> {
     use base64::Engine as _;
 
@@ -787,6 +788,18 @@ pub async fn install_local_skin(
 
     // Publishing is best-effort: the player still sees their own skin from the local copy
     // even when the service is unreachable, so this must never fail the launch.
+    if !publish {
+        // Sharing is off, so a copy published earlier must not keep showing to other players
+        let _ = delete_published_skin(&safe_username).await;
+        return Ok(SkinInstallResult {
+            message: format!(
+                "Skin saved for {}; sharing it with other players is turned off.",
+                safe_username
+            ),
+            published: false,
+        });
+    }
+
     Ok(match publish_skin(&safe_username, bytes).await {
         Ok(()) => SkinInstallResult {
             message: format!("Skin saved and published for {}.", safe_username),

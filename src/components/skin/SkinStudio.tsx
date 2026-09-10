@@ -5,7 +5,6 @@ import {
   Check,
   RotateCcw,
   Trash2,
-  Users,
   Rotate3d,
   Info,
   Search,
@@ -18,7 +17,6 @@ import {
 } from 'lucide-react';
 import type { Account, GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
-import { ToggleSwitch } from '../common/ToggleSwitch';
 import { STEVE_SKIN_BASE64, ALEX_SKIN_BASE64 } from './presetSkins';
 import { normalizeSkinImage } from './skinImage';
 import { invokeCommand, isTauri } from '../../services/api';
@@ -335,16 +333,6 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     return [];
   });
 
-  // Multiplayer Skin Synchronization Toggle
-  const [skinSyncEnabled, setSkinSyncEnabled] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem('mcl_skin_sync_enabled');
-      return stored !== 'false';
-    } catch {
-      return true;
-    }
-  });
-
   // Track deleted preset IDs so users can remove any default skins they don't want
   const [deletedPresetIds, setDeletedPresetIds] = useState<string[]>(() => {
     try {
@@ -600,16 +588,6 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       console.warn('Failed to save skin library:', e);
     }
   }, [customSkins]);
-
-  // Save skin sync toggle
-  const handleToggleSkinSync = (checked: boolean) => {
-    setSkinSyncEnabled(checked);
-    try {
-      localStorage.setItem('mcl_skin_sync_enabled', String(checked));
-    } catch (e) {
-      console.warn('Failed to persist skin sync setting:', e);
-    }
-  };
 
   // Helper to apply 3D animation
   const applyAnimation = async (
@@ -1125,32 +1103,8 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
           </p>
         </div>
 
-        {/* Action Controls Group: Multiplayer Skin Sync & Save Skin Button */}
+        {/* Whether the skin is shared with other players lives in Settings, since it applies to the account */}
         <div className="flex items-center gap-3 shrink-0">
-          {/* Compact Multiplayer Skin Sync Option */}
-          <div
-            className="h-11 flex items-center gap-2.5 px-3.5 rounded-2xl bg-[#161719]/90 border border-white/10 hover:border-white/20 transition-all select-none shadow-none"
-            title={t.skinSyncDesc || 'Sync custom skin in server'}
-          >
-            <div className="w-7 h-7 rounded-xl bg-indigo-500/15 border border-indigo-500/30 text-indigo-400 flex items-center justify-center shrink-0">
-              <Users className="w-4 h-4" />
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-xs font-bold text-white whitespace-nowrap font-sans leading-tight">
-                {t.skinSyncTitle || 'Multiplayer Skin Sync'}
-              </span>
-              <span className="text-[10px] text-slate-400 leading-tight">
-                {skinSyncEnabled ? (t.enabled || 'Enabled') : (t.disabled || 'Disabled')}
-              </span>
-            </div>
-            <ToggleSwitch
-              checked={skinSyncEnabled}
-              onChange={handleToggleSkinSync}
-              size="sm"
-              title={t.skinSyncTitle || 'Multiplayer Skin Sync'}
-            />
-          </div>
-
           {/* Primary Action Button */}
           <button
             onClick={handleApplySkin}

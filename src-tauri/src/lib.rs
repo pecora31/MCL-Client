@@ -184,8 +184,9 @@ async fn install_local_skin(
     instance_id: String,
     username: String,
     skin: String,
+    publish: bool,
 ) -> Result<instance_manager::SkinInstallResult, String> {
-    instance_manager::install_local_skin(&instance_id, &username, &skin).await
+    instance_manager::install_local_skin(&instance_id, &username, &skin, publish).await
 }
 
 #[tauri::command]

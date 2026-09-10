@@ -161,6 +161,7 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   customBgImage: defaultBgImage,
   bgOpacity: 0.3,
   launchBehavior: 'keep',
+  shareSkin: true,
   enableDiscordRpc: true,
   autoUpdate: false,
 };
@@ -693,15 +694,18 @@ export const App: React.FC = () => {
                 instanceId: launchData.id,
                 username: account.username,
                 skin: account.skinUrl,
+                publish: settings.shareSkin,
               }
             );
+            // Not sharing is the player's own choice; only a share that was meant to happen and
+            // didn't (usually a name someone else claimed first) is worth a warning.
+            const shareFailed = settings.shareSkin && !skinResult.published;
             setConsoleLogs((prev) => [
               ...prev,
-              `[${new Date().toLocaleTimeString()}] [MCL/${skinResult.published ? 'INFO' : 'WARN'}] ${skinResult.message}`,
+              `[${new Date().toLocaleTimeString()}] [MCL/${shareFailed ? 'WARN' : 'INFO'}] ${skinResult.message}`,
             ]);
-            // Other players won't see this skin (usually a name someone else claimed first), so
-            // open the log instead of leaving the only mention of it in a closed panel.
-            if (!skinResult.published) setIsConsoleOpen(true);
+            // Open the log instead of leaving the only mention of it in a closed panel
+            if (shareFailed) setIsConsoleOpen(true);
           } catch (skinErr: any) {
             setConsoleLogs((prev) => [
               ...prev,

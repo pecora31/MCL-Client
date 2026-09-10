@@ -255,6 +255,8 @@ export interface LauncherSettings {
   bgOpacity: number;
   bgBlur?: number;
   launchBehavior: LaunchBehavior;
+  /** Publish the equipped skin so other MCL players see it. Off keeps it local to this player. */
+  shareSkin: boolean;
   enableDiscordRpc: boolean;
   autoUpdate: boolean;
   gameDataDir?: string;

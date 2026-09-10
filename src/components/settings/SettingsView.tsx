@@ -15,6 +15,7 @@ import {
   Download,
   Play,
   LifeBuoy,
+  Share2,
 } from 'lucide-react';
 import type {
   LauncherSettings,
@@ -149,6 +150,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const [confirmingReset, setConfirmingReset] = useState(false);
+
+  const handleToggleShareSkin = () => {
+    const updated = { ...formData, shareSkin: !formData.shareSkin };
+    setFormData(updated);
+    onSaveSettings(updated);
+  };
 
   const handleToggleAutoUpdate = () => {
     const updated = { ...formData, autoUpdate: !formData.autoUpdate };
@@ -470,6 +477,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <div
                 className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
                   formData.enableDiscordRpc ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* Skin sharing */}
+        <div className="glass-panel rounded-2xl p-5 border border-white/5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <Share2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide">
+                  {t.shareSkinTitle || 'Share my skin with other players'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {t.shareSkinDesc ||
+                    'Other MCL players see your skin in game. Turn it off to keep it to yourself — the copy shared earlier is removed the next time you play.'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleToggleShareSkin}
+              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                formData.shareSkin ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                  formData.shareSkin ? 'translate-x-6' : 'translate-x-0'
                 }`}
               />
             </button>
