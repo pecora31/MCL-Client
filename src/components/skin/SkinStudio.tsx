@@ -313,6 +313,13 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
 
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // Small transient banner for actions that have no other visible feedback (e.g. unequipping)
+  const [notification, setNotification] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
+  const showNotification = (type: 'success' | 'info', text: string) => {
+    setNotification({ type, text });
+    setTimeout(() => setNotification(null), 3500);
+  };
+
   // Skin library stored in localStorage
   const [customSkins, setCustomSkins] = useState<SkinLibraryItem[]>(() => {
     try {
@@ -970,6 +977,12 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     const isPreviewDeleted = selectedSkinIdsForDelete.some(
       (id) => fullSkinLibrary.find((s) => s.id === id)?.skinUrl === previewSkinUrl
     );
+    // The equipped skin isn't only a library entry — it's also what account.skinUrl points to.
+    // Removing it from customSkins/presets alone leaves that field untouched, so the "equipped"
+    // card just reappears (fullSkinLibrary re-injects whatever activeSkinUrl still resolves to).
+    const isEquippedDeleted = selectedSkinIdsForDelete.some(
+      (id) => fullSkinLibrary.find((s) => s.id === id)?.skinUrl === activeSkinUrl
+    );
 
     const presetsToDelete = selectedSkinIdsForDelete.filter((id) =>
       DEFAULT_SKIN_PRESETS.some((p) => p.id === id)
@@ -989,6 +1002,10 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     if (isPreviewDeleted) {
       setPreviewSkinUrl(STEVE_SKIN_BASE64);
     }
+    if (isEquippedDeleted) {
+      onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
+      showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
+    }
     setSelectedSkinIdsForDelete([]);
   };
 
@@ -1000,15 +1017,22 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
   // Delete single skin from library
   const handleDeleteCustomSkin = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const target = fullSkinLibrary.find((s) => s.id === id);
     if (DEFAULT_SKIN_PRESETS.some((p) => p.id === id)) {
       setDeletedPresetIds((prev) => [...new Set([...prev, id])]);
     } else {
+      // Also covers the injected "account_active_skin" card: it isn't in customSkins at all,
+      // so this filter is a no-op for it — the actual unequip below is what makes it disappear.
       setCustomSkins((prev) => prev.filter((s) => s.id !== id));
     }
     setSelectedSkinIdsForDelete((prev) => prev.filter((item) => item !== id));
     setFavoriteSkinIds((prev) => prev.filter((favId) => favId !== id));
-    if (previewSkinUrl === fullSkinLibrary.find((s) => s.id === id)?.skinUrl) {
+    if (previewSkinUrl === target?.skinUrl) {
       setPreviewSkinUrl(STEVE_SKIN_BASE64);
+    }
+    if (target?.skinUrl === activeSkinUrl) {
+      onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
+      showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
     }
   };
 
@@ -1113,6 +1137,31 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
         </div>
       </div>
 
+      {/* Small transient feedback banner (e.g. after unequipping a deleted skin) */}
+      {notification && (
+        <div
+          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs animate-fadeIn ${
+            notification.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+              : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-[var(--accent-color)]'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            {notification.type === 'success' ? (
+              <Check className="w-4 h-4 shrink-0" />
+            ) : (
+              <Info className="w-4 h-4 shrink-0" />
+            )}
+            <span>{notification.text}</span>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            className="p-1 hover:bg-white/10 rounded-lg transition text-slate-400 hover:text-white cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Clean 3D Studio Showcase (Left) & Controls/Library (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-stretch">
@@ -1278,11 +1327,10 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Streamlined Unified Skin Management Panel */}
+        {/* Drag & drop lives on the 3D preview panel only — this side is browse/manage,
+            so a file dragged in doesn't light up two boxes at once. */}
         <div className="lg:col-span-7 flex flex-col h-[570px]">
           <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
             className="glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 bg-[#161719]/90 shadow-sm flex flex-col h-full overflow-hidden space-y-4 relative"
           >
             {/* Top Toolbar: Search Input & Filter Pills Stack */}
@@ -1500,12 +1548,8 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
               {/* Card #1: Permanent Add Skin Action Slot (Minecraft Bedrock / Roblox Game Style) */}
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className={`rounded-3xl p-3 border-[2.5px] border-dashed transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[195px] relative group select-none shrink-0 ${
-                  isDragging
-                    ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/[0.06] ring-2 ring-[var(--accent-color)]/30 scale-[1.01]'
-                    : 'border-white/15 hover:border-[var(--accent-color)]/80 bg-white/[0.02] hover:bg-[var(--accent-color)]/[0.04] hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/30'
-                }`}
-                title={t.browseSkinTooltip || 'Click to browse .PNG or drop skin file here'}
+                className="rounded-3xl p-3 border-[2.5px] border-dashed transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[195px] relative group select-none shrink-0 border-white/15 hover:border-[var(--accent-color)]/80 bg-white/[0.02] hover:bg-[var(--accent-color)]/[0.04] hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/30"
+                title={t.browseSkinTooltip || 'Click to browse for a .PNG skin file'}
               >
                 {/* Top spacer */}
                 <div className="h-4 w-full shrink-0" />
@@ -1521,7 +1565,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
                     {t.addSkinBtn || 'Add Skin'}
                   </div>
                   <div className="text-[11px] font-medium text-slate-400 group-hover:text-slate-300 transition-colors font-sans mt-1 tracking-normal">
-                    {t.dropPngSubtext || 'Drag & drop .PNG here'}
+                    {t.dropPngSubtext || 'Click to browse'}
                   </div>
                 </div>
               </div>
