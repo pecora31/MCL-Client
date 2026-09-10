@@ -5,6 +5,7 @@ import type { GameInstance, SystemInfo, JavaInstallation } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
+import { SmoothRange } from '../common/SmoothRange';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { GameWindowSelector } from './GameWindowSelector';
 import { buildJavaOptions, javaChoiceToProfile, profileToJavaChoice } from '../../services/java';
@@ -157,27 +158,15 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                 <span>Maximum RAM: {maxRam} MB</span>
                 {systemInfo && <span>({(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed)</span>}
               </div>
-              {(() => {
-                // Draggable all the way to what's actually installed rather than stopping
-                // at the recommended ceiling — going past it is allowed, just called out.
-                const sliderMax = systemInfo?.totalRamMb ?? 16384;
-                const span = Math.max(sliderMax - 2048, 512);
-                const ramPct = Math.round(((Math.min(maxRam, sliderMax) - 2048) / span) * 100);
-                return (
-                  <input
-                    type="range"
-                    min={2048}
-                    max={sliderMax}
-                    step={512}
-                    value={Math.min(maxRam, sliderMax)}
-                    style={{
-                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
-                    }}
-                    onChange={(e) => setMaxRam(Number(e.target.value))}
-                    className="w-full cursor-pointer"
-                  />
-                );
-              })()}
+              {/* Draggable all the way to what's actually installed rather than stopping at
+                  the recommended ceiling — going past it is allowed, just called out. */}
+              <SmoothRange
+                min={2048}
+                max={systemInfo?.totalRamMb ?? 16384}
+                step={512}
+                value={maxRam}
+                onChange={setMaxRam}
+              />
               {systemInfo && maxRam > systemInfo.recommendedMaxRamMb && (
                 <p className="text-[10px] text-amber-300 leading-relaxed">
                   This is more than the computer can comfortably spare — Windows and the game itself may

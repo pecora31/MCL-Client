@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ImageCropModal } from '../common/ImageCropModal';
+import { SmoothRange } from '../common/SmoothRange';
 import {
   X,
   Image as ImageIcon,
@@ -239,8 +240,6 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
     return currentBgType === 'image' && currentImageUrl === preset.url;
   };
 
-  const opacityPct = Math.round((localOpacity / 85) * 100);
-  const blurPct = Math.round((localBlur / 16) * 100);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
@@ -438,21 +437,15 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
                 </span>
                 <span className="font-mono text-xs text-[var(--accent-light)] font-bold">{localOpacity}%</span>
               </div>
-              <input
-                type="range"
+              <SmoothRange
                 min={0}
                 max={85}
                 step={1}
                 value={localOpacity}
-                style={{
-                  background: `linear-gradient(to right, var(--accent-color, #10b981) ${opacityPct}%, rgba(255,255,255,0.08) ${opacityPct}%)`,
-                }}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
+                onChange={(val) => {
                   setLocalOpacity(val);
                   onUpdateSettings({ bgOpacity: val / 100 });
                 }}
-                className="w-full cursor-pointer"
               />
               <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
                 <span>0%</span>
@@ -470,21 +463,15 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
                 </span>
                 <span className="font-mono text-xs text-[var(--accent-light)] font-bold">{localBlur}px</span>
               </div>
-              <input
-                type="range"
+              <SmoothRange
                 min={0}
                 max={16}
                 step={1}
                 value={localBlur}
-                style={{
-                  background: `linear-gradient(to right, var(--accent-color, #10b981) ${blurPct}%, rgba(255,255,255,0.08) ${blurPct}%)`,
-                }}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
+                onChange={(val) => {
                   setLocalBlur(val);
                   onUpdateSettings({ bgBlur: val });
                 }}
-                className="w-full cursor-pointer"
               />
               <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
                 <span>0px</span>

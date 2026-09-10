@@ -31,6 +31,7 @@ import { resetLauncherData } from '../../services/localData';
 import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
+import { SmoothRange } from '../common/SmoothRange';
 
 interface SettingsViewProps {
   settings: LauncherSettings;
@@ -432,29 +433,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   {formData.defaultMaxRam / 1024} GB
                 </span>
               </div>
-              {(() => {
-                const value = Math.min(formData.defaultMaxRam, ramCeilingMb);
-                const ramPct = Math.round(((value - 2048) / Math.max(ramCeilingMb - 2048, 1024)) * 100);
-                return (
-                  <input
-                    type="range"
-                    min="2048"
-                    max={ramCeilingMb}
-                    step="1024"
-                    value={value}
-                    style={{
-                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
-                    }}
-                    onChange={(e) => {
-                      const val = Number(e.target.value);
-                      const updated = { ...formData, defaultMaxRam: val };
-                      setFormData(updated);
-                      onSaveSettings(updated);
-                    }}
-                    className="w-full cursor-pointer"
-                  />
-                );
-              })()}
+              <SmoothRange
+                min={2048}
+                max={ramCeilingMb}
+                step={1024}
+                value={formData.defaultMaxRam}
+                onChange={(val) => {
+                  const updated = { ...formData, defaultMaxRam: val };
+                  setFormData(updated);
+                  onSaveSettings(updated);
+                }}
+              />
               <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
                 <span>2 GB</span>
                 <span>{ramCeilingMb / 1024} GB</span>

@@ -12,6 +12,7 @@ import {
 } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
+import { SmoothRange } from '../common/SmoothRange';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { GameWindowSelector } from './GameWindowSelector';
 import { buildJavaOptions, javaChoiceToProfile, requiredJavaMajor } from '../../services/java';
@@ -393,7 +394,6 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               // the recommended ceiling — going past it is allowed, just called out below.
               const sliderMax = systemInfo?.totalRamMb ?? 16384;
               const span = Math.max(sliderMax - 2048, 1024);
-              const ramPct = Math.round(((maxRam - 2048) / span) * 100);
               // Where "recommended" actually falls along that same range, so the label
               // below sits above the point it describes instead of a fixed middle slot.
               const recommendedPct = systemInfo
@@ -401,18 +401,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                 : 50;
               return (
                 <>
-                  <input
-                    type="range"
-                    min="2048"
-                    max={sliderMax}
-                    step="1024"
-                    value={Math.min(maxRam, sliderMax)}
-                    style={{
-                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
-                    }}
-                    onChange={(e) => setMaxRam(Number(e.target.value))}
-                    className="w-full cursor-pointer"
-                  />
+                  <SmoothRange min={2048} max={sliderMax} step={1024} value={maxRam} onChange={setMaxRam} />
                   <div className="relative h-4 text-[10px] text-slate-500 mt-1">
                     <span className="absolute left-0">2 GB</span>
                     {systemInfo && (
