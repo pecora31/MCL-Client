@@ -20,6 +20,7 @@ import type { Account, GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { STEVE_SKIN_BASE64, ALEX_SKIN_BASE64 } from './presetSkins';
+import { normalizeSkinImage } from './skinImage';
 import * as THREE from 'three';
 
 const applyShaderMaterial = (viewer: any) => {
@@ -896,7 +897,6 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     reader.onload = () => {
       if (typeof reader.result === 'string') {
         const dataUrl = reader.result;
-        setPreviewSkinUrl(dataUrl);
 
         // Auto-detect model (classic 4px vs slim 3px) by checking standard Minecraft skin transparency
         const img = new Image();
@@ -920,15 +920,20 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
           }
           setModelType(detectedModel);
 
+          // Everything downstream — the library thumbnail, the equipped skin, the file handed
+          // to the game — reads this one image, so repair it here rather than in each place.
+          const skinUrl = normalizeSkinImage(img, dataUrl);
+          setPreviewSkinUrl(skinUrl);
+
           // Add to custom skins library if not already existing
           const skinName = file.name.replace(/\.png$/i, '').slice(0, 24);
           showNotification('success', t.skinAddedToast || 'Skin added to your library.');
           setCustomSkins((prev) => {
-            if (prev.some((s) => s.skinUrl === dataUrl)) return prev;
+            if (prev.some((s) => s.skinUrl === skinUrl)) return prev;
             const newSkin: SkinLibraryItem = {
               id: `custom_${Date.now()}`,
               name: skinName || 'Custom Skin',
-              skinUrl: dataUrl,
+              skinUrl,
               model: detectedModel,
               createdAt: Date.now(),
             };
