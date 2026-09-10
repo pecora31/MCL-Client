@@ -58,8 +58,14 @@ fn execute_storage_cleanup(
     clean_versions: bool,
     clean_cache: bool,
     clean_orphaned_instances: bool,
+    clean_java_runtimes: bool,
 ) -> Result<StorageCleanupReport, String> {
-    instance_manager::execute_storage_cleanup(clean_versions, clean_cache, clean_orphaned_instances)
+    instance_manager::execute_storage_cleanup(
+        clean_versions,
+        clean_cache,
+        clean_orphaned_instances,
+        clean_java_runtimes,
+    )
 }
 
 #[tauri::command]

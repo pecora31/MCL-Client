@@ -36,6 +36,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
   const [cleanVersions, setCleanVersions] = useState(true);
   const [cleanCache, setCleanCache] = useState(true);
   const [cleanOrphans, setCleanOrphans] = useState(true);
+  const [cleanJava, setCleanJava] = useState(true);
 
   useEffect(() => {
     if (isOpen) {
@@ -65,6 +66,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
         cleanVersions,
         cleanCache,
         cleanOrphanedInstances: cleanOrphans,
+        cleanJavaRuntimes: cleanJava,
       });
       setReport(res);
       if (onCleanSuccess) {
@@ -82,15 +84,25 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
 
   if (!isOpen) return null;
 
+  const javaRuntimeBytes = scanResult
+    ? scanResult.unusedJavaRuntimes.reduce((acc, runtime) => acc + runtime.sizeBytes, 0)
+    : 0;
+  const runtimeLabel = (folder: string) =>
+    folder.startsWith('java-') && !folder.endsWith('.partial')
+      ? `Java ${folder.slice('java-'.length)}`
+      : t.javaDownloadUnfinished || 'Unfinished Java download';
+
   const totalSelectedBytes =
     (cleanVersions && scanResult ? scanResult.unusedVersions.reduce((acc, v) => acc + v.sizeBytes, 0) : 0) +
     (cleanOrphans && scanResult ? scanResult.orphanedInstancesBytes : 0) +
+    (cleanJava ? javaRuntimeBytes : 0) +
     (cleanCache && scanResult ? scanResult.tempCacheBytes : 0);
 
   const hasAnyCleanable =
     scanResult &&
     (scanResult.unusedVersions.length > 0 ||
       scanResult.orphanedInstances.length > 0 ||
+      scanResult.unusedJavaRuntimes.length > 0 ||
       scanResult.tempCacheBytes > 0);
 
   return (
@@ -243,6 +255,51 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                     <span className="text-xs font-bold text-[var(--accent-light)] shrink-0">
                       {formatBytes(scanResult.orphanedInstancesBytes)}
                     </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Java runtimes the launcher downloaded that no profile needs anymore */}
+              {scanResult && scanResult.unusedJavaRuntimes.length > 0 && (
+                <div
+                  className={`p-4 rounded-2xl border transition-all duration-150 ${
+                    cleanJava ? 'bg-white/[0.03] border-white/10' : 'bg-white/[0.01] border-white/[0.04] opacity-50'
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <label className="flex items-start gap-3 cursor-pointer select-none min-w-0 flex-1">
+                      <input
+                        type="checkbox"
+                        checked={cleanJava}
+                        onChange={(e) => setCleanJava(e.target.checked)}
+                        className="w-4 h-4 mt-0.5 rounded border-white/20 text-[var(--accent-color)] focus:ring-0 bg-black/40 cursor-pointer accent-[var(--accent-color)]"
+                      />
+                      <div className="min-w-0">
+                        <div className="text-xs font-bold text-white">
+                          <span>{t.cleanJavaRuntimesTitle || 'Unused Java runtimes'}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+                          {t.cleanJavaRuntimesDesc ||
+                            'Java versions the launcher downloaded that no profile needs anymore. If one is needed again, the launcher downloads it again.'}
+                        </p>
+                      </div>
+                    </label>
+
+                    <span className="text-xs font-bold text-[var(--accent-light)] shrink-0">
+                      {formatBytes(javaRuntimeBytes)}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 pt-3 border-t border-white/5 space-y-1.5">
+                    {scanResult.unusedJavaRuntimes.map((runtime) => (
+                      <div
+                        key={runtime.name}
+                        className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 text-slate-300 font-medium"
+                      >
+                        <span>{runtimeLabel(runtime.name)}</span>
+                        <span className="text-slate-400 font-semibold">{formatBytes(runtime.sizeBytes)}</span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}

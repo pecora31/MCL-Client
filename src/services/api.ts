@@ -965,10 +965,14 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
     case 'scan_storage_cleanup':
       return {
         unusedVersions: [{ version: '1.20.1', sizeBytes: 184320000 }],
+        unusedJavaRuntimes: [
+          { name: 'java-17', sizeBytes: 146800640 },
+          { name: 'java-21.partial', sizeBytes: 31457280 },
+        ],
         orphanedInstances: [],
         orphanedInstancesBytes: 0,
         tempCacheBytes: 52428800,
-        totalReclaimableBytes: 236748800,
+        totalReclaimableBytes: 415006720,
         storageRoot: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient',
       } as unknown as T;
 
@@ -978,6 +982,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         versionsDeleted: 1,
         cacheCleaned: true,
         orphanedInstancesDeleted: 0,
+        javaRuntimesDeleted: 2,
         message: 'Mock cleanup complete',
       } as unknown as T;
 

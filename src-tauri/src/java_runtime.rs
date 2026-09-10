@@ -6,8 +6,11 @@
 //! the Java detector scans alongside the system's own installs.
 
 use crate::instance_manager::get_launcher_dir;
+use crate::java_detector::required_java_major;
 use crate::minecraft_core::downloader::{DownloadProgressPayload, CANCEL_DOWNLOAD};
+use crate::models::GameInstance;
 use sha2::{Digest, Sha256};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
@@ -21,6 +24,42 @@ pub fn runtime_root() -> PathBuf {
 
 fn runtime_dir(major: u32) -> PathBuf {
     runtime_root().join(format!("java-{}", major))
+}
+
+/// Runtime folders no profile would run on: a version no profile pins, needs for its Minecraft,
+/// or points at by path — plus unpacks an interrupted download left half-finished. Removing one
+/// is harmless: if it is ever needed again, the launcher downloads it again.
+pub fn unused_runtime_dirs(instances: &[GameInstance]) -> Vec<PathBuf> {
+    let needed: HashSet<u32> = instances
+        .iter()
+        .flat_map(|instance| [instance.java_version, Some(required_java_major(&instance.game_version))])
+        .flatten()
+        .collect();
+    let Ok(entries) = fs::read_dir(runtime_root()) else {
+        return Vec::new();
+    };
+    entries
+        .filter_map(Result::ok)
+        .map(|entry| entry.path())
+        .filter(|dir| dir.is_dir())
+        .filter(|dir| {
+            let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            let pointed_at = instances.iter().any(|instance| {
+                instance
+                    .java_path
+                    .as_deref()
+                    .is_some_and(|path| Path::new(path).starts_with(dir))
+            });
+            is_unused_runtime(name, &needed) && !pointed_at
+        })
+        .collect()
+}
+
+fn is_unused_runtime(folder: &str, needed: &HashSet<u32>) -> bool {
+    match folder.strip_prefix("java-").and_then(|major| major.parse::<u32>().ok()) {
+        Some(major) => !needed.contains(&major),
+        None => folder.ends_with(".partial"),
+    }
 }
 
 fn adoptium_platform() -> (&'static str, &'static str) {
@@ -189,8 +228,19 @@ fn unpack_runtime(archive: &Path, target: &Path) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::unpack_runtime;
+    use super::{is_unused_runtime, unpack_runtime};
+    use std::collections::HashSet;
     use std::io::Write;
+
+    #[test]
+    fn keeps_runtimes_a_profile_needs_and_flags_the_rest() {
+        let needed: HashSet<u32> = [8, 21].into_iter().collect();
+        assert!(!is_unused_runtime("java-21", &needed));
+        assert!(!is_unused_runtime("java-8", &needed));
+        assert!(is_unused_runtime("java-25", &needed));
+        assert!(is_unused_runtime("java-21.partial", &needed), "an unfinished unpack is never used");
+        assert!(!is_unused_runtime("something-else", &needed), "folders the launcher did not make are left alone");
+    }
 
     #[test]
     fn unpacks_the_archive_folder_into_place() {

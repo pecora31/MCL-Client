@@ -104,8 +104,17 @@ pub struct VersionCleanupInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct JavaRuntimeCleanupInfo {
+    /// Folder name under runtime/, e.g. "java-21", or "java-21.partial" for an unfinished unpack.
+    pub name: String,
+    pub size_bytes: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct StorageCleanupScanResult {
     pub unused_versions: Vec<VersionCleanupInfo>,
+    pub unused_java_runtimes: Vec<JavaRuntimeCleanupInfo>,
     pub orphaned_instances: Vec<String>,
     pub orphaned_instances_bytes: u64,
     pub temp_cache_bytes: u64,
@@ -120,6 +129,7 @@ pub struct StorageCleanupReport {
     pub versions_deleted: usize,
     pub cache_cleaned: bool,
     pub orphaned_instances_deleted: usize,
+    pub java_runtimes_deleted: usize,
     pub message: String,
 }
 

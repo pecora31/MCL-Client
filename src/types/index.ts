@@ -273,8 +273,15 @@ export interface VersionCleanupInfo {
   sizeBytes: number;
 }
 
+export interface JavaRuntimeCleanupInfo {
+  /** Folder under runtime/, e.g. "java-21", or "java-21.partial" for an unfinished unpack. */
+  name: string;
+  sizeBytes: number;
+}
+
 export interface StorageCleanupScanResult {
   unusedVersions: VersionCleanupInfo[];
+  unusedJavaRuntimes: JavaRuntimeCleanupInfo[];
   orphanedInstances: string[];
   orphanedInstancesBytes: number;
   tempCacheBytes: number;
@@ -287,6 +294,7 @@ export interface StorageCleanupReport {
   versionsDeleted: number;
   cacheCleaned: boolean;
   orphanedInstancesDeleted: number;
+  javaRuntimesDeleted: number;
   message: string;
 }
 

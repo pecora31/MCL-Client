@@ -1117,10 +1117,22 @@ pub fn scan_storage_cleanup() -> StorageCleanupScanResult {
     let mut temp_cache_bytes = 0u64;
     scan_cache_files(&launcher_dir, &mut temp_cache_bytes);
 
-    let total_reclaimable_bytes = unused_versions_bytes + orphaned_instances_bytes + temp_cache_bytes;
+    let unused_java_runtimes: Vec<crate::models::JavaRuntimeCleanupInfo> =
+        crate::java_runtime::unused_runtime_dirs(&instances)
+            .into_iter()
+            .map(|dir| crate::models::JavaRuntimeCleanupInfo {
+                name: dir.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string(),
+                size_bytes: dir_size(&dir),
+            })
+            .collect();
+    let unused_java_bytes: u64 = unused_java_runtimes.iter().map(|runtime| runtime.size_bytes).sum();
+
+    let total_reclaimable_bytes =
+        unused_versions_bytes + orphaned_instances_bytes + temp_cache_bytes + unused_java_bytes;
 
     StorageCleanupScanResult {
         unused_versions,
+        unused_java_runtimes,
         orphaned_instances,
         orphaned_instances_bytes,
         temp_cache_bytes,
@@ -1134,6 +1146,7 @@ pub fn execute_storage_cleanup(
     clean_versions: bool,
     clean_cache: bool,
     clean_orphaned_instances: bool,
+    clean_java_runtimes: bool,
 ) -> Result<StorageCleanupReport, String> {
     let launcher_dir = get_launcher_dir();
     let instances = load_instances();
@@ -1188,7 +1201,19 @@ pub fn execute_storage_cleanup(
         }
     }
 
-    // 3. Clean cache
+    // 3. Java runtimes the launcher downloaded that no profile needs anymore
+    let mut java_runtimes_deleted = 0usize;
+    if clean_java_runtimes {
+        for dir in crate::java_runtime::unused_runtime_dirs(&instances) {
+            let size = dir_size(&dir);
+            if fs::remove_dir_all(&dir).is_ok() {
+                bytes_freed += size;
+                java_runtimes_deleted += 1;
+            }
+        }
+    }
+
+    // 4. Clean cache
     let mut cache_cleaned = false;
     if clean_cache {
         clean_cache_files_recursive(&launcher_dir, &mut bytes_freed);
@@ -1206,6 +1231,7 @@ pub fn execute_storage_cleanup(
         versions_deleted,
         cache_cleaned,
         orphaned_instances_deleted,
+        java_runtimes_deleted,
         message,
     })
 }
