@@ -506,6 +506,15 @@ pub async fn prepare_and_launch(
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
+    // Cancel only stopped in-flight downloads before this point — installers and asset
+    // extraction run between the last download and here without ever checking it, so a
+    // click during one of those stages would otherwise be silently ignored and the game
+    // would start anyway. This is the last moment that can still be prevented; once
+    // spawned, only killing the process (the Stop button's path) can stop it.
+    if super::downloader::CANCEL_DOWNLOAD.load(std::sync::atomic::Ordering::Relaxed) {
+        return Err("Launch cancelled.".to_string());
+    }
+
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Cannot start Java ({}): {}", console_java_bin, e))?;

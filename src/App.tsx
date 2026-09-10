@@ -742,6 +742,14 @@ export const App: React.FC = () => {
       } catch (err) {
         console.warn('Cancel download error:', err);
       }
+      try {
+        // Installers and asset extraction run between the last download and the game
+        // actually starting without ever checking the cancel flag, so by the time this
+        // runs the process may already be up — a no-op kill_game if nothing is running.
+        await invokeCommand('kill_game');
+      } catch (err) {
+        console.warn('Cancel: could not confirm the game process was stopped:', err);
+      }
     }
     setIsPreparing(false);
     setLaunchProgress({ stage: 'idle', percentage: 0, currentFile: '', downloadedBytes: 0, totalBytes: 0, speedBps: 0 });
