@@ -422,13 +422,10 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                           : 'bg-[#161616] border-[var(--accent-color)]/50 hover:border-red-500/60'
                       }`}
                     >
-                      {/* Linear Progress Bar at bottom edge */}
-                      <div
-                        className="absolute bottom-0 left-0 h-[3px] bg-[var(--accent-color)] group-hover:bg-red-400 transition-all duration-300 rounded-b-2xl"
-                        style={{ width: `${progressPercent}%` }}
-                      />
-
-                      {/* Circular Progress Ring */}
+                      {/* Circular Progress Ring — the sole progress indicator: it already
+                          carries the exact percentage, an arc that fills the same way a bar
+                          would, and the hover-to-cancel affordance, so a second bar under it
+                          would only repeat the same number in a different shape. */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center">
                         <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
                           {/* Background Ring */}
