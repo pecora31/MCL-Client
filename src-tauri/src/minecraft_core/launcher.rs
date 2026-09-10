@@ -13,6 +13,31 @@ use tauri::{AppHandle, Emitter};
 
 static CURRENT_GAME_PID: AtomicU32 = AtomicU32::new(0);
 
+/// Copies the client jar to the location a loader's own version id expects it at, if it
+/// is not already there. Returns the path to put on the classpath.
+///
+/// Split out from the launch flow so this can be tested against a temp directory rather
+/// than requiring a full instance and a real download.
+fn ensure_loader_client_jar(
+    vanilla_client_jar: &Path,
+    common_dir: &Path,
+    loader_version_id: &str,
+) -> Result<PathBuf, String> {
+    let target = common_dir
+        .join("versions")
+        .join(loader_version_id)
+        .join(format!("{}.jar", loader_version_id));
+
+    if !target.exists() {
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        fs::copy(vanilla_client_jar, &target).map_err(|e| e.to_string())?;
+    }
+
+    Ok(target)
+}
+
 pub async fn prepare_and_launch(
     app_handle: &AppHandle,
     instance: &GameInstance,
@@ -63,6 +88,9 @@ pub async fn prepare_and_launch(
         .join("versions")
         .join(&instance.game_version)
         .join(format!("{}.jar", instance.game_version));
+    // Overridden for Forge/NeoForge below, since they need the jar under their own
+    // version id rather than the plain game version.
+    let mut game_client_jar_path = client_jar_path.clone();
 
     let client_task = DownloadTask {
         url: version_details.downloads.client.url.clone(),
@@ -197,6 +225,19 @@ pub async fn prepare_and_launch(
         classpath_entries = merged;
         extra_jvm_args = installed.jvm_args;
         extra_game_args = installed.game_args;
+
+        // Modern Forge/NeoForge transform Minecraft's classes in memory rather than
+        // patching the jar on disk, but their profile's JVM args still name the client jar
+        // it expects by the loader's own version id (an "-DignoreList=...,${version_name}.jar"
+        // entry) rather than the plain game version — this is the same "inheritsFrom" jar
+        // convention the official launcher and every other third-party launcher follow.
+        // Putting the plain vanilla-named jar on the classpath instead leaves it
+        // unrecognised, so the module system sees it as a second, separately-named copy of
+        // the same classes the loader already merged into its own "minecraft" module and
+        // refuses to start (a "Modules ... export package ... to module ..." crash).
+        let forge_version_id = super::forge::version_id(&instance.loader, &instance.game_version, &loader_ver);
+        game_client_jar_path = ensure_loader_client_jar(&client_jar_path, &common_dir, &forge_version_id)
+            .map_err(|e| format!("Could not prepare the client jar for {}: {}", instance.loader, e))?;
     }
 
     // 5. Assets download (70%/72% -> 94%)
@@ -251,7 +292,7 @@ pub async fn prepare_and_launch(
     }
 
     // Add client.jar to classpath
-    classpath_entries.push(client_jar_path);
+    classpath_entries.push(game_client_jar_path);
 
     // Build Classpath String (Windows uses semicolon ';')
     let classpath_str = classpath_entries
@@ -687,6 +728,62 @@ fn explain_crash_text(haystack: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+mod loader_client_jar_tests {
+    use super::ensure_loader_client_jar;
+    use std::fs;
+
+    fn temp_dir() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("mcl-loaderjar-{}", uuid::Uuid::new_v4()));
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn copies_the_vanilla_jar_under_the_loaders_own_version_id() {
+        let common = temp_dir();
+        let vanilla = common.join("versions").join("1.20.1").join("1.20.1.jar");
+        fs::create_dir_all(vanilla.parent().unwrap()).unwrap();
+        fs::write(&vanilla, b"pretend class bytes").unwrap();
+
+        let result = ensure_loader_client_jar(&vanilla, &common, "1.20.1-forge-47.4.23").unwrap();
+
+        assert_eq!(
+            result,
+            common.join("versions").join("1.20.1-forge-47.4.23").join("1.20.1-forge-47.4.23.jar")
+        );
+        assert_eq!(fs::read(&result).unwrap(), b"pretend class bytes");
+        fs::remove_dir_all(&common).ok();
+    }
+
+    #[test]
+    fn does_not_re_copy_once_the_loader_jar_already_exists() {
+        let common = temp_dir();
+        let vanilla = common.join("versions").join("1.20.1").join("1.20.1.jar");
+        fs::create_dir_all(vanilla.parent().unwrap()).unwrap();
+        fs::write(&vanilla, b"current vanilla bytes").unwrap();
+
+        let target = common.join("versions").join("1.20.1-forge-47.4.23").join("1.20.1-forge-47.4.23.jar");
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        // Stands in for a jar Forge itself has already written there; a real one would not
+        // just be re-derivable from the plain vanilla jar the way this test fixture is.
+        fs::write(&target, b"already prepared").unwrap();
+
+        let result = ensure_loader_client_jar(&vanilla, &common, "1.20.1-forge-47.4.23").unwrap();
+
+        assert_eq!(fs::read(&result).unwrap(), b"already prepared");
+        fs::remove_dir_all(&common).ok();
+    }
+
+    #[test]
+    fn fails_clearly_when_the_vanilla_jar_is_missing() {
+        let common = temp_dir();
+        let missing = common.join("versions").join("1.20.1").join("1.20.1.jar");
+        assert!(ensure_loader_client_jar(&missing, &common, "1.20.1-forge-47.4.23").is_err());
+        fs::remove_dir_all(&common).ok();
+    }
+}
+
+#[cfg(test)]
 mod crash_diagnosis_tests {
     use super::explain_crash_text;
 
@@ -927,3 +1024,4 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
         );
     }
 }
+
