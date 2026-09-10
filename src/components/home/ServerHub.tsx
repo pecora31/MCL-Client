@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Globe, Pause, Trash2, Edit3, Save, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { GameInstance, ServerStatus, LaunchProgress, SavedServer } from '../../types';
-import { pingServer } from '../../services/api';
+import { pingServer, isTauri } from '../../services/api';
+import packageJson from '../../../package.json';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 
@@ -55,6 +56,16 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   const currentSavedServer = savedServers.find((s) => s.id === activeServerId) || savedServers[0];
 
   const [activeTab, setActiveTab] = useState<'overview' | 'server'>('overview');
+  // Read straight from the running binary's own version rather than a hardcoded string,
+  // so this label never drifts from what a release actually bumps.
+  const [appVersion, setAppVersion] = useState(packageJson.version);
+  useEffect(() => {
+    if (!isTauri()) return;
+    import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch((err) => console.warn('Could not read the app version:', err));
+  }, []);
   const overviewTabRef = React.useRef<HTMLButtonElement>(null);
   const serverTabRef = React.useRef<HTMLButtonElement>(null);
   const [tabPillStyle, setTabPillStyle] = useState<{ left: number; width: number }>({ left: 4, width: 92 });
@@ -359,9 +370,9 @@ export const ServerHub: React.FC<ServerHubProps> = ({
         <div key={activeTab} className="w-full animate-tabSlideFade">
           {activeTab === 'overview' ? (
             <div className="max-w-2xl space-y-5">
-            {/* Version Badge: strictly BETA 0.2.1 */}
+            {/* Version badge, read from the running build rather than hardcoded */}
             <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold tracking-widest shadow-sm">
-              <span>BETA 0.2.1</span>
+              <span>BETA {appVersion}</span>
             </div>
 
             {/* Headline */}
