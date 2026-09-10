@@ -19,7 +19,8 @@
         "fullscreen": false,
         "decorations": false,
         "shadow": false,
-        "dragDropEnabled": false
+        "dragDropEnabled": false,
+        "backgroundColor": "#0a0a0a"
       }
     ],
     "security": {
