@@ -481,7 +481,7 @@ pub async fn prepare_and_launch(
     cmd.arg(&main_class);
 
     // Minecraft Game Arguments
-    let uuid = uuid::Uuid::new_v4().to_string();
+    let uuid = offline_uuid(username);
     cmd.arg("--username").arg(username);
     cmd.arg("--version").arg(&instance.game_version);
     cmd.arg("--gameDir").arg(instance_dir.to_string_lossy().to_string());
@@ -698,6 +698,21 @@ pub async fn prepare_and_launch(
     });
 
     Ok(())
+}
+
+/// The UUID an offline-mode server assigns this name: MD5 of "OfflinePlayer:<name>" stamped as a
+/// version 3 UUID, exactly Java's `UUID.nameUUIDFromBytes`. Minecraft files a world's
+/// advancements and stats under the player's UUID even in singleplayer, so a UUID that changed
+/// every launch made each session start them over; this one stays the same for the same name,
+/// and matches what servers use for that player.
+pub fn offline_uuid(username: &str) -> String {
+    use md5::{Digest, Md5};
+    let digest = Md5::digest(format!("OfflinePlayer:{}", username).as_bytes());
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest);
+    bytes[6] = (bytes[6] & 0x0f) | 0x30;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
 }
 
 async fn download_java_for_launch(
@@ -1108,3 +1123,21 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
     }
 }
 
+
+#[cfg(test)]
+mod offline_uuid_tests {
+    use super::offline_uuid;
+
+    #[test]
+    fn matches_the_uuid_offline_servers_give_the_same_name() {
+        // Reference values computed the way Java's UUID.nameUUIDFromBytes does it
+        assert_eq!(offline_uuid("Notch"), "b50ad385-829d-3141-a216-7e7d7539ba7f");
+        assert_eq!(offline_uuid("Player_Hero"), "421cf60b-4a3d-3a24-bfeb-936eb76c0901");
+    }
+
+    #[test]
+    fn stays_the_same_across_launches_and_differs_between_names() {
+        assert_eq!(offline_uuid("Rong"), offline_uuid("Rong"));
+        assert_ne!(offline_uuid("Rong"), offline_uuid("rong"), "offline servers treat case as distinct");
+    }
+}
