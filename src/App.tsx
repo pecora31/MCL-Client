@@ -12,7 +12,7 @@ import { SkinStudio } from './components/skin/SkinStudio';
 import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
 import defaultBgImage from './assets/1834105-final.png';
 import { ModStore } from './components/mods/ModStore';
-import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
+import { SettingsView } from './components/settings/SettingsView';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
 import { useAppUpdate } from './hooks/useAppUpdate';
@@ -162,7 +162,6 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   defaultMinRam: 2048,
   defaultMaxRam: 4096,
   defaultJvmArgs: '-XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200',
-  uiStyle: 'riot',
   colorPalette: 'rose',
   bgType: 'image',
   customBgImage: defaultBgImage,
@@ -170,9 +169,6 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   closeOnLaunch: false,
   enableDiscordRpc: true,
   autoUpdate: false,
-  serverHost: '',
-  serverPort: 25565,
-  serverName: '',
 };
 
 export const App: React.FC = () => {
@@ -363,15 +359,6 @@ export const App: React.FC = () => {
         } catch (err) {
           console.warn('Backend instances fallback:', err);
         }
-
-        // Pre-warm Java detection in background so Settings opens instantly with zero delay
-        invokeCommand<any[]>('detect_java')
-          .then((javas) => {
-            if (javas && javas.length > 0) {
-              setPrewarmedJavaList(javas);
-            }
-          })
-          .catch(() => {});
 
         // Fetch current default game data directory
         invokeCommand<string>('get_game_data_dir')

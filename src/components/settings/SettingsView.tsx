@@ -1,9 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Settings,
-  Cpu,
   HardDrive,
-  Server,
   RefreshCw,
   Check,
   Palette,
@@ -16,17 +14,11 @@ import {
   Gamepad2,
   Download,
 } from 'lucide-react';
-import type {
-  LauncherSettings,
-  JavaInstallation,
-  ColorPalette,
-  WindowResolution,
-} from '../../types';
+import type { LauncherSettings, ColorPalette, WindowResolution } from '../../types';
 import { invokeCommand, isTauri } from '../../services/api';
 import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
-import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 
 interface SettingsViewProps {
   settings: LauncherSettings;
@@ -35,15 +27,6 @@ interface SettingsViewProps {
   onChangeLanguage: (lang: Language) => void;
   appUpdate: AppUpdateState;
 }
-
-// Module-level cache so reopening Settings renders in 0ms with zero delay
-let cachedJavaList: JavaInstallation[] = [];
-let hasInitialDetected = false;
-
-export const setPrewarmedJavaList = (list: JavaInstallation[]) => {
-  cachedJavaList = list;
-  hasInitialDetected = true;
-};
 
 export const SettingsView: React.FC<SettingsViewProps> = ({
   settings,
@@ -54,8 +37,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const t = getTranslation(language);
   const [formData, setFormData] = useState<LauncherSettings>(settings);
-  const [javaList, setJavaList] = useState<JavaInstallation[]>(cachedJavaList);
-  const [detectingJava, setDetectingJava] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
   // Read straight from the running binary's own version, same as the home screen badge,
@@ -73,46 +54,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setFormData(settings);
   }, [settings]);
 
-  useEffect(() => {
-    // Only detect on mount if cache is not yet populated
-    if (!hasInitialDetected && cachedJavaList.length === 0) {
-      handleDetectJava();
-    }
-  }, []);
-
-  const handleDetectJava = async () => {
-    setDetectingJava(true);
-    try {
-      const list = await invokeCommand<JavaInstallation[]>('detect_java');
-      const resolved = list || [];
-      cachedJavaList = resolved;
-      hasInitialDetected = true;
-      setJavaList(resolved);
-      if (!formData.defaultJavaPath && resolved.length > 0) {
-        setFormData((prev) => ({ ...prev, defaultJavaPath: resolved[0].path }));
-      }
-    } catch {
-      // fallback
-    } finally {
-      setDetectingJava(false);
-    }
-  };
-
   const handleSave = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     onSaveSettings(formData);
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };
-
-  const javaOptions = useMemo<SelectOption<string>[]>(() => {
-    return javaList.map((j) => ({
-      value: j.path,
-      label: `Java ${j.majorVersion} (${j.versionString})`,
-      badge: j.is64Bit ? '64-bit' : '32-bit',
-      description: j.path,
-    }));
-  }, [javaList]);
 
   // 1. Color Palettes
   const palettes: { id: ColorPalette; name: string; color: string; desc: string }[] = [
@@ -385,40 +332,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 5. Java Runtime */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <Cpu className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-              <div>
-                <h3 className="text-base font-bold text-white tracking-wide">{t.javaSection}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{t.javaDesc}</p>
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleDetectJava}
-              disabled={detectingJava}
-              className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs text-slate-300 flex items-center gap-1.5 transition cursor-pointer"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${detectingJava ? 'animate-spin' : ''}`} />
-              <span>{t.btnRescan}</span>
-            </button>
-          </div>
-
-          <CustomSelect
-            value={formData.defaultJavaPath || ''}
-            onChange={(val) => {
-              const updated = { ...formData, defaultJavaPath: val };
-              setFormData(updated);
-              onSaveSettings(updated);
-            }}
-            options={javaOptions}
-            placeholder={javaList.length === 0 ? 'No Java runtime detected' : 'Select Java runtime'}
-          />
-        </div>
-
         {/* 6. Memory Allocation */}
         <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
           <div className="flex items-center gap-2.5">
@@ -463,38 +376,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               <span>4 GB</span>
               <span>8 GB</span>
               <span>16 GB</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 7. Default Server Host */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <Server className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.serverSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.serverDesc}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-2">
-              <label className="block text-[11px] text-slate-400 mb-1">IP Host</label>
-              <input
-                type="text"
-                value={formData.serverHost}
-                onChange={(e) => setFormData({ ...formData, serverHost: e.target.value })}
-                className="w-full glass-input px-3.5 py-2 rounded-xl text-xs text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-[11px] text-slate-400 mb-1">Port</label>
-              <input
-                type="number"
-                value={formData.serverPort}
-                onChange={(e) => setFormData({ ...formData, serverPort: Number(e.target.value) })}
-                className="w-full glass-input px-3.5 py-2 rounded-xl text-xs text-white"
-              />
             </div>
           </div>
         </div>

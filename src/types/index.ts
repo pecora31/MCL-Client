@@ -237,20 +237,15 @@ export interface JavaInstallation {
 }
 
 export type Language = 'vi' | 'en' | 'zh' | 'ja' | 'ko' | 'de' | 'fr' | 'es';
-export type UiStyle = 'riot' | 'minimal';
 export type ColorPalette = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate';
-export type DarkDepth = 'obsidian' | 'pure_black';
 export type WindowResolution = '1280x720' | '1440x900' | '1600x900' | '1920x1080';
 
 export interface LauncherSettings {
-  defaultJavaPath?: string;
   defaultMinRam: number;
   defaultMaxRam: number;
   defaultJvmArgs: string;
-  uiStyle?: UiStyle;
   colorPalette: ColorPalette;
   windowResolution?: WindowResolution;
-  darkDepth?: DarkDepth;
   reduceMotion?: boolean;
   bgType?: 'video' | 'image' | 'solid';
   customBgImage?: string;
@@ -260,9 +255,6 @@ export interface LauncherSettings {
   closeOnLaunch: boolean;
   enableDiscordRpc: boolean;
   autoUpdate: boolean;
-  serverHost: string;
-  serverPort: number;
-  serverName: string;
   gameDataDir?: string;
   hasCompletedOnboarding?: boolean;
   curseForgeApiKey?: string;

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HardDrive, FolderOpen, Check, Cpu, Globe, ArrowRight, RefreshCw, Layers } from 'lucide-react';
 import type { JavaInstallation, LauncherSettings } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
-import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -22,7 +21,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   const [gameDataDir, setGameDataDir] = useState<string>('');
   const [javaList, setJavaList] = useState<JavaInstallation[]>([]);
-  const [selectedJavaPath, setSelectedJavaPath] = useState<string>('');
   const [detectingJava, setDetectingJava] = useState(false);
   const [isBrowsing, setIsBrowsing] = useState(false);
 
@@ -44,11 +42,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     setDetectingJava(true);
     try {
       const list = await invokeCommand<JavaInstallation[]>('detect_java');
-      const resolved = list || [];
-      setJavaList(resolved);
-      if (resolved.length > 0) {
-        setSelectedJavaPath(resolved[0].path);
-      }
+      setJavaList(list || []);
     } catch {
       // ignore fallback
     } finally {
@@ -56,14 +50,9 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
   };
 
-  const javaOptions = useMemo<SelectOption<string>[]>(() => {
-    return javaList.map((j) => ({
-      value: j.path,
-      label: `Java ${j.majorVersion} (${j.versionString})`,
-      badge: j.is64Bit ? '64-bit' : '32-bit',
-      description: j.path,
-    }));
-  }, [javaList]);
+  // Each profile picks the Java its Minecraft version needs, so this step only reports what
+  // is installed; the major versions are enough to tell whether that will work.
+  const javaMajors = [...new Set(javaList.map((j) => j.majorVersion))].sort((a, b) => b - a);
 
   const handleBrowseFolder = async () => {
     try {
@@ -92,7 +81,6 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
     onComplete({
       gameDataDir,
-      defaultJavaPath: selectedJavaPath || undefined,
       hasCompletedOnboarding: true,
     });
   };
@@ -209,17 +197,24 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <span>{currentLanguage === 'vi' ? 'Đang quét môi trường Java trên hệ thống...' : 'Scanning Java runtime on system...'}</span>
               </div>
             ) : javaList.length > 0 ? (
-              <CustomSelect
-                value={selectedJavaPath}
-                onChange={setSelectedJavaPath}
-                options={javaOptions}
-                placeholder="Select Java runtime"
-              />
+              <div className="p-3 rounded-xl bg-black/30 text-xs text-slate-300 flex flex-wrap items-center gap-2">
+                <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                {javaMajors.map((major) => (
+                  <span key={major} className="px-2 py-0.5 rounded-md bg-white/10 font-semibold text-white">
+                    Java {major}
+                  </span>
+                ))}
+                <span className="text-slate-400">
+                  {currentLanguage === 'vi'
+                    ? 'Mỗi profile tự dùng đúng bản nó cần.'
+                    : 'Each profile uses the version it needs.'}
+                </span>
+              </div>
             ) : (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
                 {currentLanguage === 'vi'
-                  ? 'Chưa phát hiện Java 17/21 trên máy. Bạn vẫn có thể bắt đầu, launcher sẽ tự động hỗ trợ khi khởi chạy.'
-                  : 'Java 17/21 not found yet. You can still proceed; the launcher can guide you when launching.'}
+                  ? 'Chưa tìm thấy Java nào trên máy. Bạn vẫn có thể bắt đầu — khi chơi, launcher sẽ báo bản Java cần cài.'
+                  : 'No Java found on this computer yet. You can still continue — when you play, the launcher will tell you which version to install.'}
               </div>
             )}
           </div>
