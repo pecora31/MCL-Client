@@ -2,12 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <!-- Painted before any stylesheet or script arrives, so the window never flashes white -->
-    <style>html, body { margin: 0; background: #0a0a0a; }</style>
+    <!-- Painted before any stylesheet or script arrives, so the window never flashes white.
+         The colour is the splash artwork's own background, so its edges disappear into it. -->
+    <style>
+      html, body { margin: 0; background: #0b0f10; }
+      #splash {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 36px;
+        background: #0b0f10;
+        transition: opacity 0.35s ease;
+      }
+      #splash img {
+        width: min(58vw, 820px);
+        height: auto;
+        animation: splash-in 0.45s ease-out both;
+      }
+      #splash .splash-bar {
+        width: min(20vw, 220px);
+        height: 3px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.07);
+        overflow: hidden;
+      }
+      #splash .splash-bar::after {
+        content: '';
+        display: block;
+        width: 38%;
+        height: 100%;
+        border-radius: inherit;
+        background: #4caf50;
+        animation: splash-slide 1.2s ease-in-out infinite;
+      }
+      #splash.splash-done { opacity: 0; pointer-events: none; }
+      @keyframes splash-in { from { opacity: 0; transform: scale(0.98); } }
+      @keyframes splash-slide { from { transform: translateX(-110%); } to { transform: translateX(270%); } }
+      @media (prefers-reduced-motion: reduce) {
+        #splash img, #splash .splash-bar::after { animation: none; }
+        #splash .splash-bar::after { width: 100%; opacity: 0.4; }
+      }
+    </style>
     <link rel="icon" type="image/png" href="/logo.png" />
     <title>MCL Client - Minecraft Launcher</title>
   </head>
   <body>
+    <div id="splash" aria-hidden="true">
+      <img src="/splash.webp" alt="" />
+      <div class="splash-bar"></div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

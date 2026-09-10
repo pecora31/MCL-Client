@@ -21,3 +21,14 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 )
+
+// The splash in index.html covers the window until React has painted its first frame. It stays
+// up for a moment at least, so a fast start doesn't flash it on and straight off again.
+const splash = document.getElementById('splash')
+if (splash) {
+  const hide = () => {
+    splash.classList.add('splash-done')
+    splash.addEventListener('transitionend', () => splash.remove(), { once: true })
+  }
+  requestAnimationFrame(() => setTimeout(hide, Math.max(0, 700 - performance.now())))
+}
