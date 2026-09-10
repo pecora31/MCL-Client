@@ -20,6 +20,8 @@ interface CreateInstanceModalProps {
   onClose: () => void;
   onCreate: (instance: Partial<GameInstance>) => void;
   defaultGameDir?: string;
+  /** The RAM a new profile starts at, from Settings. */
+  defaultMaxRam?: number;
   language?: Language;
 }
 
@@ -28,6 +30,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   onClose,
   onCreate,
   defaultGameDir,
+  defaultMaxRam = 4096,
   language = 'en',
 }) => {
   const t = getTranslation(language);
@@ -36,7 +39,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   const [loader, setLoader] = useState<ModLoader>('fabric');
   const [loaderVersion, setLoaderVersion] = useState('');
   const [minRam, setMinRam] = useState(2048);
-  const [maxRam, setMaxRam] = useState(4096);
+  const [maxRam, setMaxRam] = useState(defaultMaxRam);
   const [enableSkinInGame, setEnableSkinInGame] = useState(true);
   const [useCustomDir, setUseCustomDir] = useState(false);
   const [customDirPath, setCustomDirPath] = useState('');
@@ -60,16 +63,18 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   // Read the machine's specs so RAM cannot be set beyond what it actually has
   useEffect(() => {
     if (!isOpen) return;
+    // Each new profile starts from the Settings default rather than whatever the last one used
+    setMaxRam(defaultMaxRam);
     invokeCommand<SystemInfo>('get_system_info')
       .then((info) => {
         setSystemInfo(info);
-        setMaxRam((current) => Math.min(current, info.recommendedMaxRamMb));
+        setMaxRam(Math.min(defaultMaxRam, info.recommendedMaxRamMb));
       })
       .catch((err) => console.warn('Could not read system info:', err));
     invokeCommand<JavaInstallation[]>('detect_java')
       .then((list) => setJavaList(list || []))
       .catch((err) => console.warn('Could not detect Java:', err));
-  }, [isOpen]);
+  }, [isOpen, defaultMaxRam]);
 
   // Load Mojang versions
   useEffect(() => {

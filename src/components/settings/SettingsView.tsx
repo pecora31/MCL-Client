@@ -14,7 +14,7 @@ import {
   Gamepad2,
   Download,
 } from 'lucide-react';
-import type { LauncherSettings, ColorPalette, WindowResolution } from '../../types';
+import type { LauncherSettings, ColorPalette, WindowResolution, SystemInfo } from '../../types';
 import { invokeCommand, isTauri } from '../../services/api';
 import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
@@ -52,6 +52,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   useEffect(() => {
     setFormData(settings);
   }, [settings]);
+
+  // A default applied to every new profile should never overcommit the machine, so it tops
+  // out at what the computer can comfortably spare rather than a fixed 16 GB.
+  const [ramCeilingMb, setRamCeilingMb] = useState(16384);
+  useEffect(() => {
+    invokeCommand<SystemInfo>('get_system_info')
+      .then((info) => setRamCeilingMb(Math.max(2048, Math.floor(info.recommendedMaxRamMb / 1024) * 1024)))
+      .catch((err) => console.warn('Could not read system info:', err));
+  }, []);
 
   // Every other control saves the moment it is clicked; text fields save once typing pauses,
   // so nothing here depends on remembering a separate Save button before leaving the page.
@@ -344,14 +353,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </span>
             </div>
             {(() => {
-              const ramPct = Math.round(((formData.defaultMaxRam - 2048) / (16384 - 2048)) * 100);
+              const value = Math.min(formData.defaultMaxRam, ramCeilingMb);
+              const ramPct = Math.round(((value - 2048) / Math.max(ramCeilingMb - 2048, 1024)) * 100);
               return (
                 <input
                   type="range"
                   min="2048"
-                  max="16384"
+                  max={ramCeilingMb}
                   step="1024"
-                  value={formData.defaultMaxRam}
+                  value={value}
                   style={{
                     background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
                   }}
@@ -367,9 +377,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             })()}
             <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
               <span>2 GB</span>
-              <span>4 GB</span>
-              <span>8 GB</span>
-              <span>16 GB</span>
+              <span>{ramCeilingMb / 1024} GB</span>
             </div>
           </div>
         </div>

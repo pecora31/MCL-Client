@@ -1044,6 +1044,7 @@ export const App: React.FC = () => {
             onClose={() => setIsCreateModalOpen(false)}
             onCreate={handleCreateInstance}
             defaultGameDir={defaultGameDir}
+            defaultMaxRam={settings.defaultMaxRam}
             language={language}
           />
 
