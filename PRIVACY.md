@@ -47,7 +47,7 @@ This is the only service run by MCL itself. Its source code is public:
 
 To stop abuse, the service counts how many skins and share codes each network creates per
 day. It does not keep your IP address for this — only a salted hash of it, which cannot be
-turned back into the address and is deleted after 26 hours.
+turned back into the address and is deleted within two days.
 
 With skin sharing turned off, the launcher sends nothing to the skin service when you play,
 except once to remove a skin you shared earlier.

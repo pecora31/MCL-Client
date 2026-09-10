@@ -1055,6 +1055,13 @@ export const ModStore: React.FC<ModStoreProps> = ({
           effectiveLoader || activeInstance.loader,
           curseForgeApiKey
         );
+        if (info.rateLimited) {
+          setNotification({
+            type: 'error',
+            text: t.curseForgeBusy || 'Too many CurseForge requests from your network. Wait about a minute and try again.',
+          });
+          return;
+        }
         if (info.url) {
           downloadUrl = info.url;
           fileName = info.fileName;

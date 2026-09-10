@@ -726,6 +726,8 @@ export async function getCurseForgeDownloadInfo(
   directAllowed: boolean;
   /** CurseForge's file id, its equivalent of a version id. */
   versionId?: string;
+  /** The MCL service turned the lookup away for coming too often; retrying later works. */
+  rateLimited?: boolean;
 }> {
   const modLoaderType = getCurseForgeLoaderType(loader);
 
@@ -739,6 +741,9 @@ export async function getCurseForgeDownloadInfo(
     const request = curseForgeRequest(`/v1/mods/${modId}/files`, params.toString(), customApiKey);
     const res = await fetch(request.url, { headers: request.headers });
 
+    // Over the per-network budget: nothing is wrong with the mod, so the caller must not
+    // send the player off to the website as if its author had blocked direct downloads
+    if (res.status === 429) return { url: null, fileName: '', directAllowed: true, rateLimited: true };
     if (!res.ok) return { url: null, fileName: '', directAllowed: false };
     const data = await res.json();
     const files: any[] = data.data || [];
