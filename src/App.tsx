@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { TitleBar } from './components/layout/TitleBar';
 import { Sidebar } from './components/layout/Sidebar';
 import type { NavigationTab } from './components/layout/Sidebar';
@@ -8,11 +8,8 @@ import { CreateInstanceModal } from './components/instances/CreateInstanceModal'
 import { EditInstanceModal } from './components/instances/EditInstanceModal';
 import { DeleteProfileModal } from './components/instances/DeleteProfileModal';
 import { StorageCleanupModal } from './components/settings/StorageCleanupModal';
-import { SkinStudio } from './components/skin/SkinStudio';
 import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
 import defaultBgImage from './assets/1834105-final.webp';
-import { ModStore } from './components/mods/ModStore';
-import { SettingsView } from './components/settings/SettingsView';
 import { resetLauncherData } from './services/localData';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
@@ -27,6 +24,15 @@ import { readStoredJson, writeStoredJson } from './services/storage';
 import { listen } from '@tauri-apps/api/event';
 import type { Language } from './locales/i18n';
 import { X } from 'lucide-react';
+
+// The heaviest screens (Skin Studio carries a whole 3D engine) load when their tab is first
+// opened instead of holding up startup, and are warmed in the background once the app is up.
+const loadSkinStudio = () => import('./components/skin/SkinStudio');
+const loadModStore = () => import('./components/mods/ModStore');
+const loadSettingsView = () => import('./components/settings/SettingsView');
+const SkinStudio = lazy(() => loadSkinStudio().then((m) => ({ default: m.SkinStudio })));
+const ModStore = lazy(() => loadModStore().then((m) => ({ default: m.ModStore })));
+const SettingsView = lazy(() => loadSettingsView().then((m) => ({ default: m.SettingsView })));
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -295,6 +301,16 @@ export const App: React.FC = () => {
   useEffect(() => {
     appUpdate.checkForUpdate({ silent: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Warm the lazily loaded screens once the first screen is up, so opening them stays instant
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadSkinStudio();
+      loadModStore();
+      loadSettingsView();
+    }, 1500);
+    return () => clearTimeout(timer);
   }, []);
 
   // Auto-installs only when the launcher isn't in the middle of something: restarting itself
@@ -1033,6 +1049,7 @@ export const App: React.FC = () => {
                         />
                       )}
 
+                      <Suspense fallback={null}>
                       {currentTab === 'mods' && (
                         <ModStore
                           activeInstance={activeInstance}
@@ -1067,6 +1084,7 @@ export const App: React.FC = () => {
                           appUpdate={appUpdate}
                         />
                       )}
+                      </Suspense>
                     </div>
                   </div>
                 </div>
