@@ -19,9 +19,12 @@ export function requiredJavaMajor(gameVersion: string): number {
 }
 
 /**
- * Options for a profile's Java picker: Automatic, then every version Minecraft uses (installed
- * or downloadable), then any other install by path. Versions too old for this Minecraft are
- * shown but cannot be picked — the launcher would refuse to start the game on them anyway.
+ * Options for a profile's Java picker, ranked by how well each fits this Minecraft version:
+ * - Recommended: the exact version the game is built for — the safest choice.
+ * - May work: newer versions; the game usually runs on them, but older mod loaders can break
+ *   (Forge for 1.16, for one, needs Java 8 specifically).
+ * - Too old: shown but disabled, since the launcher refuses to start the game on them anyway.
+ * Automatic comes first and names the version it would pick right now.
  */
 export function buildJavaOptions(
   javaList: JavaInstallation[],
@@ -29,41 +32,56 @@ export function buildJavaOptions(
 ): SelectOption<string>[] {
   const required = requiredJavaMajor(gameVersion);
   const tooOld = `Too old for Minecraft ${gameVersion}, which needs Java ${required}`;
+  const installed = (major: number) => javaList.some((java) => java.majorVersion === major);
+  const availability = (major: number) =>
+    installed(major) ? 'Installed.' : 'Not installed — downloaded when you play (about 40–55 MB).';
+
+  // Mirrors find_best_java_for_version: the exact version if installed, otherwise the oldest
+  // installed one that is new enough, otherwise the exact version gets downloaded.
+  const newerInstalled = javaList
+    .map((java) => java.majorVersion)
+    .filter((major) => major > required)
+    .sort((a, b) => a - b);
+  const automatic = installed(required) ? required : newerInstalled[0] ?? required;
 
   const options: SelectOption<string>[] = [
     {
       value: '',
-      label: 'Automatic',
-      badge: 'Recommended',
-      description: `Uses Java ${required} for Minecraft ${gameVersion}`,
+      label: `Automatic (Java ${automatic})`,
+      badge: 'Default',
+      description: installed(automatic)
+        ? `Uses the installed Java ${automatic}, and keeps up if Minecraft's requirement changes`
+        : `Downloads Java ${automatic} when you play, and keeps up if Minecraft's requirement changes`,
     },
   ];
 
-  for (const major of MINECRAFT_JAVA_VERSIONS) {
-    const installed = javaList.find((java) => java.majorVersion === major);
+  const newer = MINECRAFT_JAVA_VERSIONS.filter((major) => major > required).sort((a, b) => a - b);
+  const older = MINECRAFT_JAVA_VERSIONS.filter((major) => major < required);
+  for (const major of [required, ...newer, ...older]) {
+    const isTooOld = major < required;
     options.push({
       value: VERSION_PREFIX + major,
       label: `Java ${major}`,
-      badge: installed ? 'Installed' : 'Download',
-      description:
-        major < required
-          ? tooOld
-          : installed
-          ? installed.path
-          : 'Not installed — downloaded when you play (about 40–55 MB)',
-      disabled: major < required,
+      badge: major === required ? 'Recommended' : isTooOld ? undefined : 'May work',
+      description: isTooOld
+        ? tooOld
+        : major === required
+        ? `The version Minecraft ${gameVersion} is built for. ${availability(major)}`
+        : `Newer than Minecraft ${gameVersion} needs: usually runs, but older mods can break. ${availability(major)}`,
+      disabled: isTooOld,
     });
   }
 
   // Installs outside the versions above (say Java 11 or 23) can still be picked by path
   for (const java of javaList) {
     if (MINECRAFT_JAVA_VERSIONS.includes(java.majorVersion)) continue;
+    const isTooOld = java.majorVersion < required;
     options.push({
       value: java.path,
       label: `Java ${java.majorVersion} (${java.versionString})`,
-      badge: java.is64Bit ? '64-bit' : '32-bit',
-      description: java.majorVersion < required ? tooOld : java.path,
-      disabled: java.majorVersion < required,
+      badge: isTooOld ? undefined : 'May work',
+      description: isTooOld ? tooOld : java.path,
+      disabled: isTooOld,
     });
   }
 
