@@ -462,53 +462,53 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                       <span>{t.btnPlay || t.btnLaunch || 'PLAY'}</span>
                     </button>
 
-                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                       <button
                         onClick={() => onOpenInstanceDir(inst.id)}
                         title={t.openFolderInExplorer || 'Open profile folder in File Explorer'}
-                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
-                        <FolderOpen className="w-4 h-4" />
+                        <FolderOpen className="w-3.5 h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onEditInstance(inst)}
                         title={t.editServer || 'Edit Profile'}
-                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
-                        <Edit3 className="w-4 h-4" />
+                        <Edit3 className="w-3.5 h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onDuplicateInstance(inst)}
                         title="Duplicate Profile"
-                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
-                        <Copy className="w-4 h-4" />
+                        <Copy className="w-3.5 h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onShareInstance(inst)}
                         title={t.shareTitle || 'Share this profile'}
-                        className="p-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                       >
-                        <Share2 className="w-4 h-4" />
+                        <Share2 className="w-3.5 h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onBackupWorlds(inst)}
                         title="Back up worlds"
-                        className="p-2.5 rounded-xl text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition cursor-pointer"
                       >
-                        <Archive className="w-4 h-4" />
+                        <Archive className="w-3.5 h-3.5" />
                       </button>
 
                       <button
                         onClick={() => onRequestDeleteInstance(inst)}
                         title={t.btnDeleteProfile || 'Delete Profile'}
-                        className="p-2.5 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
+                        className="p-2 rounded-xl text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </div>

@@ -344,6 +344,17 @@ input[type="range"]::-webkit-slider-thumb:active {
   box-shadow: none !important;
 }
 
+/* Every number input in the app loses its native up/down spinner — they read as a
+   leftover default rather than something this app designed on purpose. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
 /* Firefox Track */
 input[type="range"]::-moz-range-track {
   width: 100%;
@@ -427,6 +438,14 @@ input[type="range"]::-moz-range-thumb {
   transition: background-color 0.12s ease;
   box-shadow: none;
   border: none;
+  /* A plain <button> has no pointer cursor by default (unlike <a>), so anywhere this
+     class is used without also remembering the Tailwind utility silently loses it —
+     the exact gap the "Create Profile" button had. Baked in here so it can't recur. */
+  cursor: pointer;
+}
+
+.btn-primary:disabled {
+  cursor: not-allowed;
 }
 
 .btn-primary:hover {
@@ -564,10 +583,12 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .btn-riot-running:hover {
-  background-color: #dc2626 !important;
-  border-color: rgba(239, 68, 68, 0.6) !important;
+  /* A muted, slightly desaturated red instead of a neon one, and no glow — a stop
+     button should read as "click here", not draw the eye from across the screen. */
+  background-color: #7f1d1d !important;
+  border-color: rgba(127, 29, 29, 0.5) !important;
   color: #ffffff !important;
-  box-shadow: 0 0 28px rgba(220, 38, 38, 0.55) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
 }
 
 /* Completely Seamless Window Shell - No border and no shadow */

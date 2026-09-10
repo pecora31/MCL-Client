@@ -426,8 +426,8 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                           carries the exact percentage, an arc that fills the same way a bar
                           would, and the hover-to-cancel affordance, so a second bar under it
                           would only repeat the same number in a different shape. */}
-                      <div className="relative w-8 h-8 shrink-0 flex items-center justify-center">
-                        <svg className="w-8 h-8 transform -rotate-90" viewBox="0 0 36 36">
+                      <div className="relative w-11 h-11 shrink-0 flex items-center justify-center">
+                        <svg className="w-11 h-11 transform -rotate-90" viewBox="0 0 36 36">
                           {/* Background Ring */}
                           <circle
                             cx="18"
@@ -460,11 +460,11 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                         {/* Center Icon or Percentage */}
                         <div className="absolute inset-0 flex items-center justify-center">
                           {isHoveringLoadingButton ? (
-                            <Pause className="w-3.5 h-3.5 text-red-400 fill-current animate-pulse" />
+                            <Pause className="w-4 h-4 text-red-400 fill-current animate-pulse" />
                           ) : launchProgress.stage === 'error' ? (
-                            <AlertCircle className="w-4 h-4 text-red-400" />
+                            <AlertCircle className="w-5 h-5 text-red-400" />
                           ) : (
-                            <span className="text-[9px] font-mono font-bold text-[var(--accent-color)]">
+                            <span className="font-sans text-xs font-bold text-[var(--accent-color)]">
                               {progressPercent}%
                             </span>
                           )}
@@ -473,7 +473,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
                       {/* Right side: Status text + Speed */}
                       <div className="flex flex-col items-start min-w-0">
-                        <span className={`tracking-wider text-sm font-black uppercase transition-colors ${
+                        <span className={`tracking-wider text-base font-black uppercase transition-colors ${
                           isHoveringLoadingButton
                             ? 'text-red-300'
                             : launchProgress.stage === 'error'

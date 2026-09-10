@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Layers, Plus, ChevronDown, ShieldCheck, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
+import { X, Layers, Plus, ChevronDown, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
 import type { ModLoader, GameInstance, VersionItem, SystemInfo, JavaInstallation } from '../../types';
 import {
   fetchMojangVersions,
@@ -39,6 +39,9 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   const [useCustomDir, setUseCustomDir] = useState(false);
   const [customDirPath, setCustomDirPath] = useState('');
   const [isBrowsingDir, setIsBrowsingDir] = useState(false);
+  // Once the player types their own name, auto-naming from version/loader stops
+  // overwriting it — otherwise picking a loader after typing a name reset it.
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
 
   const [versionList, setVersionList] = useState<VersionItem[]>([]);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
@@ -115,12 +118,16 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   // Auto-name instance when version changes
   const handleVersionChange = (newVer: string) => {
     setGameVersion(newVer);
-    setName(`Minecraft ${newVer} ${loader !== 'vanilla' ? `(${loader.toUpperCase()})` : ''}`.trim());
+    if (!nameManuallyEdited) {
+      setName(`Minecraft ${newVer} ${loader !== 'vanilla' ? `(${loader.toUpperCase()})` : ''}`.trim());
+    }
   };
 
   const handleLoaderChange = (newLoader: ModLoader) => {
     setLoader(newLoader);
-    setName(`Minecraft ${gameVersion} ${newLoader !== 'vanilla' ? `(${newLoader.toUpperCase()})` : ''}`.trim());
+    if (!nameManuallyEdited) {
+      setName(`Minecraft ${gameVersion} ${newLoader !== 'vanilla' ? `(${newLoader.toUpperCase()})` : ''}`.trim());
+    }
   };
 
   // Mirrors required_java_major() in src-tauri/src/java_detector.rs, which is what the
@@ -145,6 +152,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
     if (isOpen) {
       setUseCustomDir(false);
       setCustomDirPath('');
+      setNameManuallyEdited(false);
     }
   }, [isOpen]);
 
@@ -222,7 +230,10 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setNameManuallyEdited(true);
+              }}
               placeholder="e.g. Friends Survival (1.21.4 Fabric)"
               required
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-amber-400"
@@ -342,47 +353,54 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
             <div className="flex items-center justify-between text-xs font-semibold mb-1">
               <span className="text-slate-300 uppercase tracking-wider">Allocated RAM:</span>
-              <span className="text-[var(--accent-color)] font-mono text-sm font-bold">{(maxRam / 1024).toFixed(1)} GB RAM</span>
+              <span className="text-[var(--accent-color)] text-sm font-bold">{(maxRam / 1024).toFixed(1)} GB RAM</span>
             </div>
             {(() => {
-              const sliderMax = systemInfo?.recommendedMaxRamMb ?? 16384;
+              // Draggable all the way to what's actually installed rather than stopping at
+              // the recommended ceiling — going past it is allowed, just called out below.
+              const sliderMax = systemInfo?.totalRamMb ?? 16384;
               const span = Math.max(sliderMax - 2048, 1024);
               const ramPct = Math.round(((maxRam - 2048) / span) * 100);
+              // Where "recommended" actually falls along that same range, so the label
+              // below sits above the point it describes instead of a fixed middle slot.
+              const recommendedPct = systemInfo
+                ? Math.min(88, Math.max(12, Math.round(((systemInfo.recommendedRamMb - 2048) / span) * 100)))
+                : 50;
               return (
-                <input
-                  type="range"
-                  min="2048"
-                  max={sliderMax}
-                  step="1024"
-                  value={Math.min(maxRam, sliderMax)}
-                  style={{
-                    background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
-                  }}
-                  onChange={(e) => setMaxRam(Number(e.target.value))}
-                  className="w-full cursor-pointer"
-                />
+                <>
+                  <input
+                    type="range"
+                    min="2048"
+                    max={sliderMax}
+                    step="1024"
+                    value={Math.min(maxRam, sliderMax)}
+                    style={{
+                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
+                    }}
+                    onChange={(e) => setMaxRam(Number(e.target.value))}
+                    className="w-full cursor-pointer"
+                  />
+                  <div className="relative h-4 text-[10px] text-slate-500 mt-1">
+                    <span className="absolute left-0">2 GB</span>
+                    {systemInfo && (
+                      <span
+                        className="absolute -translate-x-1/2 text-slate-400 whitespace-nowrap"
+                        style={{ left: `${recommendedPct}%` }}
+                      >
+                        {(systemInfo.recommendedRamMb / 1024).toFixed(0)} GB recommended
+                      </span>
+                    )}
+                    <span className="absolute right-0">
+                      {systemInfo ? `${(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed` : '16 GB'}
+                    </span>
+                  </div>
+                </>
               );
             })()}
-            <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-              <span>2 GB</span>
-              {systemInfo ? (
-                <>
-                  <span className="text-slate-400">
-                    {(systemInfo.recommendedRamMb / 1024).toFixed(0)} GB recommended
-                  </span>
-                  <span>{(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed</span>
-                </>
-              ) : (
-                <>
-                  <span>4 GB (Standard)</span>
-                  <span>8 GB (Modded)</span>
-                </>
-              )}
-            </div>
-            {systemInfo && (
-              <p className="text-[10px] text-slate-500 leading-relaxed pt-1">
-                Capped at {(systemInfo.recommendedMaxRamMb / 1024).toFixed(0)} GB so Windows and the game
-                itself keep enough memory to run.
+            {systemInfo && maxRam > systemInfo.recommendedMaxRamMb && (
+              <p className="text-[10px] text-amber-300 leading-relaxed pt-1">
+                This is more than the computer can comfortably spare — Windows and the game itself may not
+                have enough memory left to run.
               </p>
             )}
           </div>
@@ -390,21 +408,24 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           {/* Java Runtime */}
           <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
             <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Java Runtime</div>
-            <select
-              value={javaPath}
-              onChange={(e) => setJavaPath(e.target.value)}
-              className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs font-mono text-white cursor-pointer"
-            >
-              <option value="" className="bg-slate-900 font-sans">
-                Automatic — pick the right Java for this version
-              </option>
-              {javaList.map((j) => (
-                <option key={j.path} value={j.path} className="bg-slate-900 font-sans">
-                  {j.versionString}
-                  {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+            <div className="relative">
+              <select
+                value={javaPath}
+                onChange={(e) => setJavaPath(e.target.value)}
+                className="w-full appearance-none glass-input px-3.5 py-2.5 rounded-xl text-xs text-white cursor-pointer pr-8"
+              >
+                <option value="" className="bg-slate-900">
+                  Automatic — pick the right Java for this version
                 </option>
-              ))}
-            </select>
+                {javaList.map((j) => (
+                  <option key={j.path} value={j.path} className="bg-slate-900">
+                    {j.versionString}
+                    {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
             <p className="text-[10px] text-slate-500 leading-relaxed">
               {javaList.length === 0
                 ? 'No Java runtime detected on this computer yet.'
@@ -414,15 +435,12 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
           {/* In-Game Skin Feature Toggle */}
           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
-              <div>
-                <div className="text-xs font-bold text-white">In-game Team Skin Sync</div>
-                <div className="text-[11px] text-slate-400">
-                  {loader === 'vanilla'
-                    ? 'Needs a mod loader. Choose Fabric, Forge, NeoForge or Quilt to use this.'
-                    : "Installs CustomSkinLoader so friends can see each other's custom skins"}
-                </div>
+            <div>
+              <div className="text-xs font-bold text-white">In-game Team Skin Sync</div>
+              <div className="text-[11px] text-slate-400">
+                {loader === 'vanilla'
+                  ? 'Needs a mod loader. Choose Fabric, Forge, NeoForge or Quilt to use this.'
+                  : "Installs CustomSkinLoader so friends can see each other's custom skins"}
               </div>
             </div>
             <ToggleSwitch
@@ -444,7 +462,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             <div className="space-y-2">
               <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
                 !useCustomDir
-                  ? 'bg-amber-500/10 border-amber-500/30 text-white'
+                  ? 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-white'
                   : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/10'
               }`}>
                 <input
@@ -452,7 +470,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                   name="dirOption"
                   checked={!useCustomDir}
                   onChange={() => setUseCustomDir(false)}
-                  className="mt-0.5 accent-amber-400 cursor-pointer"
+                  className="mt-0.5 accent-[var(--accent-color)] cursor-pointer"
                 />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-slate-200">{t.useDefaultDir}</div>
@@ -464,7 +482,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
               <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
                 useCustomDir
-                  ? 'bg-amber-500/10 border-amber-500/30 text-white'
+                  ? 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-white'
                   : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/10'
               }`}>
                 <input
@@ -472,7 +490,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                   name="dirOption"
                   checked={useCustomDir}
                   onChange={() => setUseCustomDir(true)}
-                  className="mt-0.5 accent-amber-400 cursor-pointer"
+                  className="mt-0.5 accent-[var(--accent-color)] cursor-pointer"
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-semibold text-slate-200">{t.useCustomDir}</div>
@@ -516,14 +534,14 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition"
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loader !== 'vanilla' && !loaderVersion}
-              className="btn-primary px-6 py-2 rounded-xl text-xs font-bold font-riot flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary px-6 py-2 rounded-xl text-xs font-bold font-riot flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Create Profile</span>

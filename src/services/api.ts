@@ -941,7 +941,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
       } as unknown as T;
 
     case 'get_game_data_dir':
-      return 'C:\\Users\\Player\\AppData\\Roaming\\mclv2' as unknown as T;
+      return 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient' as unknown as T;
 
     case 'set_game_data_dir':
     case 'set_window_size':
@@ -955,7 +955,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         orphanedInstancesBytes: 0,
         tempCacheBytes: 52428800,
         totalReclaimableBytes: 236748800,
-        storageRoot: 'C:\\Users\\Player\\AppData\\Roaming\\mclv2',
+        storageRoot: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient',
       } as unknown as T;
 
     case 'execute_storage_cleanup':

@@ -1,5 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { X, Sliders, Cpu, Save, ShieldCheck, FolderOpen } from 'lucide-react';
+import { X, Sliders, Cpu, Save, FolderOpen, ChevronDown } from 'lucide-react';
+
+/** Common resolutions offered in the window-size dropdown, alongside a custom option. */
+const WINDOW_SIZE_PRESETS: { width: number; height: number; label: string }[] = [
+  { width: 1280, height: 720, label: '1280 × 720' },
+  { width: 1600, height: 900, label: '1600 × 900' },
+  { width: 1920, height: 1080, label: '1920 × 1080 (Full HD)' },
+  { width: 2560, height: 1440, label: '2560 × 1440 (2K)' },
+  { width: 3840, height: 2160, label: '3840 × 2160 (4K)' },
+];
 import type { GameInstance, SystemInfo, JavaInstallation } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
@@ -58,6 +67,35 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       .then((list) => setJavaList(list || []))
       .catch((err) => console.warn('Could not detect Java:', err));
   }, [isOpen]);
+
+  // Derives the dropdown's own value from the plain width/height/fullscreen state that
+  // actually gets saved, so switching presets never needs a separate source of truth.
+  const windowModeValue = fullscreen
+    ? 'fullscreen'
+    : !windowWidth && !windowHeight
+    ? 'default'
+    : WINDOW_SIZE_PRESETS.some((p) => String(p.width) === windowWidth && String(p.height) === windowHeight)
+    ? `${windowWidth}x${windowHeight}`
+    : 'custom';
+
+  const handleWindowModeChange = (value: string) => {
+    if (value === 'default') {
+      setFullscreen(false);
+      setWindowWidth('');
+      setWindowHeight('');
+    } else if (value === 'fullscreen') {
+      setFullscreen(true);
+    } else if (value === 'custom') {
+      setFullscreen(false);
+      if (!windowWidth) setWindowWidth('1280');
+      if (!windowHeight) setWindowHeight('720');
+    } else {
+      const [w, h] = value.split('x');
+      setFullscreen(false);
+      setWindowWidth(w);
+      setWindowHeight(h);
+    }
+  };
 
   if (!isOpen || !instance) return null;
 
@@ -128,7 +166,7 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                 <Cpu className="w-4 h-4 text-[var(--accent-color)]" />
                 <span>Memory (RAM) Allocation</span>
               </label>
-              <span className="text-xs font-mono font-bold text-[var(--accent-color)]">
+              <span className="text-xs font-bold text-[var(--accent-color)]">
                 {(maxRam / 1024).toFixed(1)} GB (Max)
               </span>
             </div>
@@ -139,7 +177,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                 {systemInfo && <span>({(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed)</span>}
               </div>
               {(() => {
-                const sliderMax = systemInfo?.recommendedMaxRamMb ?? 16384;
+                // Draggable all the way to what's actually installed rather than stopping
+                // at the recommended ceiling — going past it is allowed, just called out.
+                const sliderMax = systemInfo?.totalRamMb ?? 16384;
                 const span = Math.max(sliderMax - 2048, 512);
                 const ramPct = Math.round(((Math.min(maxRam, sliderMax) - 2048) / span) * 100);
                 return (
@@ -159,8 +199,8 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
               })()}
               {systemInfo && maxRam > systemInfo.recommendedMaxRamMb && (
                 <p className="text-[10px] text-amber-300 leading-relaxed">
-                  This profile asks for more RAM than the computer can spare. Minecraft will refuse to
-                  start until it is lowered to {(systemInfo.recommendedMaxRamMb / 1024).toFixed(0)} GB or less.
+                  This is more than the computer can comfortably spare — Windows and the game itself may
+                  not have enough memory left to run.
                 </p>
               )}
             </div>
@@ -168,23 +208,39 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <div className="text-[11px] text-slate-400">Game Window</div>
-                <label className="flex items-center gap-2 text-[11px] text-slate-400 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fullscreen}
-                    onChange={(e) => setFullscreen(e.target.checked)}
-                    className="cursor-pointer"
-                  />
-                  Fullscreen
-                </label>
+                <ToggleSwitch
+                  size="sm"
+                  checked={fullscreen}
+                  onChange={setFullscreen}
+                  title="Fullscreen"
+                />
               </div>
-              {!fullscreen && (
+
+              <div className="relative">
+                <select
+                  value={windowModeValue}
+                  onChange={(e) => handleWindowModeChange(e.target.value)}
+                  className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs text-white cursor-pointer pr-8 focus:outline-none focus:border-amber-400"
+                >
+                  <option value="default" className="bg-slate-900">Let Minecraft decide (default)</option>
+                  <option value="fullscreen" className="bg-slate-900">Fullscreen</option>
+                  {WINDOW_SIZE_PRESETS.map((p) => (
+                    <option key={p.label} value={`${p.width}x${p.height}`} className="bg-slate-900">
+                      {p.label}
+                    </option>
+                  ))}
+                  <option value="custom" className="bg-slate-900">Custom size…</option>
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+
+              {windowModeValue === 'custom' && (
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     value={windowWidth}
                     onChange={(e) => setWindowWidth(e.target.value)}
-                    placeholder="Width (e.g. 1280)"
+                    placeholder="Width"
                     className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
                   />
                   <span className="text-slate-500 text-xs">×</span>
@@ -192,31 +248,33 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
                     type="number"
                     value={windowHeight}
                     onChange={(e) => setWindowHeight(e.target.value)}
-                    placeholder="Height (e.g. 720)"
+                    placeholder="Height"
                     className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
                   />
                 </div>
               )}
-              <p className="text-[10px] text-slate-500">Leave empty to let Minecraft decide.</p>
             </div>
 
             <div className="space-y-2">
               <div className="text-[11px] text-slate-400">Java Runtime</div>
-              <select
-                value={javaPath}
-                onChange={(e) => setJavaPath(e.target.value)}
-                className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs font-mono text-white cursor-pointer"
-              >
-                <option value="" className="bg-slate-900 font-sans">
-                  Automatic — pick the right Java for this version
-                </option>
-                {javaList.map((j) => (
-                  <option key={j.path} value={j.path} className="bg-slate-900 font-sans">
-                    {j.versionString}
-                    {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+              <div className="relative">
+                <select
+                  value={javaPath}
+                  onChange={(e) => setJavaPath(e.target.value)}
+                  className="w-full appearance-none glass-input px-3.5 py-2.5 rounded-xl text-xs text-white cursor-pointer pr-8"
+                >
+                  <option value="" className="bg-slate-900">
+                    Automatic — pick the right Java for this version
                   </option>
-                ))}
-              </select>
+                  {javaList.map((j) => (
+                    <option key={j.path} value={j.path} className="bg-slate-900">
+                      {j.versionString}
+                      {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
           </div>
 
@@ -236,12 +294,9 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
 
           {/* Skin Synchronization Toggle */}
           <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <div>
-                <span className="text-xs font-semibold text-slate-200 block">In-Game Team Skin Support</span>
-                <span className="text-[11px] text-slate-400">Automatically sync custom player skins in-game</span>
-              </div>
+            <div>
+              <span className="text-xs font-semibold text-slate-200 block">In-Game Team Skin Support</span>
+              <span className="text-[11px] text-slate-400">Automatically sync custom player skins in-game</span>
             </div>
             <ToggleSwitch
               size="md"

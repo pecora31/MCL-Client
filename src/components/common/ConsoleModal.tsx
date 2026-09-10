@@ -44,10 +44,7 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#0d1017]">
           <div className="flex items-center gap-2">
             <Terminal className="w-4 h-4 text-amber-400" />
-            <h3 className="text-sm font-mono font-bold text-white">Minecraft Game Console Logs</h3>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-              Live Stream
-            </span>
+            <h3 className="text-sm font-bold text-white">{t.consoleTitle || 'Console Logs'}</h3>
           </div>
 
           <div className="flex items-center gap-2">
