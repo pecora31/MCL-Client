@@ -883,7 +883,14 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
 
   // Process skin file (from drag & drop or file dialog)
   const processSkinFile = (file: File) => {
-    if (!file || !file.type.includes('png')) return;
+    // A file dragged in from Explorer doesn't always come with a populated MIME type in the
+    // webview, so a PNG can arrive with file.type === '' — fall back to the extension instead
+    // of silently dropping it (which looked like "drag-and-drop doesn't do anything").
+    const looksLikePng = file?.type === 'image/png' || /\.png$/i.test(file?.name || '');
+    if (!file || !looksLikePng) {
+      showNotification('info', t.skinNotPngToast || 'Please choose a .PNG skin image.');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -915,6 +922,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
 
           // Add to custom skins library if not already existing
           const skinName = file.name.replace(/\.png$/i, '').slice(0, 24);
+          showNotification('success', t.skinAddedToast || 'Skin added to your library.');
           setCustomSkins((prev) => {
             if (prev.some((s) => s.skinUrl === dataUrl)) return prev;
             const newSkin: SkinLibraryItem = {
