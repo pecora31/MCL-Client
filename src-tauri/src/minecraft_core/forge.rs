@@ -67,7 +67,11 @@ struct ProfileArguments {
 /// profile is detected without running the installer again.
 pub fn version_id(loader: &str, game_version: &str, loader_version: &str) -> String {
     match loader {
-        "neoforge" => format!("neoforge-{}", loader_version),
+        // 1.20.1 NeoForge ran through the classic Forge installer it forked from, which
+        // writes the profile under Forge's own naming; only later versions use NeoForge's
+        // own "neoforge-<version>" scheme. Verified against a real installer run: it
+        // produced "1.20.1-forge-47.1.106", not "neoforge-47.1.106".
+        "neoforge" if game_version != "1.20.1" => format!("neoforge-{}", loader_version),
         _ => format!("{}-forge-{}", game_version, loader_version),
     }
 }
@@ -356,6 +360,13 @@ mod tests {
             installer_url("neoforge", "1.21.1", "21.1.250"),
             "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.250/neoforge-21.1.250-installer.jar"
         );
+    }
+
+    #[test]
+    fn neoforge_1_20_1_produces_the_id_the_real_installer_writes() {
+        // Confirmed against a real installer run for this exact version: it wrote
+        // "versions/1.20.1-forge-47.1.106/", not "versions/neoforge-47.1.106/".
+        assert_eq!(version_id("neoforge", "1.20.1", "47.1.106"), "1.20.1-forge-47.1.106");
     }
 
     #[test]
