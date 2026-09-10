@@ -25,6 +25,7 @@ export const TAURI_COMMANDS = [
   'save_instances',
   'delete_instance',
   'open_instance_dir',
+  'open_external_url',
   'get_game_data_dir',
   'set_game_data_dir',
   'select_folder',

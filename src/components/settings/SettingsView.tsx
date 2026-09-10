@@ -15,6 +15,7 @@ import {
   Download,
   Play,
   LifeBuoy,
+  ShieldCheck,
   Share2,
   ChevronDown,
   Coffee,
@@ -32,6 +33,8 @@ import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
 import { SmoothRange } from '../common/SmoothRange';
+
+const PRIVACY_URL = 'https://github.com/pecora31/MCL-Client/blob/main/PRIVACY.md';
 
 interface SettingsViewProps {
   settings: LauncherSettings;
@@ -701,6 +704,35 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   placeholder={t.curseForgePlaceholder}
                   className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--accent-color)]"
                 />
+              </div>
+
+              {/* Privacy */}
+              <div className="glass-panel rounded-2xl p-5 border border-white/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                    <div>
+                      <h3 className="text-base font-bold text-white tracking-wide">{t.privacyTitle || 'Privacy'}</h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {t.privacyDesc ||
+                          'No accounts, no analytics, no ads. See every place the launcher connects to and what it sends.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      isTauri()
+                        ? invokeCommand('open_external_url', { url: PRIVACY_URL }).catch((err) =>
+                            console.warn('Could not open the privacy page:', err)
+                          )
+                        : window.open(PRIVACY_URL, '_blank')
+                    }
+                    className="py-2.5 px-4 rounded-xl text-xs font-bold border border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 transition cursor-pointer shrink-0"
+                  >
+                    {t.privacyBtn || 'Read the details'}
+                  </button>
+                </div>
               </div>
 
               {/* Troubleshooting */}

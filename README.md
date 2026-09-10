@@ -17,11 +17,16 @@ A custom Minecraft launcher built with **Tauri 2 (Rust) + React 19 + TypeScript*
 
 **Requirements**
 - Windows 10 / 11 (64-bit)
-- Java 21 LTS recommended ([download here](https://adoptium.net/))
+- Nothing else — the launcher downloads the Java version each game needs on its own
 
 **Install**
 
 Download the latest `.msi` or `.exe` from the [Releases](https://github.com/pecora31/MCL-Client/releases) page and run it. No additional setup required.
+
+**Privacy and safety**
+
+No accounts, no analytics, no ads. See [PRIVACY.md](PRIVACY.md) for every connection the
+launcher makes and what it sends.
 
 ## For Developers & Modders
 

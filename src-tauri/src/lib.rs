@@ -147,6 +147,35 @@ fn select_file(
     )))
 }
 
+/// Opens a web page in the default browser. Only https links, so a crafted value can't be
+/// used to start a local program or open a file.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    if !url.starts_with("https://") {
+        return Err("only https links can be opened".into());
+    }
+
+    #[cfg(target_os = "windows")]
+    std::process::Command::new("explorer")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "macos")]
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    #[cfg(target_os = "linux")]
+    std::process::Command::new("xdg-open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
 #[tauri::command]
 fn open_instance_dir(instance_id: String) -> Result<(), String> {
     let dir = if instance_id.is_empty() {
@@ -512,6 +541,7 @@ pub fn run() {
             save_instances,
             delete_instance,
             open_instance_dir,
+            open_external_url,
             get_game_data_dir,
             set_game_data_dir,
             select_folder,
