@@ -310,34 +310,6 @@ fn parse_version_from_folder_name(folder: &str) -> (u32, String) {
     (21, format!("Java ({})", folder))
 }
 
-pub fn find_system_javaw() -> String {
-    let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let oracle_javapath = PathBuf::from(&program_files)
-        .join("Common Files")
-        .join("Oracle")
-        .join("Java")
-        .join("javapath")
-        .join("javaw.exe");
-
-    if oracle_javapath.exists() {
-        return oracle_javapath.to_string_lossy().to_string();
-    }
-
-    if let Ok(output) = Command::new("where.exe").arg("javaw").output() {
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if let Some(first_line) = stdout.lines().next() {
-                let p = first_line.trim();
-                if !p.is_empty() && Path::new(p).exists() {
-                    return p.to_string();
-                }
-            }
-        }
-    }
-
-    "javaw.exe".to_string()
-}
-
 #[cfg(test)]
 mod folder_name_heuristic_tests {
     use super::parse_version_from_folder_name;

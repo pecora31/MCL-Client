@@ -3,7 +3,6 @@ mod discord_rpc;
 mod game_stats;
 mod instance_manager;
 mod java_detector;
-mod launcher_engine;
 mod minecraft_core;
 mod modpack_installer;
 mod mod_conflicts;
