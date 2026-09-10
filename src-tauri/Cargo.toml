@@ -42,3 +42,11 @@ tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
 toml = "1.0.7"
 
+# Release builds are what players install: link-time optimization across crates and a single
+# codegen unit trade a slower build for a smaller, faster binary, and stripping drops the
+# debug symbols no player needs.
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
