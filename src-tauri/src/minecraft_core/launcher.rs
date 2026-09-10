@@ -13,6 +13,12 @@ use tauri::{AppHandle, Emitter};
 
 static CURRENT_GAME_PID: AtomicU32 = AtomicU32::new(0);
 
+/// The one Forge/NeoForge main class, of the several this launcher has met, that resolves
+/// a Java module layer and needs the client jar renamed to the loader's own version id to
+/// be recognised — see the long comment at its call site for the other three and why they
+/// need nothing extra.
+const BOOTSTRAPLAUNCHER_MAIN_CLASS: &str = "cpw.mods.bootstraplauncher.BootstrapLauncher";
+
 /// Copies the client jar to the location a loader's own version id expects it at, if it
 /// is not already there. Returns the path to put on the classpath.
 ///
@@ -226,18 +232,32 @@ pub async fn prepare_and_launch(
         extra_jvm_args = installed.jvm_args;
         extra_game_args = installed.game_args;
 
-        // Modern Forge/NeoForge transform Minecraft's classes in memory rather than
-        // patching the jar on disk, but their profile's JVM args still name the client jar
-        // it expects by the loader's own version id (an "-DignoreList=...,${version_name}.jar"
-        // entry) rather than the plain game version — this is the same "inheritsFrom" jar
-        // convention the official launcher and every other third-party launcher follow.
-        // Putting the plain vanilla-named jar on the classpath instead leaves it
-        // unrecognised, so the module system sees it as a second, separately-named copy of
-        // the same classes the loader already merged into its own "minecraft" module and
-        // refuses to start (a "Modules ... export package ... to module ..." crash).
-        let forge_version_id = super::forge::version_id(&instance.loader, &instance.game_version, &loader_ver);
-        game_client_jar_path = ensure_loader_client_jar(&client_jar_path, &common_dir, &forge_version_id)
-            .map_err(|e| format!("Could not prepare the client jar for {}: {}", instance.loader, e))?;
+        // Forge and NeoForge have used at least four different mechanisms for getting a
+        // patched client onto the classpath, each verified against a real installer run
+        // rather than assumed to be uniform:
+        //   - cpw.mods.modlauncher.Launcher (Forge up to ~1.16.5): a flat classpath with no
+        //     module system, so it does not care what the client jar is named.
+        //   - cpw.mods.bootstraplauncher.BootstrapLauncher (~1.17-1.20.x): builds a Java
+        //     module layer, and its own "-DignoreList=...,${version_name}.jar" JVM arg
+        //     names the client jar it expects by the loader's own version id rather than
+        //     the plain game version — the same "inheritsFrom" jar convention the official
+        //     launcher follows. The plain vanilla-named jar goes unrecognised, so the module
+        //     system sees a second, separately-named copy of classes the loader already
+        //     merged into its own "minecraft" module and refuses to start.
+        //   - net.minecraftforge.bootstrap.ForgeBootstrap (modern Forge): the profile's own
+        //     `libraries` already includes a complete, statically-patched client as a
+        //     regular library, so nothing extra is needed here.
+        //   - net.neoforged.fml.startup.Client (modern NeoForge): derives its own patched
+        //     client's path internally from the `--fml.mcVersion`/`--fml.neoForgeVersion`
+        //     game args already passed through, again needing nothing extra here.
+        // Only the BootstrapLauncher case needs intervention; doing this unconditionally
+        // for the other three would put an extra, unpatched copy of the client on the
+        // classpath that nothing asked for.
+        if main_class == BOOTSTRAPLAUNCHER_MAIN_CLASS {
+            let forge_version_id = super::forge::version_id(&instance.loader, &instance.game_version, &loader_ver);
+            game_client_jar_path = ensure_loader_client_jar(&client_jar_path, &common_dir, &forge_version_id)
+                .map_err(|e| format!("Could not prepare the client jar for {}: {}", instance.loader, e))?;
+        }
     }
 
     // 5. Assets download (70%/72% -> 94%)
