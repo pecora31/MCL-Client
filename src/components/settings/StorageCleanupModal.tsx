@@ -130,7 +130,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
         <div className="px-6 py-4 overflow-y-auto space-y-4 custom-scrollbar flex-1 min-h-[320px]">
           {/* Storage Root Information */}
           {scanResult && (
-            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs text-slate-400 font-mono truncate">
+            <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-xs text-slate-400 font-medium truncate">
               <Folder className="w-4 h-4 text-[var(--accent-color)] shrink-0" />
               <span className="truncate">{scanResult.storageRoot}</span>
             </div>
@@ -184,7 +184,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                       <div className="text-xs font-bold text-white flex items-center gap-2">
                         <span>{t.cleanUnusedVersionsTitle}</span>
                         {scanResult && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-mono font-bold">
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-semibold">
                             {scanResult.unusedVersions.length} {t.versionsUnit || 'versions'}
                           </span>
                         )}
@@ -193,7 +193,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                     </div>
                   </label>
 
-                  <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
+                  <span className="text-xs font-bold text-[var(--accent-light)] shrink-0">
                     {formatBytes(scanResult ? scanResult.unusedVersions.reduce((acc, v) => acc + v.sizeBytes, 0) : 0)}
                   </span>
                 </div>
@@ -204,10 +204,10 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                     {scanResult.unusedVersions.map((v) => (
                       <div
                         key={v.version}
-                        className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 text-slate-300 font-mono"
+                        className="flex items-center justify-between text-[11px] px-2.5 py-1.5 rounded-lg bg-black/40 border border-white/5 text-slate-300 font-medium"
                       >
                         <span>Minecraft {v.version}</span>
-                        <span className="text-slate-400">{formatBytes(v.sizeBytes)}</span>
+                        <span className="text-slate-400 font-semibold">{formatBytes(v.sizeBytes)}</span>
                       </div>
                     ))}
                   </div>
@@ -232,7 +232,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-white flex items-center gap-2">
                           <span>{t.cleanOrphanedInstancesTitle}</span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-mono font-bold">
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-semibold">
                             {scanResult.orphanedInstances.length} {t.foldersUnit || 'folders'}
                           </span>
                         </div>
@@ -240,7 +240,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                       </div>
                     </label>
 
-                    <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
+                    <span className="text-xs font-bold text-[var(--accent-light)] shrink-0">
                       {formatBytes(scanResult.orphanedInstancesBytes)}
                     </span>
                   </div>
@@ -270,7 +270,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
                     </div>
                   </label>
 
-                  <span className="text-xs font-mono font-bold text-[var(--accent-light)] shrink-0">
+                  <span className="text-xs font-bold text-[var(--accent-light)] shrink-0">
                     {formatBytes(scanResult ? scanResult.tempCacheBytes : 0)}
                   </span>
                 </div>
@@ -283,7 +283,7 @@ export const StorageCleanupModal: React.FC<StorageCleanupModalProps> = ({
         <div className="px-6 py-4 border-t border-white/[0.04] flex items-center justify-between gap-4">
           <div className="text-xs text-slate-400 flex items-center gap-2">
             <span>{t.reclaimableEstimate || 'Estimated reclaimable space:'}</span>
-            <span className="font-mono font-bold text-[var(--accent-light)] text-sm">{formatBytes(totalSelectedBytes)}</span>
+            <span className="font-bold text-[var(--accent-light)] text-sm">{formatBytes(totalSelectedBytes)}</span>
           </div>
 
           <div className="flex items-center gap-2.5">

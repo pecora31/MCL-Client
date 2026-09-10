@@ -371,7 +371,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
           {activeTab === 'overview' ? (
             <div className="max-w-2xl space-y-5">
             {/* Version badge, read from the running build rather than hardcoded */}
-            <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-mono font-bold tracking-widest shadow-sm">
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-300 text-xs font-bold tracking-wider shadow-sm">
               <span>BETA {appVersion}</span>
             </div>
 
@@ -489,7 +489,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                             : (t.loadingState || 'LOADING')}
                         </span>
                         {!isHoveringLoadingButton && launchProgress.speedBps > 0 && (
-                          <span className="text-[10px] font-mono text-slate-400 truncate max-w-[130px]">
+                          <span className="text-[10px] font-medium text-slate-400 truncate max-w-[130px]">
                             {(launchProgress.speedBps / 1024 / 1024).toFixed(1)} MB/s
                           </span>
                         )}
@@ -531,7 +531,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       <span className="font-bold text-white text-sm tracking-wide leading-tight truncate">
                         {selectedInstance?.name || 'No Profiles'}
                       </span>
-                      <span className="text-amber-400 text-xs font-semibold leading-tight font-mono truncate mt-0.5">
+                      <span className="text-amber-400 text-xs font-semibold leading-tight truncate mt-0.5">
                         {selectedInstance
                           ? `${selectedInstance.loader ? selectedInstance.loader.toUpperCase() : 'VANILLA'} ${selectedInstance.gameVersion}`
                           : 'Click to create'}
@@ -574,7 +574,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                             }`}
                           >
                             <span className="truncate font-semibold">{inst.name}</span>
-                            <span className="text-[11px] text-slate-400 font-mono shrink-0 ml-2">
+                            <span className="text-[11px] text-slate-400 font-medium shrink-0 ml-2">
                               {inst.loader.toUpperCase()} {inst.gameVersion}
                             </span>
                           </button>
@@ -675,7 +675,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                     <span className="text-white/20 text-xs">•</span>
 
                     <div
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold tracking-tight border ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-tight border ${
                         (serverStatus.pingMs ?? 999) < 80
                           ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                           : (serverStatus.pingMs ?? 999) < 150
@@ -968,7 +968,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                                       </span>
                                     </span>
                                     <span className="w-px h-3 bg-white/15" />
-                                    <span className={`flex items-center gap-1.5 text-xs font-mono font-bold ${
+                                    <span className={`flex items-center gap-1.5 text-xs font-bold ${
                                       pingMs === undefined ? 'text-slate-500'
                                         : pingMs < 80 ? 'text-emerald-400'
                                         : pingMs < 150 ? 'text-amber-400'

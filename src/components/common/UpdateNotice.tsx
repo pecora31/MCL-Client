@@ -101,7 +101,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
             )}
           </div>
           <div className="min-w-0">
-            <div className="text-xs font-bold text-white font-riot tracking-wide truncate">
+            <div className="text-xs font-bold text-white tracking-wide truncate">
               {phase === 'installed'
                 ? t.updateInstalled || 'Update installed'
                 : `${t.updateAvailable || 'Update available'} · v${update.version}`}
@@ -141,7 +141,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
       {(phase === 'available' || phase === 'failed') && (
         <button
           onClick={handleInstall}
-          className="btn-primary w-full py-2 rounded-xl text-xs font-bold font-riot cursor-pointer"
+          className="btn-primary w-full py-2 rounded-xl text-xs font-bold cursor-pointer"
         >
           {phase === 'failed' ? t.updateRetry || 'Try again' : t.updateInstall || 'Install now'}
         </button>

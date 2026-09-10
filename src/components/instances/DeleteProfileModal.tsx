@@ -79,7 +79,7 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
               </div>
               <div className="min-w-0">
                 <h4 className="text-sm font-bold text-white truncate">{instance.name}</h4>
-                <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-mono">
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 font-medium">
                   <span>MC {instance.gameVersion}</span>
                   <span>•</span>
                   <span className="uppercase text-amber-400 font-semibold">{instance.loader}</span>
@@ -88,7 +88,7 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
             </div>
 
             <div className="text-right shrink-0">
-              <span className="text-[11px] px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-mono">
+              <span className="text-[11px] px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-medium">
                 {instance.maxRam / 1024} GB RAM
               </span>
             </div>

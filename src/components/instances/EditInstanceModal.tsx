@@ -1,18 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Sliders, Cpu, Save, FolderOpen, ChevronDown } from 'lucide-react';
 
-/** Common resolutions offered in the window-size dropdown, alongside a custom option. */
-const WINDOW_SIZE_PRESETS: { width: number; height: number; label: string }[] = [
-  { width: 1280, height: 720, label: '1280 × 720' },
-  { width: 1600, height: 900, label: '1600 × 900' },
-  { width: 1920, height: 1080, label: '1920 × 1080 (Full HD)' },
-  { width: 2560, height: 1440, label: '2560 × 1440 (2K)' },
-  { width: 3840, height: 2160, label: '3840 × 2160 (4K)' },
-];
 import type { GameInstance, SystemInfo, JavaInstallation } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
+import { CustomSelect, type SelectOption } from '../common/CustomSelect';
+import { GameWindowSelector } from './GameWindowSelector';
 
 interface EditInstanceModalProps {
   isOpen: boolean;
@@ -68,39 +62,31 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       .catch((err) => console.warn('Could not detect Java:', err));
   }, [isOpen]);
 
-  // Derives the dropdown's own value from the plain width/height/fullscreen state that
-  // actually gets saved, so switching presets never needs a separate source of truth.
-  const windowModeValue = fullscreen
-    ? 'fullscreen'
-    : !windowWidth && !windowHeight
-    ? 'default'
-    : WINDOW_SIZE_PRESETS.some((p) => String(p.width) === windowWidth && String(p.height) === windowHeight)
-    ? `${windowWidth}x${windowHeight}`
-    : 'custom';
-
-  const handleWindowModeChange = (value: string) => {
-    if (value === 'default') {
-      setFullscreen(false);
-      setWindowWidth('');
-      setWindowHeight('');
-    } else if (value === 'fullscreen') {
-      setFullscreen(true);
-    } else if (value === 'custom') {
-      setFullscreen(false);
-      if (!windowWidth) setWindowWidth('1280');
-      if (!windowHeight) setWindowHeight('720');
-    } else {
-      const [w, h] = value.split('x');
-      setFullscreen(false);
-      setWindowWidth(w);
-      setWindowHeight(h);
-    }
-  };
+  const javaOptions = useMemo<SelectOption<string>[]>(() => {
+    const defaultOpt: SelectOption<string> = {
+      value: '',
+      label: 'Automatic',
+      badge: 'Recommended',
+      description: 'Pick the right Java for this version',
+    };
+    const listOpts = javaList.map((j) => ({
+      value: j.path,
+      label: `Java ${j.majorVersion} (${j.versionString})`,
+      badge: j.is64Bit ? '64-bit' : '32-bit',
+      description: j.path,
+    }));
+    return [defaultOpt, ...listOpts];
+  }, [javaList]);
 
   if (!isOpen || !instance) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    let finalW = Number(windowWidth) || undefined;
+    let finalH = Number(windowHeight) || undefined;
+    if (finalW && finalW < 640) finalW = 640;
+    if (finalH && finalH < 480) finalH = 480;
+
     onSave({
       ...instance,
       name: name.trim() || instance.name,
@@ -108,8 +94,8 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       maxRam,
       jvmArgs: jvmArgs.trim() || undefined,
       javaPath: javaPath || undefined,
-      windowWidth: Number(windowWidth) || undefined,
-      windowHeight: Number(windowHeight) || undefined,
+      windowWidth: finalW,
+      windowHeight: finalH,
       fullscreen: fullscreen || undefined,
       enableSkinInGame,
     });
@@ -143,7 +129,7 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
         </div>
 
         {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Profile Name */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -205,76 +191,22 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
               )}
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] text-slate-400">Game Window</div>
-                <ToggleSwitch
-                  size="sm"
-                  checked={fullscreen}
-                  onChange={setFullscreen}
-                  title="Fullscreen"
-                />
-              </div>
-
-              <div className="relative">
-                <select
-                  value={windowModeValue}
-                  onChange={(e) => handleWindowModeChange(e.target.value)}
-                  className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs text-white cursor-pointer pr-8 focus:outline-none focus:border-amber-400"
-                >
-                  <option value="default" className="bg-slate-900">Let Minecraft decide (default)</option>
-                  <option value="fullscreen" className="bg-slate-900">Fullscreen</option>
-                  {WINDOW_SIZE_PRESETS.map((p) => (
-                    <option key={p.label} value={`${p.width}x${p.height}`} className="bg-slate-900">
-                      {p.label}
-                    </option>
-                  ))}
-                  <option value="custom" className="bg-slate-900">Custom size…</option>
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
-
-              {windowModeValue === 'custom' && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    value={windowWidth}
-                    onChange={(e) => setWindowWidth(e.target.value)}
-                    placeholder="Width"
-                    className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
-                  />
-                  <span className="text-slate-500 text-xs">×</span>
-                  <input
-                    type="number"
-                    value={windowHeight}
-                    onChange={(e) => setWindowHeight(e.target.value)}
-                    placeholder="Height"
-                    className="flex-1 glass-input px-3 py-2 rounded-xl text-xs text-white"
-                  />
-                </div>
-              )}
-            </div>
+            <GameWindowSelector
+              fullscreen={fullscreen}
+              setFullscreen={setFullscreen}
+              windowWidth={windowWidth}
+              setWindowWidth={setWindowWidth}
+              windowHeight={windowHeight}
+              setWindowHeight={setWindowHeight}
+            />
 
             <div className="space-y-2">
               <div className="text-[11px] text-slate-400">Java Runtime</div>
-              <div className="relative">
-                <select
-                  value={javaPath}
-                  onChange={(e) => setJavaPath(e.target.value)}
-                  className="w-full appearance-none glass-input px-3.5 py-2.5 rounded-xl text-xs text-white cursor-pointer pr-8"
-                >
-                  <option value="" className="bg-slate-900">
-                    Automatic — pick the right Java for this version
-                  </option>
-                  {javaList.map((j) => (
-                    <option key={j.path} value={j.path} className="bg-slate-900">
-                      {j.versionString}
-                      {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <CustomSelect
+                value={javaPath}
+                onChange={setJavaPath}
+                options={javaOptions}
+              />
             </div>
           </div>
 

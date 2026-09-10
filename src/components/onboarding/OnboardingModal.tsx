@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { HardDrive, FolderOpen, Check, Cpu, Globe, ArrowRight, RefreshCw, Layers } from 'lucide-react';
 import type { JavaInstallation, LauncherSettings } from '../../types';
 import { invokeCommand } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
+import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -55,6 +56,15 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
     }
   };
 
+  const javaOptions = useMemo<SelectOption<string>[]>(() => {
+    return javaList.map((j) => ({
+      value: j.path,
+      label: `Java ${j.majorVersion} (${j.versionString})`,
+      badge: j.is64Bit ? '64-bit' : '32-bit',
+      description: j.path,
+    }));
+  }, [javaList]);
+
   const handleBrowseFolder = async () => {
     try {
       setIsBrowsing(true);
@@ -91,14 +101,17 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-lg animate-fadeIn">
-      <div className="glass-panel w-full max-w-2xl rounded-3xl border border-amber-500/20 shadow-2xl overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]">
+      <div
+        className="glass-panel w-full max-w-2xl rounded-3xl border border-amber-500/20 shadow-2xl overflow-hidden animate-scaleUp flex flex-col max-h-[90vh]"
+        style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
+      >
         {/* Header */}
         <div className="p-7 border-b border-white/5 bg-amber-500/[0.02] flex items-center gap-4">
           <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0 shadow-lg">
             <Layers className="w-7 h-7" />
           </div>
           <div>
-            <h2 className="text-2xl font-black font-riot text-white tracking-wide">{t.onboardingTitle}</h2>
+            <h2 className="text-2xl font-black text-white tracking-wide">{t.onboardingTitle}</h2>
             <p className="text-xs text-slate-400 mt-1 leading-relaxed">{t.onboardingSub}</p>
           </div>
         </div>
@@ -153,7 +166,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             <p className="text-[11px] text-slate-400 leading-relaxed">{t.onboardingDirDesc}</p>
 
             <div className="flex items-center gap-2">
-              <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs font-mono text-slate-200 truncate">
+              <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-black/40 border border-white/10 text-xs font-medium text-slate-200 truncate">
                 {gameDataDir || (currentLanguage === 'vi' ? 'Đang tải đường dẫn mặc định...' : 'Loading default path...')}
               </div>
 
@@ -196,17 +209,12 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
                 <span>{currentLanguage === 'vi' ? 'Đang quét môi trường Java trên hệ thống...' : 'Scanning Java runtime on system...'}</span>
               </div>
             ) : javaList.length > 0 ? (
-              <select
+              <CustomSelect
                 value={selectedJavaPath}
-                onChange={(e) => setSelectedJavaPath(e.target.value)}
-                className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs font-mono text-white cursor-pointer"
-              >
-                {javaList.map((j) => (
-                  <option key={j.path} value={j.path} className="bg-slate-900 text-white font-sans">
-                    {j.versionString} - {j.path}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedJavaPath}
+                options={javaOptions}
+                placeholder="Select Java runtime"
+              />
             ) : (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
                 {currentLanguage === 'vi'
@@ -222,7 +230,7 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
           <button
             type="button"
             onClick={handleFinish}
-            className="btn-primary py-3 px-8 rounded-2xl font-riot font-bold text-sm flex items-center gap-2 shadow-xl cursor-pointer tracking-wider"
+            className="btn-primary py-3 px-8 rounded-2xl font-bold text-sm flex items-center gap-2 shadow-xl cursor-pointer tracking-wider"
           >
             <span>{t.btnGetStarted}</span>
             <ArrowRight className="w-4 h-4" />

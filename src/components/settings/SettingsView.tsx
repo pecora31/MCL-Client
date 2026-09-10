@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Settings,
   Cpu,
@@ -24,6 +24,7 @@ import type {
 import { invokeCommand, isTauri } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
+import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 
 interface SettingsViewProps {
   settings: LauncherSettings;
@@ -89,6 +90,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSavedSuccess(true);
     setTimeout(() => setSavedSuccess(false), 2000);
   };
+
+  const javaOptions = useMemo<SelectOption<string>[]>(() => {
+    return javaList.map((j) => ({
+      value: j.path,
+      label: `Java ${j.majorVersion} (${j.versionString})`,
+      badge: j.is64Bit ? '64-bit' : '32-bit',
+      description: j.path,
+    }));
+  }, [javaList]);
 
   // 1. Color Palettes
   const palettes: { id: ColorPalette; name: string; color: string; desc: string }[] = [
@@ -377,21 +387,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             </button>
           </div>
 
-          <select
+          <CustomSelect
             value={formData.defaultJavaPath || ''}
-            onChange={(e) => {
-              const updated = { ...formData, defaultJavaPath: e.target.value };
+            onChange={(val) => {
+              const updated = { ...formData, defaultJavaPath: val };
               setFormData(updated);
               onSaveSettings(updated);
             }}
-            className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs text-white cursor-pointer"
-          >
-            {javaList.map((j) => (
-              <option key={j.path} value={j.path} className="bg-slate-900 text-white font-sans">
-                {j.versionString} - {j.path}
-              </option>
-            ))}
-          </select>
+            options={javaOptions}
+            placeholder={javaList.length === 0 ? 'No Java runtime detected' : 'Select Java runtime'}
+          />
         </div>
 
         {/* 6. Memory Allocation */}

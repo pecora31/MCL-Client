@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { X, Layers, Plus, ChevronDown, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
 import type { ModLoader, GameInstance, VersionItem, SystemInfo, JavaInstallation } from '../../types';
 import {
@@ -12,6 +12,8 @@ import {
 } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
+import { CustomSelect, type SelectOption } from '../common/CustomSelect';
+import { GameWindowSelector } from './GameWindowSelector';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
@@ -42,6 +44,10 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   // Once the player types their own name, auto-naming from version/loader stops
   // overwriting it — otherwise picking a loader after typing a name reset it.
   const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+
+  const [windowWidth, setWindowWidth] = useState('');
+  const [windowHeight, setWindowHeight] = useState('');
+  const [fullscreen, setFullscreen] = useState(false);
 
   const [versionList, setVersionList] = useState<VersionItem[]>([]);
   const [loaderVersions, setLoaderVersions] = useState<string[]>([]);
@@ -153,6 +159,9 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
       setUseCustomDir(false);
       setCustomDirPath('');
       setNameManuallyEdited(false);
+      setWindowWidth('');
+      setWindowHeight('');
+      setFullscreen(false);
     }
   }, [isOpen]);
 
@@ -177,6 +186,11 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (loader !== 'vanilla' && !loaderVersion) return;
+    let finalW = Number(windowWidth) || undefined;
+    let finalH = Number(windowHeight) || undefined;
+    if (finalW && finalW < 640) finalW = 640;
+    if (finalH && finalH < 480) finalH = 480;
+
     onCreate({
       name: name.trim() || `Minecraft ${gameVersion}`,
       gameVersion,
@@ -185,6 +199,9 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
       minRam,
       maxRam,
       javaPath: javaPath || undefined,
+      windowWidth: finalW,
+      windowHeight: finalH,
+      fullscreen: fullscreen || undefined,
       enableSkinInGame,
       icon: loader === 'fabric' ? 'fabric' : loader === 'forge' ? 'forge' : 'grass',
       customDir: useCustomDir && customDirPath.trim() ? customDirPath.trim() : undefined,
@@ -192,9 +209,64 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
     onClose();
   };
 
-  if (!isOpen) return null;
+  const filteredVersions = useMemo(
+    () => versionList.filter((v) => showSnapshots || v.type === 'release'),
+    [versionList, showSnapshots]
+  );
 
-  const filteredVersions = versionList.filter((v) => showSnapshots || v.type === 'release');
+  const versionOptions = useMemo<SelectOption<string>[]>(() => {
+    if (filteredVersions.length > 0) {
+      return filteredVersions.map((v) => ({
+        value: v.id,
+        label: `Minecraft ${v.id}`,
+        badge: v.type === 'release' ? 'Release' : v.type,
+      }));
+    }
+    return [
+      { value: '1.21.4', label: 'Minecraft 1.21.4', badge: 'Release' },
+      { value: '1.21.1', label: 'Minecraft 1.21.1', badge: 'Release' },
+      { value: '1.20.1', label: 'Minecraft 1.20.1', badge: 'Release' },
+      { value: '1.19.4', label: 'Minecraft 1.19.4', badge: 'Release' },
+      { value: '1.16.5', label: 'Minecraft 1.16.5', badge: 'Release' },
+    ];
+  }, [filteredVersions]);
+
+  const loaderVersionOptions = useMemo<SelectOption<string>[]>(() => {
+    if (loaderVersions.length === 0) {
+      return [
+        {
+          value: '',
+          label: isLoadingLoaders
+            ? 'Loading versions...'
+            : `No ${loader.toUpperCase()} build for ${gameVersion}`,
+          disabled: true,
+        },
+      ];
+    }
+    return loaderVersions.map((ver, idx) => ({
+      value: ver,
+      label: ver,
+      badge: idx === 0 ? 'Latest' : undefined,
+    }));
+  }, [loaderVersions, isLoadingLoaders, loader, gameVersion]);
+
+  const javaOptions = useMemo<SelectOption<string>[]>(() => {
+    const defaultOpt: SelectOption<string> = {
+      value: '',
+      label: 'Automatic',
+      badge: 'Recommended',
+      description: `Pick the right Java for this version (Auto selects ${getRecommendedJava()})`,
+    };
+    const listOpts = javaList.map((j) => ({
+      value: j.path,
+      label: `Java ${j.majorVersion} (${j.versionString})`,
+      badge: j.is64Bit ? '64-bit' : '32-bit',
+      description: j.path,
+    }));
+    return [defaultOpt, ...listOpts];
+  }, [javaList, gameVersion]);
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
@@ -221,7 +293,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
+        <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Instance Name */}
           <div>
             <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -260,30 +332,13 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               </div>
             </div>
 
-            <div className="relative">
-              <select
-                value={gameVersion}
-                onChange={(e) => handleVersionChange(e.target.value)}
-                className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm font-medium text-white cursor-pointer pr-8 focus:outline-none focus:border-amber-400"
-              >
-                {filteredVersions.length > 0 ? (
-                  filteredVersions.map((v) => (
-                    <option key={v.id} value={v.id} className="bg-slate-900 text-white">
-                      Minecraft {v.id} {v.type === 'release' ? '(Release)' : `(${v.type})`}
-                    </option>
-                  ))
-                ) : (
-                  <>
-                    <option value="1.21.4" className="bg-slate-900">Minecraft 1.21.4 (Release)</option>
-                    <option value="1.21.1" className="bg-slate-900">Minecraft 1.21.1 (Release)</option>
-                    <option value="1.20.1" className="bg-slate-900">Minecraft 1.20.1 (Release)</option>
-                    <option value="1.19.4" className="bg-slate-900">Minecraft 1.19.4 (Release)</option>
-                    <option value="1.16.5" className="bg-slate-900">Minecraft 1.16.5 (Release)</option>
-                  </>
-                )}
-              </select>
-              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            <CustomSelect
+              value={gameVersion}
+              onChange={handleVersionChange}
+              options={versionOptions}
+              searchable
+              searchPlaceholder="Search Minecraft version..."
+            />
           </div>
 
           {/* Mod Loader Selector */}
@@ -327,25 +382,19 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                 {loader.toUpperCase()} Loader Version
               </label>
-              <select
+              <CustomSelect
                 value={loaderVersion}
-                onChange={(e) => setLoaderVersion(e.target.value)}
+                onChange={setLoaderVersion}
+                options={loaderVersionOptions}
                 disabled={loaderVersions.length === 0}
-                className="w-full appearance-none px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs text-white cursor-pointer focus:outline-none focus:border-amber-400 disabled:cursor-not-allowed disabled:text-slate-500"
-              >
-                {loaderVersions.length === 0 && (
-                  <option value="" className="bg-slate-900 text-white">
-                    {isLoadingLoaders
-                      ? 'Loading versions...'
-                      : `No ${loader.toUpperCase()} build for ${gameVersion}`}
-                  </option>
-                )}
-                {loaderVersions.map((ver) => (
-                  <option key={ver} value={ver} className="bg-slate-900 text-white">
-                    {ver}
-                  </option>
-                ))}
-              </select>
+                placeholder={
+                  isLoadingLoaders
+                    ? 'Loading versions...'
+                    : loaderVersions.length === 0
+                    ? `No ${loader.toUpperCase()} build for ${gameVersion}`
+                    : `Select ${loader.toUpperCase()} version`
+                }
+              />
             </div>
           )}
 
@@ -405,27 +454,24 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             )}
           </div>
 
+          {/* Game Window Resolution */}
+          <GameWindowSelector
+            fullscreen={fullscreen}
+            setFullscreen={setFullscreen}
+            windowWidth={windowWidth}
+            setWindowWidth={setWindowWidth}
+            windowHeight={windowHeight}
+            setWindowHeight={setWindowHeight}
+          />
+
           {/* Java Runtime */}
           <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
             <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Java Runtime</div>
-            <div className="relative">
-              <select
-                value={javaPath}
-                onChange={(e) => setJavaPath(e.target.value)}
-                className="w-full appearance-none glass-input px-3.5 py-2.5 rounded-xl text-xs text-white cursor-pointer pr-8"
-              >
-                <option value="" className="bg-slate-900">
-                  Automatic — pick the right Java for this version
-                </option>
-                {javaList.map((j) => (
-                  <option key={j.path} value={j.path} className="bg-slate-900">
-                    {j.versionString}
-                    {j.is64Bit ? '' : ' (32-bit)'} — {j.path}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            </div>
+            <CustomSelect
+              value={javaPath}
+              onChange={setJavaPath}
+              options={javaOptions}
+            />
             <p className="text-[10px] text-slate-500 leading-relaxed">
               {javaList.length === 0
                 ? 'No Java runtime detected on this computer yet.'
@@ -474,7 +520,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                 />
                 <div className="min-w-0 flex-1">
                   <div className="text-xs font-semibold text-slate-200">{t.useDefaultDir}</div>
-                  <div className="text-[11px] font-mono text-slate-400 truncate mt-0.5">
+                  <div className="text-[11px] font-medium text-slate-400 truncate mt-0.5">
                     {defaultGameDir ? `${defaultGameDir}\\instances\\...` : '%APPDATA%\\MCL Client\\instances\\...'}
                   </div>
                 </div>
@@ -505,7 +551,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                         value={customDirPath}
                         onChange={(e) => setCustomDirPath(e.target.value)}
                         placeholder="D:\Games\Minecraft\MyPack"
-                        className="flex-1 px-3 py-2 rounded-xl bg-[#141414] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-amber-400"
+                        className="flex-1 px-3 py-2 rounded-xl bg-[#141414] border border-white/10 text-xs font-medium text-white focus:outline-none focus:border-amber-400"
                       />
                       <button
                         type="button"
@@ -524,9 +570,9 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           </div>
 
           {/* Java Recommendation */}
-          <div className="flex items-center gap-2 text-[11px] text-slate-400 px-1">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
-            <span>Assigned runtime: <strong className="text-slate-200">{getRecommendedJava()}</strong></span>
+          <div className="flex items-center gap-2 text-xs text-slate-400 px-1">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="font-medium">Assigned runtime: <strong className="font-bold text-slate-200">{getRecommendedJava()}</strong></span>
           </div>
 
           {/* Footer Buttons */}

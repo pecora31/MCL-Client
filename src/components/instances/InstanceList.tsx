@@ -204,7 +204,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
               {t.defaultDirLabel}
             </div>
             <div
-              className="text-xs font-mono text-amber-300/90 truncate max-w-xl mt-0.5"
+              className="text-xs font-medium text-amber-300/90 truncate max-w-xl mt-0.5"
               title={defaultGameDir || ''}
             >
               {defaultGameDir || '%APPDATA%\\MCL Client'}
@@ -419,7 +419,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                     <div className="flex items-center gap-2 text-xs text-slate-300 tracking-wide whitespace-nowrap overflow-hidden h-5 w-full">
                       <span className="font-semibold text-white shrink-0">Minecraft {inst.gameVersion}</span>
                       <span className="text-slate-500 shrink-0">•</span>
-                      <span className="capitalize text-amber-400 font-bold font-mono truncate">
+                      <span className="capitalize text-amber-400 font-bold truncate">
                         {inst.loader === 'vanilla' ? 'Vanilla' : `${inst.loader.toUpperCase()} ${inst.loaderVersion || ''}`}
                       </span>
                     </div>
@@ -429,7 +429,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                   <div className="space-y-1.5 my-auto min-w-0 w-full overflow-hidden">
                     {inst.customDir && (
                       <div
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.02] border border-amber-500/20 text-[11px] font-mono text-amber-300/80 truncate w-full"
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.02] border border-amber-500/20 text-[11px] font-medium text-amber-300/80 truncate w-full"
                         title={inst.customDir}
                       >
                         <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
