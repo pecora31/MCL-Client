@@ -124,18 +124,21 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   };
 
   // Mirrors required_java_major() in src-tauri/src/java_detector.rs, which is what the
-  // launcher actually enforces. Versions outside the 1.x scheme are modern releases.
+  // launcher actually enforces — keep the two in step. Minecraft moved from "1.X.Y" to a
+  // "<year>.<drop>" scheme starting with 26.1, which also bumped the bundled JDK to 25.
   const getRecommendedJava = () => {
     const parts = gameVersion.split('.').map(Number);
     const major = parts[0] || 0;
     const minor = parts[1] || 0;
     const patch = parts[2] || 0;
 
-    if (major !== 1) return 'Java 21 LTS';
-    if (minor < 17) return 'Java 8';
-    if (minor < 20) return 'Java 17 LTS';
-    if (minor === 20 && patch <= 4) return 'Java 17 LTS';
-    return 'Java 21 LTS';
+    if (major === 1) {
+      if (minor < 17) return 'Java 8';
+      if (minor < 20) return 'Java 17 LTS';
+      if (minor === 20 && patch <= 4) return 'Java 17 LTS';
+      return 'Java 21 LTS'; // 1.20.5-1.21.11, the last releases under the old scheme
+    }
+    return 'Java 25 LTS'; // 26.1+, verified against the real 26.1 and 26.2 releases
   };
 
   useEffect(() => {

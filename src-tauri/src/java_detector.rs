@@ -4,9 +4,22 @@ use std::process::Command;
 use walkdir::WalkDir;
 
 /// Determines the minimum required Java major version for a given Minecraft version.
-/// - MC < 1.17   → Java 8
-/// - MC 1.17–1.20.4 → Java 17
-/// - MC >= 1.20.5 → Java 21
+///
+/// Minecraft moved away from "1.X.Y" numbering after 1.21.11 (25 Mar 2026): "26.1" was the
+/// first release under the new "<year>.<drop>" scheme, and it also bumped the bundled JDK
+/// to 25 — the same kind of jump 1.17 and 1.20.5 made before it, just easy to miss because
+/// the version string itself changed shape at the same moment. A version comparison that
+/// assumed every future version still starts with "1." would have quietly kept returning
+/// 21 for 26.1 and let it run on a Java version the game itself refuses.
+///
+/// - MC < 1.17          → Java 8
+/// - MC 1.17–1.20.4     → Java 17
+/// - MC 1.20.5–1.21.11  → Java 21
+/// - MC 26.1+ (new scheme) → Java 25, verified against the real 26.1 and 26.2 releases
+///
+/// The new scheme has no machine-readable "required Java" feed to check against, so this
+/// will need revisiting by hand whenever Mojang next bumps the bundled JDK — same as the
+/// last two times, just without "1." to eyeball as a version-scheme flag anymore.
 pub fn required_java_major(game_version: &str) -> u32 {
     // Parse the numeric components: "1.20.4" → [1, 20, 4]
     let parts: Vec<u32> = game_version
@@ -15,13 +28,12 @@ pub fn required_java_major(game_version: &str) -> u32 {
         .collect();
 
     let (major, minor, patch) = match parts.len() {
-        0 => return 21, // unknown → assume latest
+        0 => return 25, // unparseable → assume the newest known requirement
         1 => (parts[0], 0u32, 0u32),
         2 => (parts[0], parts[1], 0u32),
         _ => (parts[0], parts[1], parts[2]),
     };
 
-    // Minecraft versions use 1.X.Y scheme
     if major == 1 {
         if minor < 17 {
             return 8;
@@ -32,10 +44,12 @@ pub fn required_java_major(game_version: &str) -> u32 {
         if minor == 20 && patch <= 4 {
             return 17;
         }
-        return 21; // 1.20.5+, 1.21+, etc.
+        return 21; // 1.20.5-1.21.11, the last releases under the old scheme
     }
 
-    21 // Future major versions
+    // The new "<year>.<drop>" scheme starts at 26.1, so anything reaching here is 26 or
+    // later by construction — every release under it so far has needed Java 25.
+    25
 }
 
 /// Finds the best matching Java executable from the detected list for a given Minecraft version.
@@ -265,6 +279,18 @@ fn parse_version_from_folder_name(folder: &str) -> (u32, String) {
     let lower = folder.to_lowercase();
     // Check specific versions in descending order to avoid false positives
     // e.g. "jdk-21" should match 21, not be caught by "1" check
+    if lower.contains("25") {
+        return (25, format!("Java 25 LTS ({})", folder));
+    }
+    if lower.contains("24") {
+        return (24, format!("Java 24 ({})", folder));
+    }
+    if lower.contains("23") {
+        return (23, format!("Java 23 ({})", folder));
+    }
+    if lower.contains("22") {
+        return (22, format!("Java 22 ({})", folder));
+    }
     if lower.contains("21") {
         return (21, format!("Java 21 LTS ({})", folder));
     }
@@ -310,4 +336,58 @@ pub fn find_system_javaw() -> String {
     }
 
     "javaw.exe".to_string()
+}
+
+#[cfg(test)]
+mod folder_name_heuristic_tests {
+    use super::parse_version_from_folder_name;
+
+    #[test]
+    fn recognises_every_major_version_this_launcher_cares_about() {
+        assert_eq!(parse_version_from_folder_name("jdk-25").0, 25);
+        assert_eq!(parse_version_from_folder_name("jdk-21.0.11").0, 21);
+        assert_eq!(parse_version_from_folder_name("jdk-17").0, 17);
+        assert_eq!(parse_version_from_folder_name("jre-1.8").0, 8);
+        assert_eq!(parse_version_from_folder_name("jdk8u392").0, 8);
+    }
+
+    #[test]
+    fn does_not_let_a_25_folder_collapse_into_21() {
+        // The exact bug this guards: "25" contains no "21" substring, but before the
+        // explicit checks below 21 were added, nothing matched it and it fell through to
+        // the generic 21 default anyway.
+        assert_ne!(parse_version_from_folder_name("jdk-25.0.1").0, 21);
+    }
+}
+
+#[cfg(test)]
+mod required_java_tests {
+    use super::required_java_major;
+
+    #[test]
+    fn old_scheme_thresholds() {
+        assert_eq!(required_java_major("1.12.2"), 8);
+        assert_eq!(required_java_major("1.16.5"), 8);
+        assert_eq!(required_java_major("1.17.1"), 17);
+        assert_eq!(required_java_major("1.19.4"), 17);
+        assert_eq!(required_java_major("1.20.4"), 17);
+        assert_eq!(required_java_major("1.20.5"), 21);
+        assert_eq!(required_java_major("1.21.1"), 21);
+        assert_eq!(required_java_major("1.21.11"), 21);
+    }
+
+    #[test]
+    fn new_year_based_scheme_needs_java_25() {
+        // Verified against the real 26.1 and 26.2 releases, which bundle Java 25.
+        assert_eq!(required_java_major("26.1"), 25);
+        assert_eq!(required_java_major("26.2"), 25);
+        // A hotfix patch version under the new scheme, e.g. "26.1.1"
+        assert_eq!(required_java_major("26.1.1"), 25);
+    }
+
+    #[test]
+    fn falls_back_to_the_newest_known_requirement_when_unparseable() {
+        assert_eq!(required_java_major(""), 25);
+        assert_eq!(required_java_major("not-a-version"), 25);
+    }
 }
