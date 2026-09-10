@@ -16,6 +16,7 @@ import {
   Play,
   LifeBuoy,
   Share2,
+  ChevronDown,
 } from 'lucide-react';
 import type {
   LauncherSettings,
@@ -150,6 +151,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const [confirmingReset, setConfirmingReset] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   const handleToggleShareSkin = () => {
     const updated = { ...formData, shareSkin: !formData.shareSkin };
@@ -194,490 +196,518 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Centered Content Wrapper: All settings component boxes centered on the page */}
-      <div className="max-w-3xl mx-auto w-full space-y-6 pb-12">
+      <div className="max-w-3xl mx-auto w-full space-y-8 pb-12">
 
-        {/* 1. Interface & Theme: Palette Selector */}
-        <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <Palette className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.uiSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.colorPalette}</p>
-            </div>
-          </div>
+        <section className="space-y-4">
+          <h2 className="px-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t.settingsGroupAppearance || 'Appearance'}</h2>
 
-          {/* 6 Core Theme Colors Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
-            {palettes.map((p) => {
-              const isSelected = (formData.colorPalette || 'amber') === p.id;
-              return (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => handleSelectPalette(p.id)}
-                  className={`p-3 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold -translate-y-0.5'
-                      : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <span
-                      className="w-6 h-6 rounded-full border border-white/20 shrink-0"
-                      style={{
-                        background: p.color,
-                      }}
-                    />
-                    <div className="min-w-0">
-                      <div className={`text-xs truncate ${isSelected ? 'text-white font-bold' : 'text-slate-200 font-semibold'}`}>
-                        {p.name}
-                      </div>
-                      <div className="text-[10px] text-slate-400 truncate mt-0.5">{p.desc}</div>
-                    </div>
-                  </div>
-
-                  {isSelected && (
-                    <div className="w-5 h-5 rounded-full bg-[var(--accent-color)]/20 border border-[var(--accent-color)] flex items-center justify-center shrink-0">
-                      <Check className="w-3 h-3 text-[var(--accent-color)]" strokeWidth={3} />
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 2. Window Size / Resolution */}
-        <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <Monitor className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.windowSizeSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.windowSizeDesc}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
-            {resolutions.map((res) => {
-              const isSelected = (formData.windowResolution || '1600x900') === res.id;
-              return (
-                <button
-                  key={res.id}
-                  type="button"
-                  onClick={() => handleSelectResolution(res.id)}
-                  className={`p-3.5 rounded-xl border-2 text-left flex flex-col justify-between gap-2 transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold shadow-lg shadow-black/40 -translate-y-0.5'
-                      : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-1">
-                    <span
-                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
-                        isSelected
-                          ? 'bg-[var(--accent-color)]/20 border-[var(--accent-color)] text-[var(--accent-color)]'
-                          : 'bg-white/5 border-white/10 text-slate-400'
-                      }`}
-                    >
-                      {res.tag}
-                    </span>
-                    {isSelected && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" strokeWidth={3} />}
-                  </div>
-
-                  <div>
-                    <div className="text-xs font-bold text-white tracking-tight">{res.title}</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{res.desc}</div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 3. Performance Mode (Reduce Motion & Blur) */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Accent colour */}
+          <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
             <div className="flex items-center gap-2.5">
-              <Zap className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <Palette className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
               <div>
-                <h3 className="text-base font-bold text-white tracking-wide">{t.reduceMotionTitle}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{t.reduceMotionDesc}</p>
+                <h3 className="text-base font-bold text-white tracking-wide">{t.uiSection}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{t.colorPalette}</p>
               </div>
             </div>
 
-            {/* Switch button */}
-            <button
-              type="button"
-              onClick={handleToggleReduceMotion}
-              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                formData.reduceMotion ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                  formData.reduceMotion ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* 4. Application Language: 8 Languages */}
-        <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <Globe className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.languageSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.languageDesc}</p>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
-            {languagesList.map((lang) => {
-              const isSelected = language === lang.code;
-              return (
-                <button
-                  key={lang.code}
-                  type="button"
-                  onClick={() => handleSelectLanguage(lang.code)}
-                  className={`p-3 rounded-xl border-2 text-left flex items-center justify-between gap-2 transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold shadow-md shadow-black/30 -translate-y-0.5'
-                      : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-base leading-none select-none">{lang.flag}</span>
-                    <div className="min-w-0">
-                      <div className={`text-xs truncate ${isSelected ? 'text-white font-bold' : 'text-slate-200 font-semibold'}`}>
-                        {lang.nativeName}
+            {/* 6 Core Theme Colors Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
+              {palettes.map((p) => {
+                const isSelected = (formData.colorPalette || 'amber') === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleSelectPalette(p.id)}
+                    className={`p-3 rounded-xl border-2 text-left flex items-center justify-between gap-3 transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold -translate-y-0.5'
+                        : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span
+                        className="w-6 h-6 rounded-full border border-white/20 shrink-0"
+                        style={{
+                          background: p.color,
+                        }}
+                      />
+                      <div className="min-w-0">
+                        <div className={`text-xs truncate ${isSelected ? 'text-white font-bold' : 'text-slate-200 font-semibold'}`}>
+                          {p.name}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate mt-0.5">{p.desc}</div>
                       </div>
-                      <div className="text-[10px] text-slate-400 truncate">{lang.name}</div>
                     </div>
-                  </div>
 
-                  {isSelected && (
-                    <Check className="w-3.5 h-3.5 text-[var(--accent-color)] shrink-0" strokeWidth={3} />
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* 6. Memory Allocation */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <HardDrive className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.ramSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.ramDesc}</p>
+                    {isSelected && (
+                      <div className="w-5 h-5 rounded-full bg-[var(--accent-color)]/20 border border-[var(--accent-color)] flex items-center justify-center shrink-0">
+                        <Check className="w-3 h-3 text-[var(--accent-color)]" strokeWidth={3} />
+                      </div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
-          <div className="space-y-2 pt-1">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400 font-semibold">RAM:</span>
-              <span className="text-[var(--accent-color)] font-mono font-bold text-sm">
-                {formData.defaultMaxRam / 1024} GB
-              </span>
+          {/* Launcher window size */}
+          <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <Monitor className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide">{t.windowSizeSection}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{t.windowSizeDesc}</p>
+              </div>
             </div>
-            {(() => {
-              const value = Math.min(formData.defaultMaxRam, ramCeilingMb);
-              const ramPct = Math.round(((value - 2048) / Math.max(ramCeilingMb - 2048, 1024)) * 100);
-              return (
-                <input
-                  type="range"
-                  min="2048"
-                  max={ramCeilingMb}
-                  step="1024"
-                  value={value}
-                  style={{
-                    background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
-                  }}
-                  onChange={(e) => {
-                    const val = Number(e.target.value);
-                    const updated = { ...formData, defaultMaxRam: val };
-                    setFormData(updated);
-                    onSaveSettings(updated);
-                  }}
-                  className="w-full cursor-pointer"
+
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
+              {resolutions.map((res) => {
+                const isSelected = (formData.windowResolution || '1600x900') === res.id;
+                return (
+                  <button
+                    key={res.id}
+                    type="button"
+                    onClick={() => handleSelectResolution(res.id)}
+                    className={`p-3.5 rounded-xl border-2 text-left flex flex-col justify-between gap-2 transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold shadow-lg shadow-black/40 -translate-y-0.5'
+                        : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span
+                        className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${
+                          isSelected
+                            ? 'bg-[var(--accent-color)]/20 border-[var(--accent-color)] text-[var(--accent-color)]'
+                            : 'bg-white/5 border-white/10 text-slate-400'
+                        }`}
+                      >
+                        {res.tag}
+                      </span>
+                      {isSelected && <Check className="w-3.5 h-3.5 text-[var(--accent-color)]" strokeWidth={3} />}
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-bold text-white tracking-tight">{res.title}</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">{res.desc}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Reduce motion */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Zap className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">{t.reduceMotionTitle}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{t.reduceMotionDesc}</p>
+                </div>
+              </div>
+
+              {/* Switch button */}
+              <button
+                type="button"
+                onClick={handleToggleReduceMotion}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                  formData.reduceMotion ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                    formData.reduceMotion ? 'translate-x-6' : 'translate-x-0'
+                  }`}
                 />
-              );
-            })()}
-            <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
-              <span>2 GB</span>
-              <span>{ramCeilingMb / 1024} GB</span>
+              </button>
             </div>
           </div>
-        </div>
 
-        {/* 8. JVM Flags */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <Terminal className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.jvmSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.jvmDesc}</p>
-            </div>
-          </div>
-          <textarea
-            rows={2}
-            value={formData.defaultJvmArgs}
-            onChange={(e) => setFormData({ ...formData, defaultJvmArgs: e.target.value })}
-            className="w-full glass-input p-2.5 rounded-xl text-xs text-slate-300 resize-none"
-          />
-        </div>
-
-        {/* 9. Storage & Cache Management */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Language */}
+          <div className="glass-panel rounded-2xl p-6 border border-white/5 space-y-4">
             <div className="flex items-center gap-2.5">
-              <Trash2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <Globe className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
               <div>
-                <h3 className="text-base font-bold text-white tracking-wide">{t.storageSection}</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{t.storageDesc}</p>
+                <h3 className="text-base font-bold text-white tracking-wide">{t.languageSection}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{t.languageDesc}</p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsCleanupModalOpen(true)}
-              className="btn-primary py-2.5 px-5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-none hover:shadow-none cursor-pointer tracking-wide shrink-0"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>{t.btnCleanStorage}</span>
-            </button>
-          </div>
-        </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+              {languagesList.map((lang) => {
+                const isSelected = language === lang.code;
+                return (
+                  <button
+                    key={lang.code}
+                    type="button"
+                    onClick={() => handleSelectLanguage(lang.code)}
+                    className={`p-3 rounded-xl border-2 text-left flex items-center justify-between gap-2 transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold shadow-md shadow-black/30 -translate-y-0.5'
+                        : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base leading-none select-none">{lang.flag}</span>
+                      <div className="min-w-0">
+                        <div className={`text-xs truncate ${isSelected ? 'text-white font-bold' : 'text-slate-200 font-semibold'}`}>
+                          {lang.nativeName}
+                        </div>
+                        <div className="text-[10px] text-slate-400 truncate">{lang.name}</div>
+                      </div>
+                    </div>
 
-        {/* 10. Discord Rich Presence */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    {isSelected && (
+                      <Check className="w-3.5 h-3.5 text-[var(--accent-color)] shrink-0" strokeWidth={3} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="px-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t.settingsGroupGameplay || 'Playing'}</h2>
+
+          {/* What the launcher does while the game runs */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
             <div className="flex items-center gap-2.5">
-              <Gamepad2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <Play className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
               <div>
                 <h3 className="text-base font-bold text-white tracking-wide">
-                  {t.discordRpcTitle || 'Discord Rich Presence'}
+                  {t.launchBehaviorTitle || 'When the game starts'}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {t.discordRpcDesc ||
-                    'Show the profile and version you are playing on your Discord status. Ignored when Discord is not running.'}
+                  {t.launchBehaviorDesc || 'The launcher comes back on its own when the game closes or crashes.'}
                 </p>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={handleToggleDiscordRpc}
-              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                formData.enableDiscordRpc ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                  formData.enableDiscordRpc ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
+            <div className="grid grid-cols-3 gap-2">
+              {launchBehaviors.map((option) => {
+                const isSelected = (formData.launchBehavior || 'keep') === option.id;
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => handleSelectLaunchBehavior(option.id)}
+                    className={`py-2.5 px-3 rounded-xl border-2 text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                      isSelected
+                        ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold'
+                        : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        {/* Skin sharing */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* Default RAM for new profiles */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
             <div className="flex items-center gap-2.5">
-              <Share2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <HardDrive className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
               <div>
-                <h3 className="text-base font-bold text-white tracking-wide">
-                  {t.shareSkinTitle || 'Share my skin with other players'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {t.shareSkinDesc ||
-                    'Other MCL players see your skin in game. Turn it off to keep it to yourself — the copy shared earlier is removed the next time you play.'}
-                </p>
+                <h3 className="text-base font-bold text-white tracking-wide">{t.ramSection}</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{t.ramDesc}</p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleToggleShareSkin}
-              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                formData.shareSkin ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                  formData.shareSkin ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* What the launcher window does while the game runs */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <Play className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">
-                {t.launchBehaviorTitle || 'When the game starts'}
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {t.launchBehaviorDesc || 'The launcher comes back on its own when the game closes or crashes.'}
-              </p>
+            <div className="space-y-2 pt-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 font-semibold">RAM:</span>
+                <span className="text-[var(--accent-color)] font-mono font-bold text-sm">
+                  {formData.defaultMaxRam / 1024} GB
+                </span>
+              </div>
+              {(() => {
+                const value = Math.min(formData.defaultMaxRam, ramCeilingMb);
+                const ramPct = Math.round(((value - 2048) / Math.max(ramCeilingMb - 2048, 1024)) * 100);
+                return (
+                  <input
+                    type="range"
+                    min="2048"
+                    max={ramCeilingMb}
+                    step="1024"
+                    value={value}
+                    style={{
+                      background: `linear-gradient(to right, var(--accent-color, #10b981) ${ramPct}%, rgba(255,255,255,0.08) ${ramPct}%)`,
+                    }}
+                    onChange={(e) => {
+                      const val = Number(e.target.value);
+                      const updated = { ...formData, defaultMaxRam: val };
+                      setFormData(updated);
+                      onSaveSettings(updated);
+                    }}
+                    className="w-full cursor-pointer"
+                  />
+                );
+              })()}
+              <div className="flex justify-between text-[10px] text-slate-500 font-mono mt-1">
+                <span>2 GB</span>
+                <span>{ramCeilingMb / 1024} GB</span>
+              </div>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-2">
-            {launchBehaviors.map((option) => {
-              const isSelected = (formData.launchBehavior || 'keep') === option.id;
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => handleSelectLaunchBehavior(option.id)}
-                  className={`py-2.5 px-3 rounded-xl border-2 text-xs font-semibold transition-all duration-150 cursor-pointer ${
-                    isSelected
-                      ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold'
-                      : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+
+          {/* Skin sharing */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Share2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">
+                    {t.shareSkinTitle || 'Share my skin with other players'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t.shareSkinDesc ||
+                      'Other MCL players see your skin in game. Turn it off to keep it to yourself — the copy shared earlier is removed the next time you play.'}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleToggleShareSkin}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                  formData.shareSkin ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                    formData.shareSkin ? 'translate-x-6' : 'translate-x-0'
                   }`}
-                >
-                  {option.label}
-                </button>
-              );
-            })}
+                />
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* 11. Updates */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <Download className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-              <div>
-                <h3 className="text-base font-bold text-white tracking-wide">
-                  {t.updatesTitle || 'Updates'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {(t.updatesDesc || "You're running v{version}.").replace('{version}', appVersion || '…')}
-                </p>
+          {/* Discord Rich Presence */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Gamepad2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">
+                    {t.discordRpcTitle || 'Discord Rich Presence'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t.discordRpcDesc ||
+                      'Show the profile and version you are playing on your Discord status. Ignored when Discord is not running.'}
+                  </p>
+                </div>
               </div>
+
+              <button
+                type="button"
+                onClick={handleToggleDiscordRpc}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                  formData.enableDiscordRpc ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                    formData.enableDiscordRpc ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <h2 className="px-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t.settingsGroupSystem || 'System'}</h2>
+
+          {/* Storage cleanup */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Trash2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">{t.storageSection}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">{t.storageDesc}</p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsCleanupModalOpen(true)}
+                className="btn-primary py-2.5 px-5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-none hover:shadow-none cursor-pointer tracking-wide shrink-0"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t.btnCleanStorage}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Updates */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Download className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">
+                    {t.updatesTitle || 'Updates'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {(t.updatesDesc || "You're running v{version}.").replace('{version}', appVersion || '…')}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => appUpdate.checkForUpdate()}
+                disabled={appUpdate.phase === 'checking' || appUpdate.phase === 'downloading'}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/10 text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+              >
+                {appUpdate.phase === 'checking' ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3.5 h-3.5" />
+                )}
+                <span>{t.updateCheckNow || 'Check for Updates'}</span>
+              </button>
             </div>
 
-            <button
-              type="button"
-              onClick={() => appUpdate.checkForUpdate()}
-              disabled={appUpdate.phase === 'checking' || appUpdate.phase === 'downloading'}
-              className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/10 text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-            >
-              {appUpdate.phase === 'checking' ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <RefreshCw className="w-3.5 h-3.5" />
-              )}
-              <span>{t.updateCheckNow || 'Check for Updates'}</span>
-            </button>
-          </div>
+            {appUpdate.phase !== 'idle' && appUpdate.phase !== 'checking' && (
+              <div
+                className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl border ${
+                  appUpdate.phase === 'failed'
+                    ? 'bg-rose-500/10 border-rose-500/25 text-rose-300'
+                    : appUpdate.phase === 'up-to-date'
+                    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                    : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/25 text-[var(--accent-light)]'
+                }`}
+              >
+                {appUpdate.phase === 'up-to-date' && <Check className="w-3.5 h-3.5 shrink-0" />}
+                <span>
+                  {appUpdate.phase === 'up-to-date'
+                    ? t.updateUpToDate || "You're on the latest version."
+                    : appUpdate.phase === 'failed'
+                    ? appUpdate.error
+                    : appUpdate.phase === 'available'
+                    ? `${t.updateAvailable || 'Update available'} · v${appUpdate.version}`
+                    : appUpdate.phase === 'downloading'
+                    ? `${t.updateDownloading || 'Downloading'}… ${appUpdate.percent}%`
+                    : t.updateInstalled || 'Update installed'}
+                </span>
+              </div>
+            )}
 
-          {appUpdate.phase !== 'idle' && appUpdate.phase !== 'checking' && (
-            <div
-              className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl border ${
-                appUpdate.phase === 'failed'
-                  ? 'bg-rose-500/10 border-rose-500/25 text-rose-300'
-                  : appUpdate.phase === 'up-to-date'
-                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
-                  : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/25 text-[var(--accent-light)]'
-              }`}
-            >
-              {appUpdate.phase === 'up-to-date' && <Check className="w-3.5 h-3.5 shrink-0" />}
-              <span>
-                {appUpdate.phase === 'up-to-date'
-                  ? t.updateUpToDate || "You're on the latest version."
-                  : appUpdate.phase === 'failed'
-                  ? appUpdate.error
-                  : appUpdate.phase === 'available'
-                  ? `${t.updateAvailable || 'Update available'} · v${appUpdate.version}`
-                  : appUpdate.phase === 'downloading'
-                  ? `${t.updateDownloading || 'Downloading'}… ${appUpdate.percent}%`
-                  : t.updateInstalled || 'Update installed'}
-              </span>
+            <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
+              <div>
+                <div className="text-xs font-semibold text-slate-200">
+                  {t.autoUpdateTitle || 'Automatically install updates'}
+                </div>
+                <div className="text-[11px] text-slate-400 mt-0.5">
+                  {t.autoUpdateDesc ||
+                    'Installs a new version as soon as it is found, as long as nothing is downloading or running.'}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleToggleAutoUpdate}
+                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                  formData.autoUpdate ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+                }`}
+              >
+                <div
+                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                    formData.autoUpdate ? 'translate-x-6' : 'translate-x-0'
+                  }`}
+                />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((open) => !open)}
+            aria-expanded={showAdvanced}
+            className="w-full px-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 flex items-center justify-between hover:text-white transition-colors cursor-pointer"
+          >
+            <span>{t.settingsGroupAdvanced || 'Advanced'}</span>
+            <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? 'rotate-180' : ''}`} />
+          </button>
+          {/* Collapsed by default: none of this is needed to play, and a wrong JVM flag stops the game from starting */}
+          {showAdvanced && (
+            <div className="space-y-4">
+              {/* JVM flags for new profiles */}
+              <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <Terminal className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-wide">{t.jvmSection}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{t.jvmDesc}</p>
+                  </div>
+                </div>
+                <textarea
+                  rows={2}
+                  value={formData.defaultJvmArgs}
+                  onChange={(e) => setFormData({ ...formData, defaultJvmArgs: e.target.value })}
+                  className="w-full glass-input p-2.5 rounded-xl text-xs text-slate-300 resize-none"
+                />
+              </div>
+
+              {/* CurseForge API key */}
+              <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
+                <div className="flex items-center gap-2.5">
+                  <Key className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                  <div>
+                    <h3 className="text-base font-bold text-white tracking-wide">{t.curseForgeSection}</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">{t.curseForgeDesc}</p>
+                  </div>
+                </div>
+                <input
+                  type="password"
+                  value={formData.curseForgeApiKey || ''}
+                  onChange={(e) => setFormData({ ...formData, curseForgeApiKey: e.target.value })}
+                  placeholder={t.curseForgePlaceholder}
+                  className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--accent-color)]"
+                />
+              </div>
+
+              {/* Troubleshooting */}
+              <div className="glass-panel rounded-2xl p-5 border border-white/5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-2.5">
+                    <LifeBuoy className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                    <div>
+                      <h3 className="text-base font-bold text-white tracking-wide">
+                        {t.supportTitle || 'Troubleshooting'}
+                      </h3>
+                      <p className="text-xs text-slate-400 mt-0.5">
+                        {t.resetDataDesc ||
+                          'Clears the settings, servers, skins and account saved in the launcher, then restarts it. Profiles and downloaded game files stay.'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    // Two clicks, because this cannot be undone
+                    onClick={() => (confirmingReset ? resetLauncherData() : setConfirmingReset(true))}
+                    onBlur={() => setConfirmingReset(false)}
+                    className={`py-2.5 px-4 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                      confirmingReset
+                        ? 'bg-rose-500/25 border-rose-500/60 text-rose-200'
+                        : 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300'
+                    }`}
+                  >
+                    {confirmingReset ? t.resetDataConfirm || 'Click again to erase' : t.resetDataBtn || 'Reset launcher data'}
+                  </button>
+                </div>
+              </div>
             </div>
           )}
-
-          <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
-            <div>
-              <div className="text-xs font-semibold text-slate-200">
-                {t.autoUpdateTitle || 'Automatically install updates'}
-              </div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                {t.autoUpdateDesc ||
-                  'Installs a new version as soon as it is found, as long as nothing is downloading or running.'}
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={handleToggleAutoUpdate}
-              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                formData.autoUpdate ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                  formData.autoUpdate ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* 12. CurseForge API Integration */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
-          <div className="flex items-center gap-2.5">
-            <Key className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-            <div>
-              <h3 className="text-base font-bold text-white tracking-wide">{t.curseForgeSection}</h3>
-              <p className="text-xs text-slate-400 mt-0.5">{t.curseForgeDesc}</p>
-            </div>
-          </div>
-          <input
-            type="password"
-            value={formData.curseForgeApiKey || ''}
-            onChange={(e) => setFormData({ ...formData, curseForgeApiKey: e.target.value })}
-            placeholder={t.curseForgePlaceholder}
-            className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--accent-color)]"
-          />
-        </div>
-
-        {/* Troubleshooting */}
-        <div className="glass-panel rounded-2xl p-5 border border-white/5">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <LifeBuoy className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
-              <div>
-                <h3 className="text-base font-bold text-white tracking-wide">
-                  {t.supportTitle || 'Troubleshooting'}
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  {t.resetDataDesc ||
-                    'Clears the settings, servers, skins and account saved in the launcher, then restarts it. Profiles and downloaded game files stay.'}
-                </p>
-              </div>
-            </div>
-            <button
-              type="button"
-              // Two clicks, because this cannot be undone
-              onClick={() => (confirmingReset ? resetLauncherData() : setConfirmingReset(true))}
-              onBlur={() => setConfirmingReset(false)}
-              className={`py-2.5 px-4 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
-                confirmingReset
-                  ? 'bg-rose-500/25 border-rose-500/60 text-rose-200'
-                  : 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300'
-              }`}
-            >
-              {confirmingReset ? t.resetDataConfirm || 'Click again to erase' : t.resetDataBtn || 'Reset launcher data'}
-            </button>
-          </div>
-        </div>
+        </section>
       </div>
 
       {/* Storage Cleanup Modal */}
