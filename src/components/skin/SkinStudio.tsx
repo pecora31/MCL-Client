@@ -21,6 +21,7 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { STEVE_SKIN_BASE64, ALEX_SKIN_BASE64 } from './presetSkins';
 import { normalizeSkinImage } from './skinImage';
+import { invokeCommand, isTauri } from '../../services/api';
 import * as THREE from 'three';
 
 const applyShaderMaterial = (viewer: any) => {
@@ -985,6 +986,19 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     setSelectedSkinIdsForDelete([]);
   };
 
+  // Deleting the equipped skin locally is the player saying they don't want it anywhere,
+  // including whatever the skin service published under their name — so drop that too.
+  // Best-effort and silent: the local unequip already happened and is what the player sees.
+  const unequipAndForgetPublishedSkin = () => {
+    onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
+    showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
+    if (isTauri()) {
+      invokeCommand('delete_published_skin', { username: account.username }).catch((err) =>
+        console.warn('Could not delete the published skin:', err)
+      );
+    }
+  };
+
   const handleDeleteSelectedSkins = () => {
     if (selectedSkinIdsForDelete.length === 0) return;
     const isPreviewDeleted = selectedSkinIdsForDelete.some(
@@ -1016,8 +1030,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       setPreviewSkinUrl(STEVE_SKIN_BASE64);
     }
     if (isEquippedDeleted) {
-      onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
-      showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
+      unequipAndForgetPublishedSkin();
     }
     setSelectedSkinIdsForDelete([]);
   };
@@ -1044,8 +1057,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       setPreviewSkinUrl(STEVE_SKIN_BASE64);
     }
     if (target?.skinUrl === activeSkinUrl) {
-      onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
-      showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
+      unequipAndForgetPublishedSkin();
     }
   };
 

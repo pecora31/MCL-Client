@@ -189,6 +189,11 @@ async fn install_local_skin(
 }
 
 #[tauri::command]
+async fn delete_published_skin(username: String) -> Result<(), String> {
+    instance_manager::delete_published_skin(&username).await
+}
+
+#[tauri::command]
 fn backup_worlds(instance_id: String) -> Result<String, String> {
     instance_manager::backup_worlds(&instance_id)
 }
@@ -485,6 +490,7 @@ pub fn run() {
             find_best_java,
             get_system_info,
             install_local_skin,
+            delete_published_skin,
             backup_worlds,
             export_log,
             ping_minecraft_server,

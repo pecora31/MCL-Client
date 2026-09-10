@@ -35,6 +35,7 @@ export const TAURI_COMMANDS = [
   'find_best_java',
   'get_system_info',
   'install_local_skin',
+  'delete_published_skin',
   'backup_worlds',
   'export_log',
   'ping_minecraft_server',

@@ -611,6 +611,15 @@ fn save_skin_token(username: &str, token: &str) {
     }
 }
 
+fn forget_skin_token(username: &str) {
+    let mut tokens = read_skin_tokens();
+    if tokens.remove(&username.to_ascii_lowercase()).is_some() {
+        if let Ok(serialized) = serde_json::to_string_pretty(&tokens) {
+            let _ = fs::write(skin_tokens_file(), serialized);
+        }
+    }
+}
+
 async fn publish_skin(username: &str, bytes: Vec<u8>) -> Result<(), String> {
     let client = reqwest::Client::builder()
         .user_agent("MCLClient-Launcher/1.0")
@@ -657,6 +666,50 @@ async fn publish_skin(username: &str, bytes: Vec<u8>) -> Result<(), String> {
     if let Some(token) = body["token"].as_str() {
         save_skin_token(username, token);
     }
+    Ok(())
+}
+
+/// Removes a player's published skin, releasing the claim on that username along with it —
+/// deleting a skin the player equipped locally should not leave a stale copy of it live for
+/// every other player, or keep the name reserved for a skin that no longer exists anywhere.
+pub async fn delete_published_skin(username: &str) -> Result<(), String> {
+    let safe_username: String = username
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if safe_username.is_empty() {
+        return Ok(());
+    }
+
+    // Nothing was ever published from this device under this name, so there is nothing this
+    // launcher is authorized to delete.
+    let Some(token) = read_skin_tokens().get(&safe_username).cloned() else {
+        return Ok(());
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("MCLClient-Launcher/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let url = format!("{}/v1/skins/{}", SKIN_SERVICE_ROOT, safe_username);
+    let response = client
+        .delete(&url)
+        .bearer_auth(&token)
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach the skin service: {}", e))?;
+
+    // A 404 here means it is already gone (deleted elsewhere, or never actually made it up),
+    // which is the outcome this call wants either way — not a failure to report.
+    if !response.status().is_success() && response.status().as_u16() != 404 {
+        return Err(format!(
+            "the skin service rejected the deletion ({})",
+            response.status()
+        ));
+    }
+
+    forget_skin_token(&safe_username);
     Ok(())
 }
 
