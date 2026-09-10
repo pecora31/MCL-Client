@@ -52,6 +52,19 @@ pub fn required_java_major(game_version: &str) -> u32 {
     25
 }
 
+/// Whether Automatic may run a game on the Java it found instead of downloading the exact one.
+///
+/// Games built for Java 8 insist on Java 8: the jump to 17 is where Forge and the mods of that
+/// era break. From Java 17 on, a newer runtime generally runs the game fine, so an installed
+/// newer Java is used rather than downloading another one.
+pub fn installed_java_fits(found_major: u32, required: u32) -> bool {
+    if required == 8 {
+        found_major == 8
+    } else {
+        found_major >= required
+    }
+}
+
 /// Finds the best matching Java executable from the detected list for a given Minecraft version.
 /// Returns `(java_exe_path, major_version, reason_string)`.
 pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
@@ -336,7 +349,24 @@ mod folder_name_heuristic_tests {
 
 #[cfg(test)]
 mod required_java_tests {
-    use super::required_java_major;
+    use super::{installed_java_fits, required_java_major};
+
+    #[test]
+    fn java_8_games_only_accept_java_8() {
+        assert!(installed_java_fits(8, 8));
+        assert!(!installed_java_fits(17, 8), "old Forge breaks on 17, so Java 8 is downloaded instead");
+        assert!(!installed_java_fits(21, 8));
+        assert!(!installed_java_fits(0, 8), "nothing found");
+    }
+
+    #[test]
+    fn newer_games_accept_any_newer_java() {
+        assert!(installed_java_fits(21, 21));
+        assert!(installed_java_fits(25, 21));
+        assert!(installed_java_fits(21, 17));
+        assert!(!installed_java_fits(17, 21), "too old");
+        assert!(!installed_java_fits(0, 25), "nothing found");
+    }
 
     #[test]
     fn old_scheme_thresholds() {

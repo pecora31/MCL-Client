@@ -335,7 +335,7 @@ pub async fn prepare_and_launch(
 
     // 8. Pick the Java to run with: a path chosen in the profile, then a version chosen in the
     //    profile (downloaded if missing), then the best installed match — downloading the
-    //    version this Minecraft needs when nothing installed is new enough.
+    //    version this Minecraft needs when nothing installed fits it (installed_java_fits).
     let required_java = crate::java_detector::required_java_major(&instance.game_version);
     let custom_path = instance
         .java_path
@@ -358,7 +358,7 @@ pub async fn prepare_and_launch(
         }
     } else {
         let best = crate::java_detector::find_best_java_for_version(&instance.game_version);
-        if best.1 < required_java && auto_download_java {
+        if !crate::java_detector::installed_java_fits(best.1, required_java) && auto_download_java {
             download_java_for_launch(app_handle, required_java).await?
         } else {
             best

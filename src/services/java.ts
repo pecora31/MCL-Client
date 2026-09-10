@@ -19,6 +19,14 @@ export function requiredJavaMajor(gameVersion: string): number {
 }
 
 /**
+ * Mirrors installed_java_fits in java_detector.rs — keep the two in step. Java 8 games insist
+ * on Java 8 (older Forge breaks on 17); from 17 on, a newer installed Java is used as-is.
+ */
+function installedJavaFits(found: number, required: number): boolean {
+  return required === 8 ? found === 8 : found >= required;
+}
+
+/**
  * Options for a profile's Java picker, ranked by how well each fits this Minecraft version:
  * - Recommended: the exact version the game is built for — the safest choice.
  * - May work: newer versions; the game usually runs on them, but older mod loaders can break
@@ -36,13 +44,13 @@ export function buildJavaOptions(
   const availability = (major: number) =>
     installed(major) ? 'Installed.' : 'Not installed — downloaded when you play (about 40–55 MB).';
 
-  // Mirrors find_best_java_for_version: the exact version if installed, otherwise the oldest
-  // installed one that is new enough, otherwise the exact version gets downloaded.
-  const newerInstalled = javaList
+  // Same choice the launcher makes: the exact version if installed, otherwise the oldest
+  // installed one that fits, otherwise the exact version gets downloaded
+  const fitting = javaList
     .map((java) => java.majorVersion)
-    .filter((major) => major > required)
+    .filter((major) => installedJavaFits(major, required))
     .sort((a, b) => a - b);
-  const automatic = installed(required) ? required : newerInstalled[0] ?? required;
+  const automatic = installed(required) ? required : fitting[0] ?? required;
 
   const options: SelectOption<string>[] = [
     {
