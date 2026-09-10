@@ -213,8 +213,8 @@ export const OnboardingModal: React.FC<OnboardingModalProps> = ({
             ) : (
               <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-300">
                 {currentLanguage === 'vi'
-                  ? 'Chưa tìm thấy Java nào trên máy. Bạn vẫn có thể bắt đầu — khi chơi, launcher sẽ báo bản Java cần cài.'
-                  : 'No Java found on this computer yet. You can still continue — when you play, the launcher will tell you which version to install.'}
+                  ? 'Chưa tìm thấy Java nào trên máy. Không sao — khi chơi, launcher sẽ tự tải bản Java cần thiết.'
+                  : "No Java found on this computer yet. That's fine — when you play, the launcher downloads the Java it needs."}
               </div>
             )}
           </div>

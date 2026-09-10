@@ -312,6 +312,7 @@ pub async fn install_mrpack(
         server_ip: None,
         server_port: None,
         custom_skin_path: None,
+        java_version: None,
         window_width: None,
         window_height: None,
         fullscreen: None,

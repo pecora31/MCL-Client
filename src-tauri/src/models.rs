@@ -11,6 +11,9 @@ pub struct GameInstance {
     pub loader_version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub java_path: Option<String>,
+    /// A Java major version picked in the profile; downloaded if this computer lacks it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub java_version: Option<u32>,
     pub min_ram: u32,
     pub max_ram: u32,
     #[serde(skip_serializing_if = "Option::is_none")]

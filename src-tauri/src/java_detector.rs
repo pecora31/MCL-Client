@@ -131,6 +131,8 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
         PathBuf::from(&program_files).join("BellSoft"),
         PathBuf::from(&program_files).join("Zulu"),
         PathBuf::from(&program_files_x86).join("Java"),
+        // Runtimes this launcher downloaded itself
+        crate::java_runtime::runtime_root(),
     ];
 
     // Query where.exe javaw — but detect actual version

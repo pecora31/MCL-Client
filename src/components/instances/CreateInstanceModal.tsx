@@ -14,6 +14,7 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { GameWindowSelector } from './GameWindowSelector';
+import { buildJavaOptions, javaChoiceToProfile, requiredJavaMajor } from '../../services/java';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
@@ -144,20 +145,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
   // Mirrors required_java_major() in src-tauri/src/java_detector.rs, which is what the
   // launcher actually enforces — keep the two in step. Minecraft moved from "1.X.Y" to a
   // "<year>.<drop>" scheme starting with 26.1, which also bumped the bundled JDK to 25.
-  const getRecommendedJava = () => {
-    const parts = gameVersion.split('.').map(Number);
-    const major = parts[0] || 0;
-    const minor = parts[1] || 0;
-    const patch = parts[2] || 0;
-
-    if (major === 1) {
-      if (minor < 17) return 'Java 8';
-      if (minor < 20) return 'Java 17 LTS';
-      if (minor === 20 && patch <= 4) return 'Java 17 LTS';
-      return 'Java 21 LTS'; // 1.20.5-1.21.11, the last releases under the old scheme
-    }
-    return 'Java 25 LTS'; // 26.1+, verified against the real 26.1 and 26.2 releases
-  };
+  const getRecommendedJava = () => `Java ${requiredJavaMajor(gameVersion)}`;
 
   useEffect(() => {
     if (isOpen) {
@@ -203,7 +191,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
       loaderVersion: loader !== 'vanilla' ? loaderVersion : undefined,
       minRam,
       maxRam,
-      javaPath: javaPath || undefined,
+      ...javaChoiceToProfile(javaPath),
       windowWidth: finalW,
       windowHeight: finalH,
       fullscreen: fullscreen || undefined,
@@ -255,21 +243,12 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
     }));
   }, [loaderVersions, isLoadingLoaders, loader, gameVersion]);
 
-  const javaOptions = useMemo<SelectOption<string>[]>(() => {
-    const defaultOpt: SelectOption<string> = {
-      value: '',
-      label: 'Automatic',
-      badge: 'Recommended',
-      description: `Pick the right Java for this version (Auto selects ${getRecommendedJava()})`,
-    };
-    const listOpts = javaList.map((j) => ({
-      value: j.path,
-      label: `Java ${j.majorVersion} (${j.versionString})`,
-      badge: j.is64Bit ? '64-bit' : '32-bit',
-      description: j.path,
-    }));
-    return [defaultOpt, ...listOpts];
-  }, [javaList, gameVersion]);
+  const javaOptions = useMemo(() => buildJavaOptions(javaList, gameVersion), [javaList, gameVersion]);
+
+  // A version picked earlier can become too old once a newer Minecraft is chosen
+  useEffect(() => {
+    if (javaOptions.find((option) => option.value === javaPath)?.disabled) setJavaPath('');
+  }, [javaOptions, javaPath]);
 
   if (!isOpen) return null;
 
@@ -480,7 +459,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             />
             <p className="text-[10px] text-slate-500 leading-relaxed">
               {javaList.length === 0
-                ? 'No Java runtime detected on this computer yet.'
+                ? 'No Java on this computer yet — the launcher can download the one this version needs when you play.'
                 : `Automatic selects ${getRecommendedJava()} for Minecraft ${gameVersion}.`}
             </p>
           </div>

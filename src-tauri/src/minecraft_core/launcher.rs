@@ -48,6 +48,7 @@ pub async fn prepare_and_launch(
     app_handle: &AppHandle,
     instance: &GameInstance,
     username: &str,
+    auto_download_java: bool,
 ) -> Result<(), String> {
     super::downloader::reset_cancel();
     let launcher_dir = get_launcher_dir();
@@ -332,15 +333,36 @@ pub async fn prepare_and_launch(
     );
     extract_natives_from_libraries(app_handle, &libraries_dir, &natives_dir);
 
-    // 8. Smart Java Auto-Matching based on Minecraft version
-    let (java_bin, java_major, java_reason) = if let Some(custom_path) = &instance.java_path {
-        if !custom_path.is_empty() && Path::new(custom_path).exists() {
-            (custom_path.clone(), 0u32, format!("Using custom Java: {}", custom_path))
-        } else {
-            crate::java_detector::find_best_java_for_version(&instance.game_version)
+    // 8. Pick the Java to run with: a path chosen in the profile, then a version chosen in the
+    //    profile (downloaded if missing), then the best installed match — downloading the
+    //    version this Minecraft needs when nothing installed is new enough.
+    let required_java = crate::java_detector::required_java_major(&instance.game_version);
+    let custom_path = instance
+        .java_path
+        .as_deref()
+        .filter(|path| !path.is_empty() && Path::new(path).exists());
+
+    let (java_bin, java_major, java_reason) = if let Some(custom_path) = custom_path {
+        (custom_path.to_string(), 0u32, format!("Using custom Java: {}", custom_path))
+    } else if let Some(pinned) = instance.java_version {
+        match crate::java_detector::detect_installed_javas()
+            .into_iter()
+            .find(|java| java.major_version == pinned)
+        {
+            Some(java) => (
+                java.path,
+                pinned,
+                format!("Using {} (chosen in this profile)", java.version_string),
+            ),
+            None => download_java_for_launch(app_handle, pinned).await?,
         }
     } else {
-        crate::java_detector::find_best_java_for_version(&instance.game_version)
+        let best = crate::java_detector::find_best_java_for_version(&instance.game_version);
+        if best.1 < required_java && auto_download_java {
+            download_java_for_launch(app_handle, required_java).await?
+        } else {
+            best
+        }
     };
 
     let _ = app_handle.emit(
@@ -354,7 +376,6 @@ pub async fn prepare_and_launch(
 
     // Refuse to start on a Java too old for this Minecraft build. Launching anyway only
     // produces an UnsupportedClassVersionError that is hard for players to interpret.
-    let required_java = crate::java_detector::required_java_major(&instance.game_version);
     if java_major > 0 && java_major < required_java {
         return Err(format!(
             "Minecraft {} requires Java {}, but only Java {} was found on this computer. \
@@ -677,6 +698,30 @@ pub async fn prepare_and_launch(
     });
 
     Ok(())
+}
+
+async fn download_java_for_launch(
+    app_handle: &AppHandle,
+    major: u32,
+) -> Result<(String, u32, String), String> {
+    let _ = app_handle.emit(
+        "mc-log",
+        format!(
+            "[{}] [MCL/Java] Java {} is not on this computer yet. Downloading Eclipse Temurin {} (about 40–55 MB)...",
+            chrono::Local::now().format("%H:%M:%S"),
+            major,
+            major
+        ),
+    );
+    let exe = crate::java_runtime::download_java(app_handle, major)
+        .await
+        .map_err(|e| format!("Could not download Java {}: {}", major, e))?;
+    crate::forget_detected_javas();
+    Ok((
+        exe.to_string_lossy().to_string(),
+        major,
+        format!("Using Java {} (Eclipse Temurin, downloaded by the launcher)", major),
+    ))
 }
 
 /// Reads the game's own logs after a crash and turns the known failure signatures into

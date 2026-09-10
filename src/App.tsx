@@ -162,6 +162,7 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   bgOpacity: 0.3,
   launchBehavior: 'keep',
   shareSkin: true,
+  autoDownloadJava: true,
   enableDiscordRpc: true,
   autoUpdate: false,
 };
@@ -718,6 +719,7 @@ export const App: React.FC = () => {
           instanceId: launchData.id,
           username: account.username,
           instanceData: launchData,
+          autoDownloadJava: settings.autoDownloadJava,
         });
       } catch (err: any) {
         setIsPreparing(false);

@@ -7,6 +7,8 @@ export interface GameInstance {
   loader: ModLoader;
   loaderVersion?: string;
   javaPath?: string;
+  /** A Java major version picked in the profile; downloaded when missing. */
+  javaVersion?: number;
   minRam: number; // in MB
   maxRam: number; // in MB
   jvmArgs?: string;
@@ -257,6 +259,8 @@ export interface LauncherSettings {
   launchBehavior: LaunchBehavior;
   /** Publish the equipped skin so other MCL players see it. Off keeps it local to this player. */
   shareSkin: boolean;
+  /** Download the Java a Minecraft version needs when no installed one is new enough. */
+  autoDownloadJava: boolean;
   enableDiscordRpc: boolean;
   autoUpdate: boolean;
   gameDataDir?: string;

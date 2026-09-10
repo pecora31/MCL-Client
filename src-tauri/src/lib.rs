@@ -3,6 +3,7 @@ mod discord_rpc;
 mod game_stats;
 mod instance_manager;
 mod java_detector;
+mod java_runtime;
 mod minecraft_core;
 mod modpack_installer;
 mod mod_conflicts;
@@ -21,6 +22,15 @@ static CACHED_JAVAS: OnceLock<Mutex<Vec<JavaInstallation>>> = OnceLock::new();
 
 fn get_cached_javas() -> &'static Mutex<Vec<JavaInstallation>> {
     CACHED_JAVAS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Drops the detected-Java cache, so a runtime the launcher just downloaded shows up in the
+/// profile forms without restarting the app.
+pub(crate) fn forget_detected_javas() {
+    get_cached_javas()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clear();
 }
 
 #[tauri::command]
@@ -334,8 +344,10 @@ async fn launch_instance(
     instance_id: String,
     username: String,
     instance_data: Option<GameInstance>,
+    auto_download_java: Option<bool>,
 ) -> Result<String, String> {
     use tauri::Emitter;
+    let auto_download_java = auto_download_java.unwrap_or(true);
 
     // Resolve target instance (prefer direct instance_data from frontend if supplied)
     let target_instance = if let Some(data) = instance_data {
@@ -356,7 +368,7 @@ async fn launch_instance(
     if let Some(inst) = target_instance {
         let app_handle = app.clone();
         tokio::spawn(async move {
-            if let Err(e) = minecraft_core::launcher::prepare_and_launch(&app_handle, &inst, &username).await {
+            if let Err(e) = minecraft_core::launcher::prepare_and_launch(&app_handle, &inst, &username, auto_download_java).await {
                 log::error!("Failed to launch the game: {}", e);
                 let _ = app_handle.emit("mc-log", format!("[MCL/ERROR] {}", e));
                 let _ = app_handle.emit(

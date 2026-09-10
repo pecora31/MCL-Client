@@ -7,6 +7,7 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { GameWindowSelector } from './GameWindowSelector';
+import { buildJavaOptions, javaChoiceToProfile, profileToJavaChoice } from '../../services/java';
 
 interface EditInstanceModalProps {
   isOpen: boolean;
@@ -45,7 +46,6 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       setMaxRam(instance.maxRam || 4096);
       setJvmArgs(instance.jvmArgs || '');
       setEnableSkinInGame(instance.enableSkinInGame ?? true);
-      setJavaPath(instance.javaPath || '');
       setWindowWidth(instance.windowWidth ? String(instance.windowWidth) : '');
       setWindowHeight(instance.windowHeight ? String(instance.windowHeight) : '');
       setFullscreen(instance.fullscreen ?? false);
@@ -62,21 +62,16 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       .catch((err) => console.warn('Could not detect Java:', err));
   }, [isOpen]);
 
-  const javaOptions = useMemo<SelectOption<string>[]>(() => {
-    const defaultOpt: SelectOption<string> = {
-      value: '',
-      label: 'Automatic',
-      badge: 'Recommended',
-      description: 'Pick the right Java for this version',
-    };
-    const listOpts = javaList.map((j) => ({
-      value: j.path,
-      label: `Java ${j.majorVersion} (${j.versionString})`,
-      badge: j.is64Bit ? '64-bit' : '32-bit',
-      description: j.path,
-    }));
-    return [defaultOpt, ...listOpts];
-  }, [javaList]);
+  // Kept apart from the effect above because the Java list arrives after the form opens, and a
+  // saved path can only be shown as its version once that list is known
+  useEffect(() => {
+    if (instance) setJavaPath(profileToJavaChoice(instance, javaList));
+  }, [instance, isOpen, javaList]);
+
+  const javaOptions = useMemo(
+    () => buildJavaOptions(javaList, instance?.gameVersion ?? ''),
+    [javaList, instance?.gameVersion]
+  );
 
   if (!isOpen || !instance) return null;
 
@@ -93,7 +88,7 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       minRam,
       maxRam,
       jvmArgs: jvmArgs.trim() || undefined,
-      javaPath: javaPath || undefined,
+      ...javaChoiceToProfile(javaPath),
       windowWidth: finalW,
       windowHeight: finalH,
       fullscreen: fullscreen || undefined,
