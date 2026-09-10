@@ -10,7 +10,6 @@ use super::downloader::{download_files_concurrently, DownloadTask};
 use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use tauri::{AppHandle, Emitter};
 
 pub struct InstalledLoader {
@@ -299,19 +298,12 @@ async fn run_installer(
     }
 
     let (java_bin, _, _) = crate::java_detector::find_best_java_for_version(game_version);
-    let mut command = Command::new(&java_bin);
+    let mut command = crate::hidden_process::hidden_command(&java_bin);
     command
         .arg("-jar")
         .arg(&installer_path)
         .arg("--installClient")
         .arg(common_dir);
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        command.creation_flags(CREATE_NO_WINDOW);
-    }
 
     let output = command
         .output()

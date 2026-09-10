@@ -7,7 +7,7 @@ use crate::models::GameInstance;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -443,14 +443,7 @@ pub async fn prepare_and_launch(
         }
     };
 
-    let mut cmd = Command::new(&console_java_bin);
-
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
+    let mut cmd = crate::hidden_process::hidden_command(&console_java_bin);
 
     // Memory arguments
     cmd.arg(format!("-Xms{}M", instance.min_ram));
@@ -1014,13 +1007,13 @@ pub fn kill_current_game() -> Result<bool, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let _ = Command::new("taskkill")
+        let _ = crate::hidden_process::hidden_command("taskkill")
             .args(["/F", "/T", "/PID", &pid.to_string()])
             .output();
     }
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = Command::new("kill")
+        let _ = crate::hidden_process::hidden_command("kill")
             .args(["-9", &pid.to_string()])
             .output();
     }

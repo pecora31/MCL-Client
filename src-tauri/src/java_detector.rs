@@ -1,6 +1,6 @@
+use crate::hidden_process::hidden_command;
 use crate::models::JavaInstallation;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use walkdir::WalkDir;
 
 /// Determines the minimum required Java major version for a given Minecraft version.
@@ -149,7 +149,7 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
     ];
 
     // Query where.exe javaw — but detect actual version
-    if let Ok(output) = Command::new("where.exe").arg("javaw").output() {
+    if let Ok(output) = hidden_command("where.exe").arg("javaw").output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
@@ -235,7 +235,7 @@ fn check_and_add(
 fn detect_version_from_executable(java_exe: &Path, folder_hint: &str) -> (u32, String, bool) {
     // Try running java -version (output goes to stderr)
     if java_exe.exists() {
-        if let Ok(output) = Command::new(java_exe)
+        if let Ok(output) = hidden_command(java_exe)
             .arg("-version")
             .output()
         {

@@ -1,6 +1,7 @@
 mod addon_registry;
 mod discord_rpc;
 mod game_stats;
+mod hidden_process;
 mod instance_manager;
 mod java_detector;
 mod java_runtime;
