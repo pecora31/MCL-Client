@@ -103,6 +103,27 @@ mod skin_source_order_tests {
 }
 
 #[cfg(test)]
+mod skin_service_name_tests {
+    use super::is_skin_service_name;
+
+    #[test]
+    fn accepts_names_that_follow_minecraft_username_rules() {
+        assert!(is_skin_service_name("Rong"));
+        assert!(is_skin_service_name("Player_Hero"));
+        assert!(is_skin_service_name(&"a".repeat(16)));
+    }
+
+    #[test]
+    fn rejects_names_the_skin_service_cannot_store() {
+        assert!(!is_skin_service_name("ab"));
+        assert!(!is_skin_service_name(&"a".repeat(17)));
+        assert!(!is_skin_service_name("Rồng"));
+        assert!(!is_skin_service_name("two words"));
+        assert!(!is_skin_service_name("dash-name"));
+    }
+}
+
+#[cfg(test)]
 mod safe_join_tests {
     use super::safe_join;
     use std::path::Path;
@@ -715,11 +736,19 @@ pub async fn delete_published_skin(username: &str) -> Result<(), String> {
 
 /// Writes the skin chosen in the launcher into the instance so CustomSkinLoader's local
 /// service can serve it, then publishes it so other players resolve the same image.
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkinInstallResult {
+    pub message: String,
+    /// False when the skin only reached the local copy, so other players will not see it.
+    pub published: bool,
+}
+
 pub async fn install_local_skin(
     instance_id: &str,
     username: &str,
     skin: &str,
-) -> Result<String, String> {
+) -> Result<SkinInstallResult, String> {
     use base64::Engine as _;
 
     let safe_username: String = username
@@ -758,13 +787,76 @@ pub async fn install_local_skin(
 
     // Publishing is best-effort: the player still sees their own skin from the local copy
     // even when the service is unreachable, so this must never fail the launch.
-    match publish_skin(&safe_username, bytes).await {
-        Ok(()) => Ok(format!("Skin saved and published for {}.", safe_username)),
-        Err(err) => Ok(format!(
-            "Skin saved locally, but other players will not see it: {}",
-            err
-        )),
+    Ok(match publish_skin(&safe_username, bytes).await {
+        Ok(()) => SkinInstallResult {
+            message: format!("Skin saved and published for {}.", safe_username),
+            published: true,
+        },
+        Err(err) => SkinInstallResult {
+            message: format!("Skin saved locally, but other players will not see it: {}", err),
+            published: false,
+        },
+    })
+}
+
+#[derive(Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum NameAvailability {
+    /// Outside Minecraft's username rules, which is all the skin service will store.
+    Invalid,
+    /// Claimed from this device already.
+    Yours,
+    Available,
+    Taken,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UsernameClaimCheck {
+    pub status: NameAvailability,
+    pub suggestions: Vec<String>,
+}
+
+fn is_skin_service_name(name: &str) -> bool {
+    (3..=16).contains(&name.len()) && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Tells a player, while they are still choosing a name, whether another MCL player already
+/// publishes a skin under it — other players look skins up by that name alone, so a clash means
+/// they would see the other person's skin instead.
+pub async fn check_username_claim(username: &str) -> Result<UsernameClaimCheck, String> {
+    let name = username.trim();
+    let answer = |status| UsernameClaimCheck { status, suggestions: Vec::new() };
+
+    if !is_skin_service_name(name) {
+        return Ok(answer(NameAvailability::Invalid));
     }
+    if read_skin_tokens().contains_key(&name.to_ascii_lowercase()) {
+        return Ok(answer(NameAvailability::Yours));
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("MCLClient-Launcher/1.0")
+        .build()
+        .map_err(|e| e.to_string())?;
+    let response = client
+        .get(format!("{}/v1/skins/{}", SKIN_SERVICE_ROOT, name))
+        .send()
+        .await
+        .map_err(|e| format!("cannot reach the skin service: {}", e))?;
+    if !response.status().is_success() {
+        return Err(format!("the skin service answered {}", response.status()));
+    }
+    let body: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+
+    if !body["claimed"].as_bool().unwrap_or(false) {
+        return Ok(answer(NameAvailability::Available));
+    }
+    let suggestions = body["suggestions"]
+        .as_array()
+        .map(|list| list.iter().filter_map(|s| s.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    Ok(UsernameClaimCheck { status: NameAvailability::Taken, suggestions })
 }
 
 /// Zips the instance's saves folder into backups/ so a bad mod change cannot cost a world.

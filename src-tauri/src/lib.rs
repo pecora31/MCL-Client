@@ -184,8 +184,15 @@ async fn install_local_skin(
     instance_id: String,
     username: String,
     skin: String,
-) -> Result<String, String> {
+) -> Result<instance_manager::SkinInstallResult, String> {
     instance_manager::install_local_skin(&instance_id, &username, &skin).await
+}
+
+#[tauri::command]
+async fn check_username_claim(
+    username: String,
+) -> Result<instance_manager::UsernameClaimCheck, String> {
+    instance_manager::check_username_claim(&username).await
 }
 
 #[tauri::command]
@@ -491,6 +498,7 @@ pub fn run() {
             get_system_info,
             install_local_skin,
             delete_published_skin,
+            check_username_claim,
             backup_worlds,
             export_log,
             ping_minecraft_server,

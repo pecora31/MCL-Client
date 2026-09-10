@@ -36,6 +36,7 @@ export const TAURI_COMMANDS = [
   'get_system_info',
   'install_local_skin',
   'delete_published_skin',
+  'check_username_claim',
   'backup_worlds',
   'export_log',
   'ping_minecraft_server',
@@ -930,7 +931,18 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'install_local_skin':
       console.log('Mock install local skin:', args);
-      return 'mock/CustomSkinLoader/LocalSkin/skins/player.png' as unknown as T;
+      return { message: 'Mock skin saved and published.', published: true } as unknown as T;
+
+    case 'check_username_claim': {
+      // "Steve" stands in for a name someone else already claimed, so the warning can be seen
+      // in the browser preview.
+      const name = String(args.username ?? '');
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) return { status: 'invalid', suggestions: [] } as unknown as T;
+      if (name.toLowerCase() === 'steve') {
+        return { status: 'taken', suggestions: ['Steve_2', 'Steve_3', 'Steve_4'] } as unknown as T;
+      }
+      return { status: 'available', suggestions: [] } as unknown as T;
+    }
 
     case 'get_system_info':
       return {

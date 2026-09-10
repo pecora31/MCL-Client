@@ -694,15 +694,21 @@ export const App: React.FC = () => {
         // CustomSkinLoader can serve it in game
         if (launchData.enableSkinInGame && launchData.loader !== 'vanilla' && account.skinUrl) {
           try {
-            const skinResult = await invokeCommand<string>('install_local_skin', {
-              instanceId: launchData.id,
-              username: account.username,
-              skin: account.skinUrl,
-            });
+            const skinResult = await invokeCommand<{ message: string; published: boolean }>(
+              'install_local_skin',
+              {
+                instanceId: launchData.id,
+                username: account.username,
+                skin: account.skinUrl,
+              }
+            );
             setConsoleLogs((prev) => [
               ...prev,
-              `[${new Date().toLocaleTimeString()}] [MCL/INFO] ${skinResult}`,
+              `[${new Date().toLocaleTimeString()}] [MCL/${skinResult.published ? 'INFO' : 'WARN'}] ${skinResult.message}`,
             ]);
+            // Other players won't see this skin (usually a name someone else claimed first), so
+            // open the log instead of leaving the only mention of it in a closed panel.
+            if (!skinResult.published) setIsConsoleOpen(true);
           } catch (skinErr: any) {
             setConsoleLogs((prev) => [
               ...prev,

@@ -16,6 +16,8 @@ import {
 } from 'lucide-react';
 import type { Account } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
+import { useUsernameClaimCheck } from '../../hooks/useUsernameClaimCheck';
+import { UsernameClaimHint } from './UsernameClaimHint';
 
 interface ProfileCardProps {
   isOpen: boolean;
@@ -126,6 +128,14 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   const [hotNameInput, setHotNameInput] = useState(account.username);
   const [usernameInput, setUsernameInput] = useState(account.username);
   const [copiedName, setCopiedName] = useState(false);
+  const hotNameCheck = useUsernameClaimCheck(
+    isHotEditingName ? hotNameInput : account.username,
+    account.username
+  );
+  const editNameCheck = useUsernameClaimCheck(
+    isEditMode ? usernameInput : account.username,
+    account.username
+  );
 
   const hotInputRef = useRef<HTMLInputElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
@@ -526,6 +536,18 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 </button>
               </div>
 
+              {isHotEditingName && (
+                <UsernameClaimHint
+                  status={hotNameCheck.status}
+                  suggestions={hotNameCheck.suggestions}
+                  onPickSuggestion={(name) => {
+                    setHotNameInput(name);
+                    hotInputRef.current?.focus();
+                  }}
+                  language={language}
+                />
+              )}
+
               {/* Divider */}
               <div className="h-px bg-white/[0.08]" />
 
@@ -584,6 +606,12 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                   className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/15 text-white font-bold text-sm focus:outline-none focus:border-[var(--accent-color)]"
                   placeholder={t.enterNamePlaceholder || 'Enter name...'}
                   autoFocus
+                />
+                <UsernameClaimHint
+                  status={editNameCheck.status}
+                  suggestions={editNameCheck.suggestions}
+                  onPickSuggestion={setUsernameInput}
+                  language={language}
                 />
               </div>
 
