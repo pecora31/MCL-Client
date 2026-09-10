@@ -15,6 +15,7 @@ import { ModStore } from './components/mods/ModStore';
 import { SettingsView, setPrewarmedJavaList } from './components/settings/SettingsView';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
+import { useAppUpdate } from './hooks/useAppUpdate';
 import { ModConflictModal } from './components/instances/ModConflictModal';
 import { ShareProfileModal } from './components/instances/ShareProfileModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
@@ -168,6 +169,7 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   bgOpacity: 0.3,
   closeOnLaunch: false,
   enableDiscordRpc: true,
+  autoUpdate: false,
   serverHost: '',
   serverPort: 25565,
   serverName: '',
@@ -245,6 +247,7 @@ export const App: React.FC = () => {
   // Runtime states
   const [isRunning, setIsRunning] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
+  const appUpdate = useAppUpdate();
   const [consoleLogs, setConsoleLogs] = useState<string[]>([]);
   const [launchProgress, setLaunchProgress] = useState<LaunchProgress>({
     stage: 'idle',
@@ -270,6 +273,23 @@ export const App: React.FC = () => {
   useEffect(() => {
     document.documentElement.lang = language;
   }, [language]);
+
+  // Checked once on launch, quietly — a manual check from Settings surfaces its own result,
+  // but nobody who just wants to play should see an error toast because their wifi hiccupped.
+  useEffect(() => {
+    appUpdate.checkForUpdate({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auto-installs only when the launcher isn't in the middle of something: restarting itself
+  // while a modpack download or the game is in flight would be worse than staying one
+  // version behind for a little longer.
+  useEffect(() => {
+    if (settings.autoUpdate && appUpdate.phase === 'available' && !isPreparing && !isRunning) {
+      appUpdate.install();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.autoUpdate, appUpdate.phase, isPreparing, isRunning]);
 
   useEffect(() => {
     localStorage.setItem('mcl_instances', JSON.stringify(instances));
@@ -1015,6 +1035,7 @@ export const App: React.FC = () => {
                           onSaveSettings={handleSaveSettings}
                           language={language}
                           onChangeLanguage={handleChangeLanguage}
+                          appUpdate={appUpdate}
                         />
                       )}
                     </div>
@@ -1072,7 +1093,7 @@ export const App: React.FC = () => {
             onImported={handleImportedProfile}
           />
 
-          <UpdateNotice language={language} />
+          <UpdateNotice language={language} appUpdate={appUpdate} />
 
           <DeleteProfileModal
             isOpen={!!deleteTargetInstance}

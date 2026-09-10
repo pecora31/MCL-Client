@@ -14,6 +14,7 @@ import {
   Terminal,
   Key,
   Gamepad2,
+  Download,
 } from 'lucide-react';
 import type {
   LauncherSettings,
@@ -22,6 +23,7 @@ import type {
   WindowResolution,
 } from '../../types';
 import { invokeCommand, isTauri } from '../../services/api';
+import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
@@ -31,6 +33,7 @@ interface SettingsViewProps {
   onSaveSettings: (settings: LauncherSettings) => void;
   language: Language;
   onChangeLanguage: (lang: Language) => void;
+  appUpdate: AppUpdateState;
 }
 
 // Module-level cache so reopening Settings renders in 0ms with zero delay
@@ -47,6 +50,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onSaveSettings,
   language,
   onChangeLanguage,
+  appUpdate,
 }) => {
   const t = getTranslation(language);
   const [formData, setFormData] = useState<LauncherSettings>(settings);
@@ -54,6 +58,16 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [detectingJava, setDetectingJava] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
+  // Read straight from the running binary's own version, same as the home screen badge,
+  // so this label never drifts from what a release actually bumps.
+  const [appVersion, setAppVersion] = useState('');
+  useEffect(() => {
+    if (!isTauri()) return;
+    import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch((err) => console.warn('Could not read the app version:', err));
+  }, []);
 
   useEffect(() => {
     setFormData(settings);
@@ -148,6 +162,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleToggleDiscordRpc = () => {
     const updated = { ...formData, enableDiscordRpc: !formData.enableDiscordRpc };
+    setFormData(updated);
+    onSaveSettings(updated);
+  };
+
+  const handleToggleAutoUpdate = () => {
+    const updated = { ...formData, autoUpdate: !formData.autoUpdate };
     setFormData(updated);
     onSaveSettings(updated);
   };
@@ -550,7 +570,88 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
-        {/* 11. CurseForge API Integration */}
+        {/* 11. Updates */}
+        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <Download className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide">
+                  {t.updatesTitle || 'Updates'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {(t.updatesDesc || "You're running v{version}.").replace('{version}', appVersion || '…')}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => appUpdate.checkForUpdate()}
+              disabled={appUpdate.phase === 'checking' || appUpdate.phase === 'downloading'}
+              className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/20 border border-white/10 text-white transition flex items-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+            >
+              {appUpdate.phase === 'checking' ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3.5 h-3.5" />
+              )}
+              <span>{t.updateCheckNow || 'Check for Updates'}</span>
+            </button>
+          </div>
+
+          {appUpdate.phase !== 'idle' && appUpdate.phase !== 'checking' && (
+            <div
+              className={`flex items-center gap-2 text-xs px-3 py-2 rounded-xl border ${
+                appUpdate.phase === 'failed'
+                  ? 'bg-rose-500/10 border-rose-500/25 text-rose-300'
+                  : appUpdate.phase === 'up-to-date'
+                  ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+                  : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/25 text-[var(--accent-light)]'
+              }`}
+            >
+              {appUpdate.phase === 'up-to-date' && <Check className="w-3.5 h-3.5 shrink-0" />}
+              <span>
+                {appUpdate.phase === 'up-to-date'
+                  ? t.updateUpToDate || "You're on the latest version."
+                  : appUpdate.phase === 'failed'
+                  ? appUpdate.error
+                  : appUpdate.phase === 'available'
+                  ? `${t.updateAvailable || 'Update available'} · v${appUpdate.version}`
+                  : appUpdate.phase === 'downloading'
+                  ? `${t.updateDownloading || 'Downloading'}… ${appUpdate.percent}%`
+                  : t.updateInstalled || 'Update installed'}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between pt-3 border-t border-white/[0.06]">
+            <div>
+              <div className="text-xs font-semibold text-slate-200">
+                {t.autoUpdateTitle || 'Automatically install updates'}
+              </div>
+              <div className="text-[11px] text-slate-400 mt-0.5">
+                {t.autoUpdateDesc ||
+                  'Installs a new version as soon as it is found, as long as nothing is downloading or running.'}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleToggleAutoUpdate}
+              className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
+                formData.autoUpdate ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
+              }`}
+            >
+              <div
+                className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
+                  formData.autoUpdate ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+
+        {/* 12. CurseForge API Integration */}
         <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-3">
           <div className="flex items-center gap-2.5">
             <Key className="w-5 h-5 text-[var(--accent-color)] shrink-0" />

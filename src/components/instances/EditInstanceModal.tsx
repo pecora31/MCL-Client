@@ -198,6 +198,7 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
               setWindowWidth={setWindowWidth}
               windowHeight={windowHeight}
               setWindowHeight={setWindowHeight}
+              language={language}
             />
 
             <div className="space-y-2">

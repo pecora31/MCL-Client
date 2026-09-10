@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Monitor, AlertCircle, Check } from 'lucide-react';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
+import { getTranslation, type Language } from '../../locales/i18n';
 
 export interface WindowSizePreset {
   width: number;
@@ -10,14 +11,6 @@ export interface WindowSizePreset {
   description: string;
 }
 
-export const WINDOW_SIZE_PRESETS: WindowSizePreset[] = [
-  { width: 1280, height: 720, label: '1280 × 720 (HD)', badge: '16:9', description: 'Standard 720p window resolution' },
-  { width: 1600, height: 900, label: '1600 × 900 (HD+)', badge: '16:9', description: 'Balanced 900p window resolution' },
-  { width: 1920, height: 1080, label: '1920 × 1080 (Full HD)', badge: '16:9', description: 'Sharp 1080p high definition display' },
-  { width: 2560, height: 1440, label: '2560 × 1440 (2K QHD)', badge: '16:9', description: 'High definition 1440p resolution' },
-  { width: 3840, height: 2160, label: '3840 × 2160 (4K UHD)', badge: '16:9', description: 'Ultra HD 4K resolution' },
-];
-
 interface GameWindowSelectorProps {
   fullscreen: boolean;
   setFullscreen: (val: boolean) => void;
@@ -25,6 +18,7 @@ interface GameWindowSelectorProps {
   setWindowWidth: (val: string) => void;
   windowHeight: string;
   setWindowHeight: (val: string) => void;
+  language?: Language;
 }
 
 export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
@@ -34,11 +28,55 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
   setWindowWidth,
   windowHeight,
   setWindowHeight,
+  language = 'en',
 }) => {
+  const t = getTranslation(language);
+
+  const presets = useMemo<WindowSizePreset[]>(
+    () => [
+      {
+        width: 1280,
+        height: 720,
+        label: '1280 × 720 (HD)',
+        badge: '16:9',
+        description: t.resStandardHDDesc || 'Standard 720p window resolution',
+      },
+      {
+        width: 1600,
+        height: 900,
+        label: '1600 × 900 (HD+)',
+        badge: '16:9',
+        description: t.resBalancedHDPlusDesc || 'Balanced 900p window resolution',
+      },
+      {
+        width: 1920,
+        height: 1080,
+        label: '1920 × 1080 (Full HD)',
+        badge: '16:9',
+        description: t.resFullHDDesc || 'Sharp 1080p high definition display',
+      },
+      {
+        width: 2560,
+        height: 1440,
+        label: '2560 × 1440 (2K QHD)',
+        badge: '16:9',
+        description: t.res2KQHDDesc || 'High definition 1440p resolution',
+      },
+      {
+        width: 3840,
+        height: 2160,
+        label: '3840 × 2160 (4K UHD)',
+        badge: '16:9',
+        description: t.res4KUHDDesc || 'Ultra HD 4K resolution',
+      },
+    ],
+    [t]
+  );
+
   // Explicitly track whether the user chose custom resolution mode
   const [isCustomMode, setIsCustomMode] = useState<boolean>(() => {
     if (fullscreen || (!windowWidth && !windowHeight)) return false;
-    return !WINDOW_SIZE_PRESETS.some(
+    return !presets.some(
       (p) => String(p.width) === windowWidth && String(p.height) === windowHeight
     );
   });
@@ -50,26 +88,26 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
     if (fullscreen || (!windowWidth && !windowHeight)) {
       setIsCustomMode(false);
     } else {
-      const isPreset = WINDOW_SIZE_PRESETS.some(
+      const isPreset = presets.some(
         (p) => String(p.width) === windowWidth && String(p.height) === windowHeight
       );
       if (!isPreset) {
         setIsCustomMode(true);
       }
     }
-  }, [fullscreen]);
+  }, [fullscreen, presets]);
 
-  // Derive the active value for CustomSelect
+  // Derive active value for CustomSelect
   const activeValue = useMemo(() => {
     if (isCustomMode) return 'custom';
     if (fullscreen) return 'fullscreen';
     if (!windowWidth && !windowHeight) return 'default';
-    const isPreset = WINDOW_SIZE_PRESETS.some(
+    const isPreset = presets.some(
       (p) => String(p.width) === windowWidth && String(p.height) === windowHeight
     );
     if (isPreset) return `${windowWidth}x${windowHeight}`;
     return 'custom';
-  }, [isCustomMode, fullscreen, windowWidth, windowHeight]);
+  }, [isCustomMode, fullscreen, windowWidth, windowHeight, presets]);
 
   const numW = parseInt(windowWidth, 10);
   const numH = parseInt(windowHeight, 10);
@@ -145,17 +183,17 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
     return [
       {
         value: 'default',
-        label: 'Let Minecraft decide',
+        label: t.windowModeDefault || 'Let Minecraft decide',
         badge: 'Default',
-        description: 'Standard window size managed by Minecraft (854 × 480)',
+        description: t.windowModeDefaultDesc || 'Standard window size managed by Minecraft (854 × 480)',
       },
       {
         value: 'fullscreen',
-        label: 'Fullscreen Mode',
+        label: t.windowModeFullscreen || 'Fullscreen Mode',
         badge: 'Immersive',
-        description: 'Launch the game in borderless / exclusive fullscreen',
+        description: t.windowModeFullscreenDesc || 'Launch the game in borderless / exclusive fullscreen',
       },
-      ...WINDOW_SIZE_PRESETS.map((p) => ({
+      ...presets.map((p) => ({
         value: `${p.width}x${p.height}`,
         label: p.label,
         badge: p.badge,
@@ -163,27 +201,27 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
       })),
       {
         value: 'custom',
-        label: 'Custom size…',
+        label: t.windowModeCustom || 'Custom size…',
         badge: 'Custom',
-        description: 'Specify custom window width and height in pixels',
+        description: t.windowModeCustomDesc || 'Specify custom window width and height in pixels',
       },
     ];
-  }, []);
+  }, [t, presets]);
 
   return (
     <div className="space-y-2.5 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
       <div className="flex items-center justify-between">
         <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
           <Monitor className="w-3.5 h-3.5 text-[var(--accent-color)]" />
-          <span>Game Window & Resolution</span>
+          <span>{t.gameWindowResolutionTitle || 'Game Window & Resolution'}</span>
         </div>
         {fullscreen ? (
           <span className="text-[10px] font-bold text-amber-300 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
-            Fullscreen
+            {t.windowModeFullscreen || 'Fullscreen'}
           </span>
         ) : isCustomMode ? (
           <span className="text-[10px] font-bold text-[var(--accent-light)] px-2 py-0.5 rounded-md bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20">
-            Custom: {windowWidth || '1280'} × {windowHeight || '720'}
+            {(t.windowModeCustom || 'Custom')}: {windowWidth || '1280'} × {windowHeight || '720'}
           </span>
         ) : windowWidth && windowHeight ? (
           <span className="text-[10px] font-bold text-[var(--accent-light)] px-2 py-0.5 rounded-md bg-white/5 border border-white/10">
@@ -191,7 +229,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
           </span>
         ) : (
           <span className="text-[10px] font-medium text-slate-400 px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
-            Default
+            {t.windowModeDefault || 'Default'}
           </span>
         )}
       </div>
@@ -209,7 +247,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Width (pixels)
+                  {t.windowWidthLabel || 'Width (pixels)'}
                 </label>
                 <span className="text-[10px] text-slate-500">Min: 640px</span>
               </div>
@@ -222,6 +260,12 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                     const val = e.target.value.replace(/\D/g, '');
                     setWindowWidth(val);
                     setConfirmedNotice(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleConfirmCustom();
+                    }
                   }}
                   placeholder="1280"
                   className={`w-full px-3 py-2 rounded-xl bg-black/40 border text-xs font-semibold text-white focus:outline-none transition pr-8 ${
@@ -239,7 +283,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
-                  Height (pixels)
+                  {t.windowHeightLabel || 'Height (pixels)'}
                 </label>
                 <span className="text-[10px] text-slate-500">Min: 480px</span>
               </div>
@@ -252,6 +296,12 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                     const val = e.target.value.replace(/\D/g, '');
                     setWindowHeight(val);
                     setConfirmedNotice(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleConfirmCustom();
+                    }
                   }}
                   placeholder="720"
                   className={`w-full px-3 py-2 rounded-xl bg-black/40 border text-xs font-semibold text-white focus:outline-none transition pr-8 ${
@@ -273,7 +323,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
               <div className="flex items-center gap-2 min-w-0">
                 <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span className="text-[11px] leading-relaxed">
-                  Minimum size is <strong>640 × 480 px</strong> so Minecraft's UI doesn't break.
+                  {t.minWindowSizeWarning || 'Minimum window size is 640 × 480 px to prevent Minecraft UI scaling issues.'}
                 </span>
               </div>
               <button
@@ -281,7 +331,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                 onClick={handleApplyMin}
                 className="px-2.5 py-1 rounded-lg bg-amber-500/25 hover:bg-amber-500/40 text-amber-200 text-[10px] font-bold shrink-0 transition cursor-pointer active:scale-95"
               >
-                Set 640 × 480
+                {t.setMinimumSizeBtn || 'Set 640 × 480'}
               </button>
             </div>
           )}
@@ -291,10 +341,10 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
             <div className="flex items-center gap-2 text-[11px] text-slate-400">
               {aspectRatio ? (
                 <span className="px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-slate-300 font-medium">
-                  Ratio: <strong className="text-white">{aspectRatio}</strong>
+                  {t.aspectRatioLabel || 'Ratio:'} <strong className="text-white">{aspectRatio}</strong>
                 </span>
               ) : (
-                <span className="text-slate-500 text-[10px]">Enter width & height</span>
+                <span className="text-slate-500 text-[10px]">{t.enterDimensionsPlaceholder || 'Enter width & height'}</span>
               )}
             </div>
 
@@ -302,7 +352,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
               {confirmedNotice ? (
                 <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-bold animate-fadeIn">
                   <Check className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Applied: {confirmedNotice}</span>
+                  <span>{(t.appliedCustomSizeNotice || 'Applied: ') + confirmedNotice}</span>
                 </span>
               ) : (
                 <button
@@ -311,7 +361,7 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                   className="px-3.5 py-1.5 rounded-xl bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-slate-950 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
                 >
                   <Check className="w-3.5 h-3.5" />
-                  <span>Confirm size</span>
+                  <span>{t.confirmCustomSizeBtn || 'Confirm Size'}</span>
                 </button>
               )}
             </div>

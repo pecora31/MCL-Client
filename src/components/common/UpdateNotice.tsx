@@ -1,91 +1,23 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { Download, X, RefreshCw, CheckCircle2 } from 'lucide-react';
-import { isTauri } from '../../services/api';
+import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 
 interface UpdateNoticeProps {
   language: Language;
-}
-
-type Phase = 'idle' | 'available' | 'downloading' | 'installed' | 'failed';
-
-interface UpdateHandle {
-  version: string;
-  downloadAndInstall: (onEvent: (event: DownloadEvent) => void) => Promise<void>;
-}
-
-interface DownloadEvent {
-  event: 'Started' | 'Progress' | 'Finished';
-  data?: { contentLength?: number; chunkLength?: number };
+  appUpdate: AppUpdateState;
 }
 
 /**
- * Offers the update rather than applying it: a launcher that restarts itself while someone
- * is mid-download of a modpack would be worse than being one version behind.
+ * Surfaces the shared update state as a toast. Only shown for phases worth interrupting
+ * over — "checking" and "up to date" have nowhere useful to go but Settings, where a
+ * manual check already shows its own inline result.
  */
-export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
+export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language, appUpdate }) => {
   const t = getTranslation(language);
-  const [phase, setPhase] = useState<Phase>('idle');
-  const [update, setUpdate] = useState<UpdateHandle | null>(null);
-  const [percent, setPercent] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const { phase, version, percent, error, install, retry, reset } = appUpdate;
 
-  useEffect(() => {
-    if (!isTauri()) return;
-    let cancelled = false;
-
-    const checkForUpdate = async () => {
-      try {
-        // Imported here so a browser dev session never tries to load the plugin at all.
-        const { check } = await import('@tauri-apps/plugin-updater');
-        const found = await check();
-        if (!cancelled && found) {
-          setUpdate(found as unknown as UpdateHandle);
-          setPhase('available');
-        }
-      } catch (err) {
-        // No network, no release yet, or a signature that does not verify. None of these
-        // are worth interrupting someone who only wants to play.
-        console.warn('Update check skipped:', err);
-      }
-    };
-
-    checkForUpdate();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const handleInstall = async () => {
-    if (!update) return;
-    setPhase('downloading');
-    setError(null);
-
-    let downloaded = 0;
-    let total = 0;
-
-    try {
-      await update.downloadAndInstall((event) => {
-        if (event.event === 'Started') {
-          total = event.data?.contentLength || 0;
-        } else if (event.event === 'Progress') {
-          downloaded += event.data?.chunkLength || 0;
-          if (total > 0) setPercent(Math.min(100, Math.round((downloaded / total) * 100)));
-        }
-      });
-
-      setPhase('installed');
-      const { relaunch } = await import('@tauri-apps/plugin-process');
-      await relaunch();
-    } catch (err) {
-      console.error('Update failed:', err);
-      setError(String(err));
-      setPhase('failed');
-    }
-  };
-
-  if (dismissed || phase === 'idle' || !update) return null;
+  if (!['available', 'downloading', 'installed', 'failed'].includes(phase)) return null;
 
   return (
     <div className="fixed bottom-5 right-5 z-[60] w-80 minimal-panel rounded-2xl border border-white/10 shadow-2xl p-4 space-y-3 animate-fadeIn">
@@ -104,7 +36,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
             <div className="text-xs font-bold text-white tracking-wide truncate">
               {phase === 'installed'
                 ? t.updateInstalled || 'Update installed'
-                : `${t.updateAvailable || 'Update available'} · v${update.version}`}
+                : `${t.updateAvailable || 'Update available'}${version ? ` · v${version}` : ''}`}
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
               {phase === 'downloading'
@@ -120,7 +52,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
 
         {phase !== 'downloading' && phase !== 'installed' && (
           <button
-            onClick={() => setDismissed(true)}
+            onClick={reset}
             className="p-1 rounded-lg text-slate-500 hover:text-white hover:bg-white/10 transition cursor-pointer shrink-0"
             title={t.updateLater || 'Later'}
           >
@@ -140,7 +72,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({ language }) => {
 
       {(phase === 'available' || phase === 'failed') && (
         <button
-          onClick={handleInstall}
+          onClick={phase === 'failed' ? retry : install}
           className="btn-primary w-full py-2 rounded-xl text-xs font-bold cursor-pointer"
         >
           {phase === 'failed' ? t.updateRetry || 'Try again' : t.updateInstall || 'Install now'}

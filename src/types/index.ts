@@ -259,6 +259,7 @@ export interface LauncherSettings {
   bgBlur?: number;
   closeOnLaunch: boolean;
   enableDiscordRpc: boolean;
+  autoUpdate: boolean;
   serverHost: string;
   serverPort: number;
   serverName: string;

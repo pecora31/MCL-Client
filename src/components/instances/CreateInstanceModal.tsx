@@ -462,6 +462,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             setWindowWidth={setWindowWidth}
             windowHeight={windowHeight}
             setWindowHeight={setWindowHeight}
+            language={language}
           />
 
           {/* Java Runtime */}
