@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU32, Ordering};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 static CURRENT_GAME_PID: AtomicU32 = AtomicU32::new(0);
 
@@ -664,6 +664,15 @@ pub async fn prepare_and_launch(
             "game-session-ended",
             serde_json::json!({ "instanceId": instance_id_for_exit, "minutes": played_minutes }),
         );
+
+        // The launcher may have been minimized or hidden when the game started. Bring it back
+        // from here rather than the page: a hidden window's page is not guaranteed to keep
+        // running, and after a crash the log needs to be in front of the player.
+        if let Some(window) = app_exit.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.show();
+            let _ = window.set_focus();
+        }
         let _ = app_exit.emit("game-exit", ());
     });
 

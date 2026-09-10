@@ -13,9 +13,18 @@ import {
   Key,
   Gamepad2,
   Download,
+  Play,
+  LifeBuoy,
 } from 'lucide-react';
-import type { LauncherSettings, ColorPalette, WindowResolution, SystemInfo } from '../../types';
+import type {
+  LauncherSettings,
+  ColorPalette,
+  WindowResolution,
+  SystemInfo,
+  LaunchBehavior,
+} from '../../types';
 import { invokeCommand, isTauri } from '../../services/api';
+import { resetLauncherData } from '../../services/localData';
 import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
@@ -126,6 +135,20 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setFormData(updated);
     onSaveSettings(updated);
   };
+
+  const launchBehaviors: { id: LaunchBehavior; label: string }[] = [
+    { id: 'keep', label: t.launchKeep || 'Keep open' },
+    { id: 'minimize', label: t.launchMinimize || 'Minimize' },
+    { id: 'hide', label: t.launchHide || 'Hide until it closes' },
+  ];
+
+  const handleSelectLaunchBehavior = (behavior: LaunchBehavior) => {
+    const updated = { ...formData, launchBehavior: behavior };
+    setFormData(updated);
+    onSaveSettings(updated);
+  };
+
+  const [confirmingReset, setConfirmingReset] = useState(false);
 
   const handleToggleAutoUpdate = () => {
     const updated = { ...formData, autoUpdate: !formData.autoUpdate };
@@ -453,6 +476,40 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         </div>
 
+        {/* What the launcher window does while the game runs */}
+        <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Play className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+            <div>
+              <h3 className="text-base font-bold text-white tracking-wide">
+                {t.launchBehaviorTitle || 'When the game starts'}
+              </h3>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {t.launchBehaviorDesc || 'The launcher comes back on its own when the game closes or crashes.'}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {launchBehaviors.map((option) => {
+              const isSelected = (formData.launchBehavior || 'keep') === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => handleSelectLaunchBehavior(option.id)}
+                  className={`py-2.5 px-3 rounded-xl border-2 text-xs font-semibold transition-all duration-150 cursor-pointer ${
+                    isSelected
+                      ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/10 text-white font-bold'
+                      : 'border-white/5 bg-white/[0.02] text-slate-300 hover:border-white/20 hover:bg-white/[0.04]'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* 11. Updates */}
         <div className="glass-panel rounded-2xl p-5 border border-white/5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -550,6 +607,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             placeholder={t.curseForgePlaceholder}
             className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs text-slate-300 focus:outline-none focus:border-[var(--accent-color)]"
           />
+        </div>
+
+        {/* Troubleshooting */}
+        <div className="glass-panel rounded-2xl p-5 border border-white/5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <LifeBuoy className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+              <div>
+                <h3 className="text-base font-bold text-white tracking-wide">
+                  {t.supportTitle || 'Troubleshooting'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {t.resetDataDesc ||
+                    'Clears the settings, servers, skins and account saved in the launcher, then restarts it. Profiles and downloaded game files stay.'}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              // Two clicks, because this cannot be undone
+              onClick={() => (confirmingReset ? resetLauncherData() : setConfirmingReset(true))}
+              onBlur={() => setConfirmingReset(false)}
+              className={`py-2.5 px-4 rounded-xl text-xs font-bold border transition cursor-pointer shrink-0 ${
+                confirmingReset
+                  ? 'bg-rose-500/25 border-rose-500/60 text-rose-200'
+                  : 'bg-rose-500/10 hover:bg-rose-500/20 border-rose-500/30 text-rose-300'
+              }`}
+            >
+              {confirmingReset ? t.resetDataConfirm || 'Click again to erase' : t.resetDataBtn || 'Reset launcher data'}
+            </button>
+          </div>
         </div>
       </div>
 

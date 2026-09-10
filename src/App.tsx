@@ -13,6 +13,7 @@ import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
 import defaultBgImage from './assets/1834105-final.png';
 import { ModStore } from './components/mods/ModStore';
 import { SettingsView } from './components/settings/SettingsView';
+import { resetLauncherData } from './services/localData';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
 import { useAppUpdate } from './hooks/useAppUpdate';
@@ -77,14 +78,7 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
       this.setState({ confirmingReset: true });
       return;
     }
-    try {
-      Object.keys(localStorage)
-        .filter((key) => key.startsWith('mcl_'))
-        .forEach((key) => localStorage.removeItem(key));
-    } catch (err) {
-      console.warn('Failed to clear local data:', err);
-    }
-    window.location.reload();
+    resetLauncherData();
   };
 
   render() {
@@ -131,8 +125,8 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
               </button>
               {this.state.confirmingReset && (
                 <p className="text-[10px] text-slate-500 leading-relaxed">
-                  Deletes saved profiles, servers, skins and settings stored by this launcher, then restarts it.
-                  Downloaded game files are not affected.
+                  Clears the settings, servers, skins and account stored by this launcher, then restarts it.
+                  Profiles and downloaded game files stay.
                 </p>
               )}
             </div>
@@ -166,7 +160,7 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   bgType: 'image',
   customBgImage: defaultBgImage,
   bgOpacity: 0.3,
-  closeOnLaunch: false,
+  launchBehavior: 'keep',
   enableDiscordRpc: true,
   autoUpdate: false,
 };
@@ -528,6 +522,12 @@ export const App: React.FC = () => {
     setAccount((prev) => ({ ...prev, skinUrl, skinModel: model }));
   };
 
+  // Read through a ref because the listeners below are registered once, on mount
+  const launchBehaviorRef = useRef(settings.launchBehavior);
+  useEffect(() => {
+    launchBehaviorRef.current = settings.launchBehavior;
+  }, [settings.launchBehavior]);
+
   // Listen to Tauri native events
   useEffect(() => {
     if (!isTauri()) return;
@@ -560,6 +560,12 @@ export const App: React.FC = () => {
         unlistenStarted = await listen<number>('game-started', () => {
           setIsRunning(true);
           setIsPreparing(false);
+          // The backend brings the window back as soon as the game exits or crashes
+          if (launchBehaviorRef.current === 'minimize') {
+            invokeCommand('app_minimize').catch(console.warn);
+          } else if (launchBehaviorRef.current === 'hide') {
+            invokeCommand('app_hide').catch(console.warn);
+          }
         });
 
         // Auto-open console when game crashes

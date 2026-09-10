@@ -405,6 +405,11 @@ fn app_minimize(window: tauri::Window) {
 }
 
 #[tauri::command]
+fn app_hide(window: tauri::Window) {
+    let _ = window.hide();
+}
+
+#[tauri::command]
 fn app_close(window: tauri::Window) {
     let _ = window.close();
 }
@@ -518,6 +523,7 @@ pub fn run() {
             inspect_mrpack,
             install_mrpack,
             app_minimize,
+            app_hide,
             app_close,
             set_window_size
         ])

@@ -56,6 +56,7 @@ export const TAURI_COMMANDS = [
   'inspect_mrpack',
   'install_mrpack',
   'app_minimize',
+  'app_hide',
   'app_close',
   'set_window_size',
 ] as const;

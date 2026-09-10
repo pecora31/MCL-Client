@@ -238,6 +238,8 @@ export interface JavaInstallation {
 
 export type Language = 'vi' | 'en' | 'zh' | 'ja' | 'ko' | 'de' | 'fr' | 'es';
 export type ColorPalette = 'indigo' | 'emerald' | 'amber' | 'rose' | 'cyan' | 'slate';
+/** What the launcher window does once the game is running. It always comes back when the game ends. */
+export type LaunchBehavior = 'keep' | 'minimize' | 'hide';
 export type WindowResolution = '1280x720' | '1440x900' | '1600x900' | '1920x1080';
 
 export interface LauncherSettings {
@@ -252,7 +254,7 @@ export interface LauncherSettings {
   customVideoUrl?: string;
   bgOpacity: number;
   bgBlur?: number;
-  closeOnLaunch: boolean;
+  launchBehavior: LaunchBehavior;
   enableDiscordRpc: boolean;
   autoUpdate: boolean;
   gameDataDir?: string;
