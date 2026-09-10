@@ -169,6 +169,19 @@ function neoForgePrefix(gameVersion: string): string {
 
 export async function fetchNeoForgeVersions(gameVersion: string): Promise<string[]> {
   try {
+    // 1.20.1 is the one Minecraft version NeoForge shipped before switching to its own
+    // "neoforge" artifact and versioning: it started as a fork of Forge 47.x, published
+    // under Forge's own coordinate and naming, and never moved once the split settled.
+    if (gameVersion === '1.20.1') {
+      const res = await fetch('https://maven.neoforged.net/releases/net/neoforged/forge/maven-metadata.xml');
+      if (!res.ok) return [];
+      const prefix = `${gameVersion}-`;
+      return readMavenVersions(await res.text())
+        .filter((version) => version.startsWith(prefix))
+        .map((version) => version.slice(prefix.length))
+        .reverse();
+    }
+
     const res = await fetch(
       'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml'
     );

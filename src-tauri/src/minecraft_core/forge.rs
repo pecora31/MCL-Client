@@ -74,6 +74,14 @@ pub fn version_id(loader: &str, game_version: &str, loader_version: &str) -> Str
 
 fn installer_url(loader: &str, game_version: &str, loader_version: &str) -> String {
     match loader {
+        // 1.20.1 is the one Minecraft version NeoForge shipped before switching to its own
+        // "neoforge" artifact and versioning: it started as a fork of Forge 47.x, published
+        // under Forge's own coordinate and naming, and never moved once the split settled.
+        "neoforge" if game_version == "1.20.1" => format!(
+            "https://maven.neoforged.net/releases/net/neoforged/forge/{mc}-{v}/forge-{mc}-{v}-installer.jar",
+            mc = game_version,
+            v = loader_version
+        ),
         "neoforge" => format!(
             "https://maven.neoforged.net/releases/net/neoforged/neoforge/{v}/neoforge-{v}-installer.jar",
             v = loader_version
@@ -330,6 +338,25 @@ async fn run_installer(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn neoforge_1_20_1_uses_the_legacy_forge_coordinate_it_forked_from() {
+        // NeoForge only ever published 1.20.1 under Forge's own "forge" artifact and
+        // naming, inherited unchanged from the fork; verified against a real, currently
+        // resolvable file at this exact URL.
+        assert_eq!(
+            installer_url("neoforge", "1.20.1", "47.1.106"),
+            "https://maven.neoforged.net/releases/net/neoforged/forge/1.20.1-47.1.106/forge-1.20.1-47.1.106-installer.jar"
+        );
+    }
+
+    #[test]
+    fn neoforge_after_1_20_1_uses_its_own_artifact() {
+        assert_eq!(
+            installer_url("neoforge", "1.21.1", "21.1.250"),
+            "https://maven.neoforged.net/releases/net/neoforged/neoforge/21.1.250/neoforge-21.1.250-installer.jar"
+        );
+    }
 
     #[test]
     fn builds_version_ids_each_loader_uses() {
