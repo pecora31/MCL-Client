@@ -10,7 +10,7 @@ import { DeleteProfileModal } from './components/instances/DeleteProfileModal';
 import { StorageCleanupModal } from './components/settings/StorageCleanupModal';
 import { SkinStudio } from './components/skin/SkinStudio';
 import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
-import defaultBgImage from './assets/1834105-final.png';
+import defaultBgImage from './assets/1834105-final.webp';
 import { ModStore } from './components/mods/ModStore';
 import { SettingsView } from './components/settings/SettingsView';
 import { resetLauncherData } from './services/localData';
@@ -214,11 +214,17 @@ export const App: React.FC = () => {
         : 0.3;
     const validPalettes = ['indigo', 'emerald', 'amber', 'rose', 'cyan', 'slate'];
     const colorPalette = validPalettes.includes(parsed.colorPalette) ? parsed.colorPalette : 'rose';
+    // The built default background's filename carries a hash of its contents, so a saved copy
+    // of that URL stops resolving whenever the image changes; point it at today's file instead.
+    const customBgImage = /\/1834105-final[.-]/.test(parsed.customBgImage || '')
+      ? defaultBgImage
+      : parsed.customBgImage;
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
       colorPalette,
       bgOpacity,
+      customBgImage,
       bgType: parsed.bgType || (parsed.customBgImage ? 'image' : 'video'),
     };
   });
