@@ -142,9 +142,11 @@ const DEFAULT_INSTANCES: GameInstance[] = [];
 
 const DEFAULT_SERVERS: SavedServer[] = [];
 
+// Every install used to start as "Player_Hero", so every new player collided with every other on
+// the skin service. A random suffix keeps first-run names apart until the player picks their own.
 const DEFAULT_ACCOUNT: Account = {
   id: 'acc-01',
-  username: 'Player_Hero',
+  username: `Player_${Math.floor(10000 + Math.random() * 90000)}`,
   type: 'offline',
   skinUrl: STEVE_SKIN_BASE64,
   skinModel: 'classic',
