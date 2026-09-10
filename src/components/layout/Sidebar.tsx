@@ -136,12 +136,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className={`w-full h-full flex items-center justify-center text-lg bg-gradient-to-br ${presetAvatar.color}`}>
               <span className="select-none">{presetAvatar.icon}</span>
             </div>
-          ) : account.skinUrl ? (
-            <img
-              src={account.skinUrl}
-              alt={account.username}
-              className="w-full h-full object-cover rendering-pixelated"
-            />
           ) : (
             <User className="w-6 h-6 text-[var(--accent-color)]" />
           )}

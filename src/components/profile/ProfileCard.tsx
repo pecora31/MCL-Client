@@ -432,12 +432,6 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
                 alt={account.username}
                 className="w-full h-full object-cover select-none"
               />
-            ) : account.skinUrl ? (
-              <img
-                src={account.skinUrl}
-                alt={account.username}
-                className="w-full h-full object-cover rendering-pixelated select-none"
-              />
             ) : (
               <div className="w-full h-full flex items-center justify-center bg-slate-800 text-[var(--accent-color)]">
                 <User className="w-8 h-8" />
