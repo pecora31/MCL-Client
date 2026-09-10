@@ -184,9 +184,9 @@ fn report_progress(app: &AppHandle, major: u32, downloaded: u64, total: u64, sta
         "download-progress",
         DownloadProgressPayload {
             stage: "downloading".to_string(),
-            // The game files are already in place by this point, so the bar sits near its end;
-            // the byte counts and speed carry this step's own progress.
-            percentage: 94,
+            // Java is settled before any game file, so its download gets the first stretch of
+            // the bar (5-20%); the game's own downloads carry on from there.
+            percentage: 5 + (15 * downloaded / total.max(1)).min(15) as u32,
             current_file: format!(
                 "Java {} ({} / {} MB)",
                 major,

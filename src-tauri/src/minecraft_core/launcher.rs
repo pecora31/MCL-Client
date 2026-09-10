@@ -72,6 +72,67 @@ pub async fn prepare_and_launch(
         ),
     );
 
+    // Java comes first, before any game file is downloaded: a Java that cannot be found or
+    // fetched stops the launch straight away instead of after the whole game download, and a
+    // Java download gets the start of the progress bar to itself.
+    // Order of preference: a path chosen in the profile, then a version chosen in the
+    //    profile (downloaded if missing), then the best installed match — downloading the
+    //    version this Minecraft needs when nothing installed fits it (installed_java_fits).
+    let required_java = crate::java_detector::required_java_major(&instance.game_version);
+    let custom_path = instance
+        .java_path
+        .as_deref()
+        .filter(|path| !path.is_empty() && Path::new(path).exists());
+
+    let (java_bin, java_major, java_reason) = if let Some(custom_path) = custom_path {
+        (custom_path.to_string(), 0u32, format!("Using custom Java: {}", custom_path))
+    } else if let Some(pinned) = instance.java_version {
+        match crate::java_detector::detect_installed_javas()
+            .into_iter()
+            .find(|java| java.major_version == pinned)
+        {
+            Some(java) => (
+                java.path,
+                pinned,
+                format!("Using {} (chosen in this profile)", java.version_string),
+            ),
+            None => download_java_for_launch(app_handle, pinned).await?,
+        }
+    } else {
+        let best = crate::java_detector::find_best_java_for_version(&instance.game_version);
+        if !crate::java_detector::installed_java_fits(best.1, required_java) && auto_download_java {
+            download_java_for_launch(app_handle, required_java).await?
+        } else {
+            best
+        }
+    };
+
+    let _ = app_handle.emit(
+        "mc-log",
+        format!(
+            "[{}] [MCL/Java] {}",
+            chrono::Local::now().format("%H:%M:%S"),
+            java_reason
+        ),
+    );
+
+    // Refuse to start on a Java too old for this Minecraft build. Launching anyway only
+    // produces an UnsupportedClassVersionError that is hard for players to interpret.
+    if java_major > 0 && java_major < required_java {
+        return Err(format!(
+            "Minecraft {} requires Java {}, but only Java {} was found on this computer. \
+             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher. \
+             You can also pick a Java runtime manually in the profile settings.",
+            instance.game_version, required_java, java_major, required_java, required_java
+        ));
+    }
+    if java_major == 0 && !Path::new(&java_bin).exists() {
+        return Err(format!(
+            "No Java runtime was found on this computer. Minecraft {} requires Java {}. \
+             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher.",
+            instance.game_version, required_java, required_java, required_java
+        ));
+    }
     // 1. Fetch Version Details from Mojang
     let _ = app_handle.emit(
         "mc-log",
@@ -333,64 +394,6 @@ pub async fn prepare_and_launch(
     );
     extract_natives_from_libraries(app_handle, &libraries_dir, &natives_dir);
 
-    // 8. Pick the Java to run with: a path chosen in the profile, then a version chosen in the
-    //    profile (downloaded if missing), then the best installed match — downloading the
-    //    version this Minecraft needs when nothing installed fits it (installed_java_fits).
-    let required_java = crate::java_detector::required_java_major(&instance.game_version);
-    let custom_path = instance
-        .java_path
-        .as_deref()
-        .filter(|path| !path.is_empty() && Path::new(path).exists());
-
-    let (java_bin, java_major, java_reason) = if let Some(custom_path) = custom_path {
-        (custom_path.to_string(), 0u32, format!("Using custom Java: {}", custom_path))
-    } else if let Some(pinned) = instance.java_version {
-        match crate::java_detector::detect_installed_javas()
-            .into_iter()
-            .find(|java| java.major_version == pinned)
-        {
-            Some(java) => (
-                java.path,
-                pinned,
-                format!("Using {} (chosen in this profile)", java.version_string),
-            ),
-            None => download_java_for_launch(app_handle, pinned).await?,
-        }
-    } else {
-        let best = crate::java_detector::find_best_java_for_version(&instance.game_version);
-        if !crate::java_detector::installed_java_fits(best.1, required_java) && auto_download_java {
-            download_java_for_launch(app_handle, required_java).await?
-        } else {
-            best
-        }
-    };
-
-    let _ = app_handle.emit(
-        "mc-log",
-        format!(
-            "[{}] [MCL/Java] {}",
-            chrono::Local::now().format("%H:%M:%S"),
-            java_reason
-        ),
-    );
-
-    // Refuse to start on a Java too old for this Minecraft build. Launching anyway only
-    // produces an UnsupportedClassVersionError that is hard for players to interpret.
-    if java_major > 0 && java_major < required_java {
-        return Err(format!(
-            "Minecraft {} requires Java {}, but only Java {} was found on this computer. \
-             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher. \
-             You can also pick a Java runtime manually in the profile settings.",
-            instance.game_version, required_java, java_major, required_java, required_java
-        ));
-    }
-    if java_major == 0 && !Path::new(&java_bin).exists() {
-        return Err(format!(
-            "No Java runtime was found on this computer. Minecraft {} requires Java {}. \
-             Install Java {} (Adoptium Temurin {} LTS, 64-bit), then reopen the launcher.",
-            instance.game_version, required_java, required_java, required_java
-        ));
-    }
     let _ = app_handle.emit(
         "mc-log",
         format!(
