@@ -1252,7 +1252,19 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
             </div>
           </div>
 
-          {/* 3. Drag Overlay Indicator */}
+          {/* 3. Persistent Idle Hint: icon-only badge so the panel silently advertises that it
+              accepts drag & drop, without permanent on-screen text. Hidden while a real drag
+              is in progress since the full overlay below takes over at that point. */}
+          {!isDragging && (
+            <div
+              className="absolute bottom-4 right-4 z-30 w-9 h-9 rounded-xl bg-black/50 border border-white/10 backdrop-blur-md flex items-center justify-center text-slate-400 pointer-events-none select-none"
+              title={t.dropHintTooltip || 'You can drag & drop a .PNG skin file here'}
+            >
+              <UploadCloud className="w-4 h-4" />
+            </div>
+          )}
+
+          {/* 4. Drag Overlay Indicator */}
           {isDragging && (
             <div className="absolute inset-0 z-40 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-[var(--accent-color)] text-white animate-fadeIn pointer-events-none">
               <UploadCloud className="w-12 h-12 text-[var(--accent-color)] animate-bounce mb-2" />
@@ -1262,7 +1274,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
             </div>
           )}
 
-          {/* 4. Bottom Floating Animation & Camera Controls Dock */}
+          {/* 5. Bottom Floating Animation & Camera Controls Dock */}
           <div className="relative z-30 w-full flex flex-col items-center p-4 pointer-events-none">
             <div className="bg-black/85 backdrop-blur-xl border-2 border-white/15 p-1.5 rounded-2xl shadow-2xl shadow-black/80 flex items-center gap-1.5 pointer-events-auto">
               {/* Animations: Idle, Walk, Run with smooth sliding selection box */}
@@ -1574,6 +1586,9 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
                   </div>
                   <div className="text-[11px] font-medium text-slate-400 group-hover:text-slate-300 transition-colors font-sans mt-1 tracking-normal">
                     {t.dropPngSubtext || 'Click to browse'}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-sans mt-0.5 tracking-normal">
+                    {t.dropOnPreviewHint || 'or drag & drop onto the preview'}
                   </div>
                 </div>
               </div>
