@@ -24,13 +24,27 @@ export interface ShareResult {
   untracked: string[];
 }
 
+/**
+ * `fetch()` rejects rather than resolving with a bad status when the request never leaves
+ * the machine at all — no internet, DNS failure, or the service being unreachable — and the
+ * browser's own message for that ("Failed to fetch", "NetworkError...") reads exactly like
+ * a bug report and tells the player nothing they can act on.
+ */
+async function fetchOrExplain(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch {
+    throw new Error("Could not reach MCL's server. Check your internet connection and try again.");
+  }
+}
+
 export async function createShareCode(instanceId: string): Promise<ShareResult> {
   const [manifest, untracked] = await invokeCommand<[ShareManifest, string[]]>(
     'build_share_manifest',
     { instanceId }
   );
 
-  const res = await fetch(SHARES_ROOT, {
+  const res = await fetchOrExplain(SHARES_ROOT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(manifest),
@@ -49,7 +63,7 @@ export async function createShareCode(instanceId: string): Promise<ShareResult> 
 }
 
 export async function fetchShareManifest(code: string): Promise<ShareManifest> {
-  const res = await fetch(`${SHARES_ROOT}/${encodeURIComponent(code.trim().toUpperCase())}`);
+  const res = await fetchOrExplain(`${SHARES_ROOT}/${encodeURIComponent(code.trim().toUpperCase())}`);
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     throw new Error((detail as { error?: string }).error || `HTTP ${res.status}`);
