@@ -42,14 +42,63 @@ mod skin_config_tests {
 
         assert!(csl.join("LocalSkin").join("skins").is_dir());
 
-        // The mod's own defaults (Mojang, ElyBy, TLauncher, LittleSkin) must stay intact,
-        // which only holds while this launcher leaves CustomSkinLoader.json alone
+        // With no config yet there is nothing to order, so the mod is left to write its own
+        // defaults (Mojang, ElyBy, TLauncher, LittleSkin) and merge the entry above
         assert!(
             !csl.join("CustomSkinLoader.json").exists(),
-            "the mod's config must not be overwritten"
+            "the mod's config must not be created before the mod has written it"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
+#[cfg(test)]
+mod skin_source_order_tests {
+    use super::*;
+
+    fn loadlist_of(names: &[&str]) -> serde_json::Value {
+        serde_json::json!({
+            "version": "15.0.1",
+            "loadlist": names
+                .iter()
+                .map(|name| serde_json::json!({ "name": name, "type": "Legacy" }))
+                .collect::<Vec<_>>(),
+        })
+    }
+
+    fn names_in(config: &serde_json::Value) -> Vec<String> {
+        config["loadlist"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|entry| entry["name"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn moves_the_local_skin_source_above_the_mcl_service() {
+        let mut config = loadlist_of(&["MCL", "Mojang", "LocalSkin", "ElyBy"]);
+        assert!(arrange_skin_sources(&mut config));
+        assert_eq!(
+            names_in(&config),
+            ["LocalSkin", "MCL", "Mojang", "ElyBy"]
+        );
+    }
+
+    #[test]
+    fn leaves_a_loadlist_that_is_already_in_order_alone() {
+        let mut config = loadlist_of(&["LocalSkin", "MCL", "Mojang"]);
+        assert!(!arrange_skin_sources(&mut config));
+        assert_eq!(names_in(&config), ["LocalSkin", "MCL", "Mojang"]);
+    }
+
+    #[test]
+    fn adds_the_mcl_service_directly_below_local_skin_when_it_is_missing() {
+        let mut config = loadlist_of(&["Mojang", "LocalSkin", "ElyBy"]);
+        assert!(arrange_skin_sources(&mut config));
+        assert_eq!(names_in(&config), ["Mojang", "LocalSkin", "MCL", "ElyBy"]);
+        assert_eq!(config["loadlist"][2]["checkPNG"], true);
     }
 }
 
@@ -449,29 +498,16 @@ pub async fn download_and_install_addon(
     })
 }
 
-// Registers MCL's skin service with CustomSkinLoader.
+const MCL_SOURCE_NAME: &str = "MCL";
+const LOCAL_SKIN_SOURCE_NAME: &str = "LocalSkin";
+
+// Registers MCL's skin service with CustomSkinLoader, below the mod's own LocalSkin source.
 //
-// This drops a file into ExtraList rather than writing CustomSkinLoader.json: ExtraList
-// adds a source while leaving the mod's own defaults in place, so players keep resolving
-// skins from Mojang, ElyBy, TLauncher and LittleSkin without this launcher having to
+// Only those two entries are placed; the mod's other defaults are left alone, so players keep
+// resolving skins from Mojang, ElyBy, TLauncher and LittleSkin without this launcher having to
 // track those addresses itself.
 pub fn setup_in_game_skin_support(instance_dir: &Path) -> Result<(), String> {
     let custom_skin_loader_dir = instance_dir.join("CustomSkinLoader");
-    let extra_list_dir = custom_skin_loader_dir.join("ExtraList");
-    fs::create_dir_all(&extra_list_dir).map_err(|e| e.to_string())?;
-
-    // "Legacy" is the direct-URL source type; the mod substitutes {USERNAME} per player
-    let entry = format!(
-        r#"{{
-  "name": "MCL",
-  "type": "Legacy",
-  "checkPNG": true,
-  "model": "auto",
-  "skin": "{}/v1/skins/{{USERNAME}}.png"
-}}"#,
-        SKIN_SERVICE_ROOT
-    );
-    fs::write(extra_list_dir.join("mcl-skin-service.json"), entry).map_err(|e| e.to_string())?;
 
     // The mod's built-in LocalSkin source reads from here, which is where this launcher
     // writes the player's own skin so it shows even with no network
@@ -480,7 +516,73 @@ pub fn setup_in_game_skin_support(instance_dir: &Path) -> Result<(), String> {
     fs::create_dir_all(custom_skin_loader_dir.join("LocalSkin").join("capes"))
         .map_err(|e| e.to_string())?;
 
+    let config_path = custom_skin_loader_dir.join("CustomSkinLoader.json");
+    let config = fs::read_to_string(&config_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok());
+
+    // Before the mod has ever run there is no config to edit, so the source is handed over
+    // through ExtraList instead and the mod merges it on this start. ExtraList always puts an
+    // entry at the top of the loadlist, which is the wrong place for it, so this is only ever
+    // used to introduce the source — the order is settled in the config from then on.
+    let Some(mut config) = config else {
+        let extra_list_dir = custom_skin_loader_dir.join("ExtraList");
+        fs::create_dir_all(&extra_list_dir).map_err(|e| e.to_string())?;
+        let entry = serde_json::to_string_pretty(&mcl_source_entry()).map_err(|e| e.to_string())?;
+        return fs::write(extra_list_dir.join("mcl-skin-service.json"), entry)
+            .map_err(|e| e.to_string());
+    };
+
+    if arrange_skin_sources(&mut config) {
+        let serialized = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+        fs::write(&config_path, serialized).map_err(|e| e.to_string())?;
+    }
+
     Ok(())
+}
+
+// "Legacy" is the direct-URL source type; the mod substitutes {USERNAME} per player.
+fn mcl_source_entry() -> serde_json::Value {
+    serde_json::json!({
+        "name": MCL_SOURCE_NAME,
+        "type": "Legacy",
+        "checkPNG": true,
+        "model": "auto",
+        "skin": format!("{}/v1/skins/{{USERNAME}}.png", SKIN_SERVICE_ROOT),
+    })
+}
+
+/// CustomSkinLoader walks its loadlist in order and keeps the first source that answers, so
+/// MCL's service has to sit below LocalSkin. The local file is the skin the player just chose
+/// and is always current, while the copy on the service can lag behind — an upload that failed,
+/// or a name claimed from another computer — and the mod caches whatever it resolved, so one
+/// stale answer keeps being shown long after the skin changed. Other players have no local file
+/// under their name, so they still fall through to the service.
+///
+/// Returns whether the loadlist needed changing.
+fn arrange_skin_sources(config: &mut serde_json::Value) -> bool {
+    let Some(loadlist) = config.get_mut("loadlist").and_then(|v| v.as_array_mut()) else {
+        return false;
+    };
+    let local = loadlist
+        .iter()
+        .position(|entry| entry["name"] == LOCAL_SKIN_SOURCE_NAME);
+    let mcl = loadlist
+        .iter()
+        .position(|entry| entry["name"] == MCL_SOURCE_NAME);
+
+    match (local, mcl) {
+        (Some(local), Some(mcl)) if mcl < local => {
+            let entry = loadlist.remove(local);
+            loadlist.insert(mcl, entry);
+            true
+        }
+        (Some(local), None) => {
+            loadlist.insert(local + 1, mcl_source_entry());
+            true
+        }
+        _ => false,
+    }
 }
 
 /// MCL's own skin service. Players see each other's skins on offline servers because
@@ -575,10 +677,8 @@ pub async fn install_local_skin(
         return Err("The player name has no characters usable as a file name".to_string());
     }
 
-    let skins_dir = get_instance_dir(instance_id)
-        .join("CustomSkinLoader")
-        .join("LocalSkin")
-        .join("skins");
+    let custom_skin_loader_dir = get_instance_dir(instance_id).join("CustomSkinLoader");
+    let skins_dir = custom_skin_loader_dir.join("LocalSkin").join("skins");
     fs::create_dir_all(&skins_dir).map_err(|e| e.to_string())?;
 
     let bytes = if let Some(encoded) = skin.split("base64,").nth(1) {
@@ -598,6 +698,10 @@ pub async fn install_local_skin(
 
     let target = skins_dir.join(format!("{}.png", safe_username));
     fs::write(&target, &bytes).map_err(|e| format!("Cannot save the skin: {}", e))?;
+
+    // The mod keeps the texture it last resolved for a name, and that outlives a skin change,
+    // so without this the player keeps seeing the previous skin until the entry expires.
+    let _ = fs::remove_dir_all(custom_skin_loader_dir.join("caches"));
 
     // Publishing is best-effort: the player still sees their own skin from the local copy
     // even when the service is unreachable, so this must never fail the launch.
@@ -947,4 +1051,3 @@ pub fn execute_storage_cleanup(
         message,
     })
 }
-
