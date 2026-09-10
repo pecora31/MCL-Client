@@ -37,7 +37,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 }) => {
   const t = getTranslation(language);
   const [formData, setFormData] = useState<LauncherSettings>(settings);
-  const [savedSuccess, setSavedSuccess] = useState(false);
   const [isCleanupModalOpen, setIsCleanupModalOpen] = useState(false);
   // Read straight from the running binary's own version, same as the home screen badge,
   // so this label never drifts from what a release actually bumps.
@@ -54,12 +53,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setFormData(settings);
   }, [settings]);
 
-  const handleSave = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    onSaveSettings(formData);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2000);
-  };
+  // Every other control saves the moment it is clicked; text fields save once typing pauses,
+  // so nothing here depends on remembering a separate Save button before leaving the page.
+  useEffect(() => {
+    if (
+      formData.defaultJvmArgs === settings.defaultJvmArgs &&
+      formData.curseForgeApiKey === settings.curseForgeApiKey
+    ) {
+      return;
+    }
+    const timer = setTimeout(() => onSaveSettings(formData), 500);
+    return () => clearTimeout(timer);
+  }, [formData.defaultJvmArgs, formData.curseForgeApiKey]);
 
   // 1. Color Palettes
   const palettes: { id: ColorPalette; name: string; color: string; desc: string }[] = [
@@ -146,17 +151,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
           <h1 className="text-3xl font-extrabold text-white tracking-normal">{t.settingsTitle}</h1>
           <p className="text-base text-slate-300 mt-1 tracking-wide">{t.settingsSub}</p>
-        </div>
-
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            type="button"
-            onClick={handleSave}
-            className="btn-primary h-11 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-none hover:shadow-none tracking-wide shrink-0 cursor-pointer active:scale-95 transition-all"
-          >
-            {savedSuccess ? <Check className="w-4 h-4 text-emerald-300" /> : <Check className="w-4 h-4" />}
-            <span>{savedSuccess ? t.saved : t.btnSave}</span>
-          </button>
         </div>
       </div>
 
