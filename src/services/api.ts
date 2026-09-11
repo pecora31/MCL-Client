@@ -34,6 +34,10 @@ export const TAURI_COMMANDS = [
   'execute_storage_cleanup',
   'read_server_properties',
   'write_server_properties',
+  'get_hosted_server_status',
+  'prepare_hosted_server',
+  'start_hosted_server',
+  'stop_hosted_server',
   'detect_java',
   'find_best_java',
   'get_system_info',
@@ -1006,6 +1010,25 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'write_server_properties':
       console.log('Mock write_server_properties:', args);
+      return undefined as unknown as T;
+
+    case 'get_hosted_server_status':
+      return {
+        running: false,
+        hasJar: false,
+        serverDir: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient\\instances\\mock\\server',
+      } as unknown as T;
+
+    case 'prepare_hosted_server':
+      return {
+        running: false,
+        hasJar: true,
+        serverDir: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient\\instances\\mock\\server',
+      } as unknown as T;
+
+    case 'start_hosted_server':
+    case 'stop_hosted_server':
+      console.log(`Mock ${cmd}:`, args);
       return undefined as unknown as T;
 
     case 'select_folder':

@@ -10,12 +10,14 @@ mod modpack_installer;
 mod mod_conflicts;
 mod models;
 mod server_config;
+mod server_host;
 mod server_ping;
 
 use models::{
     GameInstance, JavaInstallation, LocalMod, ServerPropertiesSummary, ServerStatus,
     StorageCleanupReport, StorageCleanupScanResult, SystemInfo,
 };
+use server_host::HostedServerStatus;
 use base64::Engine as _;
 use tauri::Manager;
 use std::sync::{Mutex, OnceLock};
@@ -78,6 +80,57 @@ fn read_server_properties(dir: String) -> Result<ServerPropertiesSummary, String
 #[tauri::command]
 fn write_server_properties(dir: String, summary: ServerPropertiesSummary) -> Result<(), String> {
     server_config::write_server_properties(&dir, &summary)
+}
+
+fn require_instance(instance_id: &str) -> Result<GameInstance, String> {
+    instance_manager::get_instance(instance_id)
+        .ok_or_else(|| format!("No profile found with id {}", instance_id))
+}
+
+#[tauri::command]
+fn get_hosted_server_status(instance_id: String) -> Result<HostedServerStatus, String> {
+    Ok(server_host::get_status(&require_instance(&instance_id)?))
+}
+
+#[tauri::command]
+async fn prepare_hosted_server(instance_id: String, accept_eula: bool) -> Result<HostedServerStatus, String> {
+    let instance = require_instance(&instance_id)?;
+    if !accept_eula {
+        return Err("Hosting a server means accepting Mojang's EULA first.".to_string());
+    }
+    let instance_dir = instance_manager::get_instance_dir(&instance_id);
+    let server_dir = server_host::server_dir_for(&instance);
+    let common_dir = instance_manager::get_launcher_dir().join("common");
+
+    server_host::prepare_server_jar(
+        &instance.loader,
+        &instance.game_version,
+        instance.loader_version.as_deref(),
+        &common_dir,
+        &server_dir,
+    )
+    .await?;
+    server_host::accept_eula(&server_dir)?;
+    server_host::sync_mods_to_server(&instance_dir, &server_dir)?;
+
+    Ok(server_host::get_status(&instance))
+}
+
+#[tauri::command]
+fn start_hosted_server(
+    app_handle: tauri::AppHandle,
+    instance_id: String,
+    java_bin: String,
+    min_ram: u32,
+    max_ram: u32,
+) -> Result<(), String> {
+    let instance = require_instance(&instance_id)?;
+    server_host::start_server(&app_handle, &instance, &java_bin, min_ram, max_ram)
+}
+
+#[tauri::command]
+fn stop_hosted_server(instance_id: String) -> Result<bool, String> {
+    server_host::stop_server(&instance_id)
 }
 
 #[tauri::command]
@@ -561,6 +614,10 @@ pub fn run() {
             execute_storage_cleanup,
             read_server_properties,
             write_server_properties,
+            get_hosted_server_status,
+            prepare_hosted_server,
+            start_hosted_server,
+            stop_hosted_server,
             detect_java,
             find_best_java,
             get_system_info,

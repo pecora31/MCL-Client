@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import mclLogo from '../../assets/logo.png';
-import { Home, Layers, Package, Shirt, Settings, User } from 'lucide-react';
+import { Home, Layers, Package, Shirt, Server, Settings, User } from 'lucide-react';
 import type { Account } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { MINECRAFT_AVATAR_ICONS } from '../profile/ProfileView';
 import { ProfileCard } from '../profile/ProfileCard';
 
-export type NavigationTab = 'home' | 'instances' | 'mods' | 'skin' | 'settings' | 'profile';
+export type NavigationTab = 'home' | 'instances' | 'mods' | 'skin' | 'hostServer' | 'settings' | 'profile';
 
 interface SidebarProps {
   currentTab: NavigationTab;
@@ -33,6 +33,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'instances', label: t.navInstances, icon: Layers },
     { id: 'mods', label: t.navMods, icon: Package },
     { id: 'skin', label: t.navSkin, icon: Shirt },
+    { id: 'hostServer', label: t.navHostServer || 'Host Server', icon: Server },
     { id: 'settings', label: t.navSettings, icon: Settings },
   ];
 

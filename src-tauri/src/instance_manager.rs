@@ -254,6 +254,10 @@ pub fn record_play_session(instance_id: &str, minutes: u64) -> Result<(), String
     save_instances(&instances)
 }
 
+pub fn get_instance(instance_id: &str) -> Option<GameInstance> {
+    load_instances().into_iter().find(|i| i.id == instance_id)
+}
+
 pub fn get_instance_dir(instance_id: &str) -> PathBuf {
     let instances = load_instances();
     if let Some(inst) = instances.iter().find(|i| i.id == instance_id) {

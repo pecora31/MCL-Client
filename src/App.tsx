@@ -30,9 +30,11 @@ import { X } from 'lucide-react';
 const loadSkinStudio = () => import('./components/skin/SkinStudio');
 const loadModStore = () => import('./components/mods/ModStore');
 const loadSettingsView = () => import('./components/settings/SettingsView');
+const loadHostServerView = () => import('./components/server/HostServerView');
 const SkinStudio = lazy(() => loadSkinStudio().then((m) => ({ default: m.SkinStudio })));
 const ModStore = lazy(() => loadModStore().then((m) => ({ default: m.ModStore })));
 const SettingsView = lazy(() => loadSettingsView().then((m) => ({ default: m.SettingsView })));
+const HostServerView = lazy(() => loadHostServerView().then((m) => ({ default: m.HostServerView })));
 
 interface ErrorBoundaryProps {
   children: React.ReactNode;
@@ -312,6 +314,7 @@ export const App: React.FC = () => {
     const timer = setTimeout(() => {
       loadModStore();
       loadSettingsView();
+      loadHostServerView();
     }, 1500);
     return () => clearTimeout(timer);
   }, []);
@@ -1085,6 +1088,14 @@ export const App: React.FC = () => {
                           language={language}
                           onChangeLanguage={handleChangeLanguage}
                           appUpdate={appUpdate}
+                        />
+                      )}
+
+                      {currentTab === 'hostServer' && (
+                        <HostServerView
+                          instances={instances}
+                          language={language}
+                          onOpenCreateModal={() => setIsCreateModalOpen(true)}
                         />
                       )}
                       </Suspense>

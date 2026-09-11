@@ -308,3 +308,10 @@ export interface ServerPropertiesSummary {
   motd: string;
 }
 
+/** Whether a profile's self-hosted server has a jar ready and is currently running. */
+export interface HostedServerStatus {
+  running: boolean;
+  hasJar: boolean;
+  serverDir: string;
+}
+
