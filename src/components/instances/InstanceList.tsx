@@ -187,7 +187,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
             onClick={onOpenCreateModal}
             className="btn-primary h-11 px-6 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 shadow-none hover:shadow-none shrink-0 tracking-wide cursor-pointer active:scale-95 transition-all"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" strokeWidth={3} />
             <span>{t.btnCreateProfile || 'New Profile'}</span>
           </button>
         </div>
@@ -196,7 +196,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
       {/* Default Game Storage Directory Bar (At the very top of Profile Menu) */}
       <div className="rounded-2xl bg-white/[0.03] border border-white/[0.08] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent-color)] flex items-center justify-center shrink-0">
             <HardDrive className="w-5 h-5" />
           </div>
           <div className="min-w-0">
@@ -204,7 +204,11 @@ export const InstanceList: React.FC<InstanceListProps> = ({
               {t.defaultDirLabel}
             </div>
             <div
-              className="text-xs font-medium text-amber-300/90 truncate max-w-xl mt-0.5"
+              // Direct CSS variables rather than the amber-* utilities: the theme override
+              // list only covers a fixed set of amber classes, and `text-amber-300/90`'s
+              // opacity variant wasn't on it, so this path stayed literally amber under
+              // every other theme (same gap as the per-profile folder chip above).
+              className="text-xs font-medium text-[var(--accent-light)]/90 truncate max-w-xl mt-0.5"
               title={defaultGameDir || ''}
             >
               {defaultGameDir || '%APPDATA%\\MCL Client'}
@@ -219,7 +223,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
               className="px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white border border-white/10 text-xs font-bold font-riot flex items-center gap-1.5 transition cursor-pointer"
               title={t.btnChangeDir}
             >
-              <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+              <Edit3 className="w-3.5 h-3.5 text-[var(--accent-color)]" />
               <span>{t.btnChangeDir}</span>
             </button>
           )}
@@ -343,7 +347,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
             onClick={onOpenCreateModal}
             className="btn-primary py-3 px-6 rounded-xl font-riot font-bold text-sm flex items-center gap-2 shadow-lg cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-4 h-4" strokeWidth={3} />
             <span>Create First Profile</span>
           </button>
         </div>
@@ -372,7 +376,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
       ) : (
         <>
           <div
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 w-full"
             style={{ gridAutoRows: '216px' }}
           >
             {paginatedInstances.map((inst) => {
@@ -408,7 +412,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                       {isSelected && (
                         <div
                           title={t.selectedTag || 'Selected'}
-                          className="w-6 h-6 rounded-full bg-emerald-500 border border-emerald-400/40 flex items-center justify-center shadow-md shadow-emerald-950/40 shrink-0 select-none animate-fadeIn"
+                          className="w-6 h-6 rounded-full bg-[var(--accent-color)] border border-white/20 flex items-center justify-center shrink-0 select-none animate-fadeIn shadow-sm"
                         >
                           <Check className="w-3.5 h-3.5 stroke-[3] text-white" />
                         </div>
@@ -429,10 +433,14 @@ export const InstanceList: React.FC<InstanceListProps> = ({
                   <div className="space-y-1.5 my-auto min-w-0 w-full overflow-hidden">
                     {inst.customDir && (
                       <div
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.02] border border-amber-500/20 text-[11px] font-medium text-amber-300/80 truncate w-full"
+                        // Direct CSS variables rather than the amber-* utilities: those only
+                        // pick up the active theme color through a global override list, and
+                        // `text-amber-300/80`'s opacity variant wasn't on that list, so this
+                        // label stayed literally amber under every other theme.
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.02] border border-[var(--accent-border)] text-[11px] font-medium text-[var(--accent-light)]/80 truncate w-full"
                         title={inst.customDir}
                       >
-                        <FolderOpen className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <FolderOpen className="w-3.5 h-3.5 text-[var(--accent-color)] shrink-0" />
                         <span className="truncate">{inst.customDir}</span>
                       </div>
                     )}

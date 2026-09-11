@@ -209,26 +209,26 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
   }, [t, presets]);
 
   return (
-    <div className="space-y-2.5 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+    <div className="space-y-2.5 p-4.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
       <div className="flex items-center justify-between">
-        <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-          <Monitor className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+        <div className="text-[13px] font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2.5">
+          <Monitor className="w-4 h-4 text-[var(--accent-color)]" />
           <span>{t.gameWindowResolutionTitle || 'Game Window & Resolution'}</span>
         </div>
         {fullscreen ? (
-          <span className="text-[10px] font-bold text-amber-300 px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20">
+          <span className="text-xs font-bold text-amber-300 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20">
             {t.windowModeFullscreen || 'Fullscreen'}
           </span>
         ) : isCustomMode ? (
-          <span className="text-[10px] font-bold text-[var(--accent-light)] px-2 py-0.5 rounded-md bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20">
+          <span className="text-xs font-bold text-[var(--accent-light)] px-2.5 py-1 rounded-lg bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20">
             {(t.windowModeCustom || 'Custom')}: {windowWidth || '1280'} × {windowHeight || '720'}
           </span>
         ) : windowWidth && windowHeight ? (
-          <span className="text-[10px] font-bold text-[var(--accent-light)] px-2 py-0.5 rounded-md bg-white/5 border border-white/10">
+          <span className="text-xs font-bold text-[var(--accent-light)] px-2.5 py-1 rounded-lg bg-white/5 border border-white/10">
             {windowWidth} × {windowHeight}
           </span>
         ) : (
-          <span className="text-[10px] font-medium text-slate-400 px-2 py-0.5 rounded-md bg-white/5 border border-white/5">
+          <span className="text-xs font-medium text-slate-400 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
             {t.windowModeDefault || 'Default'}
           </span>
         )}
@@ -245,11 +245,11 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
           {/* Dual Inputs */}
           <div className="grid grid-cols-2 gap-3 items-center">
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
                   {t.windowWidthLabel || 'Width (pixels)'}
                 </label>
-                <span className="text-[10px] text-slate-500">Min: 640px</span>
+                <span className="text-xs text-slate-500">Min: 640px</span>
               </div>
               <div className="relative">
                 <input
@@ -268,24 +268,24 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                     }
                   }}
                   placeholder="1280"
-                  className={`w-full px-3 py-2 rounded-xl bg-black/40 border text-xs font-semibold text-white focus:outline-none transition pr-8 ${
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-black/40 border text-sm font-semibold text-white focus:outline-none transition pr-9 ${
                     isWidthInvalid
                       ? 'border-amber-500/60 focus:border-amber-400'
                       : 'border-white/10 focus:border-[var(--accent-color)]'
                   }`}
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-500 pointer-events-none">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 pointer-events-none">
                   px
                 </span>
               </div>
             </div>
 
             <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
                   {t.windowHeightLabel || 'Height (pixels)'}
                 </label>
-                <span className="text-[10px] text-slate-500">Min: 480px</span>
+                <span className="text-xs text-slate-500">Min: 480px</span>
               </div>
               <div className="relative">
                 <input
@@ -304,13 +304,13 @@ export const GameWindowSelector: React.FC<GameWindowSelectorProps> = ({
                     }
                   }}
                   placeholder="720"
-                  className={`w-full px-3 py-2 rounded-xl bg-black/40 border text-xs font-semibold text-white focus:outline-none transition pr-8 ${
+                  className={`w-full px-3.5 py-2.5 rounded-xl bg-black/40 border text-sm font-semibold text-white focus:outline-none transition pr-9 ${
                     isHeightInvalid
                       ? 'border-amber-500/60 focus:border-amber-400'
                       : 'border-white/10 focus:border-[var(--accent-color)]'
                   }`}
                 />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-500 pointer-events-none">
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-slate-400 pointer-events-none">
                   px
                 </span>
               </div>

@@ -33,6 +33,7 @@ import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { StorageCleanupModal } from './StorageCleanupModal';
 import { SmoothRange } from '../common/SmoothRange';
+import { ToggleSwitch } from '../common/ToggleSwitch';
 
 const PRIVACY_URL = 'https://github.com/pecora31/MCL-Client/blob/main/PRIVACY.md';
 
@@ -207,7 +208,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       </div>
 
       {/* Centered Content Wrapper: All settings component boxes centered on the page */}
-      <div className="max-w-3xl mx-auto w-full space-y-8 pb-12">
+      {/* Matches how wide Instances and Mods now use the shared overlay chrome — Settings used
+          to stay narrow while its siblings filled the width, which looked inconsistent. */}
+      <div className="max-w-5xl mx-auto w-full space-y-8 pb-12">
 
         <section className="space-y-4">
           <h2 className="px-1 pt-2 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">{t.settingsGroupAppearance || 'Appearance'}</h2>
@@ -322,19 +325,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
               {/* Switch button */}
-              <button
-                type="button"
-                onClick={handleToggleReduceMotion}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                  formData.reduceMotion ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                    formData.reduceMotion ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch
+                checked={!!formData.reduceMotion}
+                onChange={handleToggleReduceMotion}
+                size="md"
+                title={t.reduceMotionTitle}
+              />
             </div>
           </div>
 
@@ -470,19 +466,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleAutoDownloadJava}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                  formData.autoDownloadJava ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                    formData.autoDownloadJava ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch
+                checked={!!formData.autoDownloadJava}
+                onChange={handleToggleAutoDownloadJava}
+                size="md"
+                title={t.autoDownloadJavaTitle}
+              />
             </div>
           </div>
 
@@ -502,19 +491,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleShareSkin}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                  formData.shareSkin ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                    formData.shareSkin ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch
+                checked={!!formData.shareSkin}
+                onChange={handleToggleShareSkin}
+                size="md"
+                title={t.shareSkinTitle}
+              />
             </div>
           </div>
 
@@ -534,19 +516,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={handleToggleDiscordRpc}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                  formData.enableDiscordRpc ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                    formData.enableDiscordRpc ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch
+                checked={!!formData.enableDiscordRpc}
+                onChange={handleToggleDiscordRpc}
+                size="md"
+                title={t.discordRpcTitle}
+              />
             </div>
           </div>
         </section>
@@ -641,19 +616,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     'Installs a new version as soon as it is found, as long as nothing is downloading or running.'}
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={handleToggleAutoUpdate}
-                className={`w-12 h-6 rounded-full transition-colors duration-200 relative p-0.5 shrink-0 cursor-pointer ${
-                  formData.autoUpdate ? 'bg-[var(--accent-color)] shadow-md shadow-[var(--accent-color)]/30' : 'bg-white/15'
-                }`}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full bg-white shadow-md transform transition-transform duration-200 ${
-                    formData.autoUpdate ? 'translate-x-6' : 'translate-x-0'
-                  }`}
-                />
-              </button>
+              <ToggleSwitch
+                checked={!!formData.autoUpdate}
+                onChange={handleToggleAutoUpdate}
+                size="md"
+                title={t.autoUpdateTitle || 'Automatically install updates'}
+              />
             </div>
           </div>
         </section>

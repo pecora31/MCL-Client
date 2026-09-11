@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Globe, Pause, Trash2, Edit3, Save, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Pause, Trash2, Edit3, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { GameInstance, ServerStatus, LaunchProgress, SavedServer } from '../../types';
 import { pingServer, isTauri } from '../../services/api';
 import packageJson from '../../../package.json';
@@ -194,14 +194,18 @@ export const ServerHub: React.FC<ServerHubProps> = ({
     motd?: string;
   } | null>(null);
 
-  // Quick delete confirmation state
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  // Delete server confirmation modal state
+  const [serverToDelete, setServerToDelete] = useState<SavedServer | null>(null);
 
   const [serverStatus, setServerStatus] = useState<ServerStatus>({
     ip: currentSavedServer?.ip || '',
     port: currentSavedServer?.port || 25565,
     online: false,
   });
+
+  const displayIp = currentSavedServer
+    ? `${currentSavedServer.ip}${currentSavedServer.port && currentSavedServer.port !== 25565 ? `:${currentSavedServer.port}` : ''}`
+    : (serverStatus.ip ? `${serverStatus.ip}${serverStatus.port && serverStatus.port !== 25565 ? `:${serverStatus.port}` : ''}` : '');
 
   const handleRefreshPing = async () => {
     if (!currentSavedServer) {
@@ -228,8 +232,9 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   const handleCopyIp = (e?: React.MouseEvent) => {
     e?.stopPropagation();
     const target = currentSavedServer
-      ? `${currentSavedServer.ip}${currentSavedServer.port !== 25565 ? `:${currentSavedServer.port}` : ''}`
-      : `${serverStatus.ip}:${serverStatus.port}`;
+      ? `${currentSavedServer.ip}${currentSavedServer.port && currentSavedServer.port !== 25565 ? `:${currentSavedServer.port}` : ''}`
+      : (serverStatus.ip ? `${serverStatus.ip}${serverStatus.port && serverStatus.port !== 25565 ? `:${serverStatus.port}` : ''}` : '');
+    if (!target) return;
     navigator.clipboard.writeText(target);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -299,16 +304,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
     setIsServerModalOpen(false);
   };
 
-  const handleDeleteServerWithConfirm = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (deleteConfirmId === id) {
-      onDeleteServer(id);
-      setDeleteConfirmId(null);
-    } else {
-      setDeleteConfirmId(id);
-      setTimeout(() => setDeleteConfirmId(null), 3500);
-    }
-  };
+
 
   const isPreparingOrDownloading =
     isPreparing ||
@@ -588,149 +584,224 @@ export const ServerHub: React.FC<ServerHubProps> = ({
               {/* Server Widget - Located BELOW Play Button & Profile Box */}
               {/* Width = 220px (Play) + 12px (gap) + 280px (Profile) = 512px exact */}
               <div
-                className="w-[512px] mt-3.5 p-4 rounded-2xl bg-[#141416]/95 border border-white/[0.08] shadow-2xl flex flex-col gap-3.5"
+                className="w-[512px] mt-3.5 p-3.5 rounded-2xl bg-[#141416]/95 border border-white/[0.08] shadow-2xl flex flex-col gap-3 backdrop-blur-md transition-all duration-200"
                 style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
               >
-                {/* Top Row: Server Selector Dropdown & Live Status (Players/Ping) */}
-                <div className="flex items-center justify-between">
-                  {/* Active Server Dropdown */}
-                  <div className="flex items-center gap-2.5 relative">
-                    <span
-                      className={`w-2 h-2 rounded-full shrink-0 ${
-                        serverStatus.online ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.4)]' : 'bg-red-400'
-                      }`}
-                    />
-
-                    <div className="relative">
+                {/* Top Row: Server Identity (Avatar + Name + Dropdown + Click-to-copy IP) & Live Status (Players / Ping / Offline) */}
+                <div className="flex items-center justify-between gap-3">
+                  {/* Left: Server Avatar & Info */}
+                  <div className="flex items-center gap-3 min-w-0">
+                    {/* Server Favicon / Icon with Live Status Dot */}
+                    <div className="relative shrink-0">
                       <button
-                        onClick={() => setIsServerDropdownOpen(!isServerDropdownOpen)}
-                        className="flex items-center gap-1.5 text-sm font-bold text-white hover:text-[var(--accent-light)] transition cursor-pointer"
-                        title="Click to switch active server"
+                        onClick={() => setActiveTab('server')}
+                        className="w-10 h-10 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 hover:border-white/15 flex items-center justify-center overflow-hidden shadow-inner transition-colors cursor-pointer"
+                        title={t.manageServers || 'Manage Servers'}
                       >
-                        <span className="truncate max-w-[200px]">{currentSavedServer?.name || 'Minecraft Server'}</span>
-                        <ChevronDown
-                          className={`w-4 h-4 text-slate-400 transition-transform duration-150 ${
-                            isServerDropdownOpen ? 'rotate-180 text-white' : ''
-                          }`}
-                        />
+                        {serverStatus.favicon ? (
+                          <img
+                            src={serverStatus.favicon}
+                            alt="Server Icon"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <Server className="w-4.5 h-4.5 text-[var(--accent-color)]" />
+                        )}
                       </button>
+                      <span
+                        className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-[#141416] ${
+                          serverStatus.online
+                            ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                            : 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.4)]'
+                        }`}
+                        title={serverStatus.online ? 'Server Online' : 'Server Offline'}
+                      />
+                    </div>
 
-                      {/* Dropdown Menu */}
-                      {isServerDropdownOpen && (
-                        <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#161618] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown backdrop-blur-md">
-                          <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                            Saved Servers
-                          </div>
-                          <div className="max-h-52 overflow-y-auto space-y-1 custom-scrollbar">
-                            {savedServers.map((srv) => (
+                    {/* Server Name Dropdown & Clickable IP */}
+                    <div className="min-w-0 flex flex-col justify-center">
+                      <div className="relative flex items-center">
+                        <button
+                          onClick={() => {
+                            if (savedServers.length > 0) {
+                              setIsServerDropdownOpen(!isServerDropdownOpen);
+                            } else {
+                              handleOpenAddServerModal();
+                            }
+                          }}
+                          className="flex items-center gap-1.5 text-[15px] font-bold text-white hover:text-[var(--accent-light)] transition-colors cursor-pointer group text-left leading-none"
+                          title={savedServers.length > 0 ? "Click to switch active server" : "Click to add your first server"}
+                        >
+                          <span className="truncate max-w-[210px] tracking-wide">
+                            {currentSavedServer?.name || t.noServerAdded || 'No Server Added'}
+                          </span>
+                          {savedServers.length > 0 && (
+                            <ChevronDown
+                              className={`w-4 h-4 text-slate-400 group-hover:text-white transition-transform duration-150 shrink-0 ${
+                                isServerDropdownOpen ? 'rotate-180 text-white' : ''
+                              }`}
+                            />
+                          )}
+                        </button>
+
+                        {/* Dropdown Menu - only renders when saved servers exist */}
+                        {isServerDropdownOpen && savedServers.length > 0 && (
+                          <div className="absolute left-0 top-[calc(100%+8px)] w-64 rounded-2xl bg-[#161618] border border-white/10 shadow-2xl p-2 z-50 space-y-1 animate-dropdown backdrop-blur-md">
+                            <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                              {t.savedServersCountLabel || 'Saved Servers'}
+                            </div>
+                            <div className="max-h-52 overflow-y-auto space-y-1 custom-scrollbar">
+                              {savedServers.map((srv) => (
+                                <button
+                                  key={srv.id}
+                                  onClick={() => {
+                                    onSelectActiveServer(srv.id);
+                                    setIsServerDropdownOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
+                                    srv.id === activeServerId
+                                      ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
+                                      : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
+                                  }`}
+                                >
+                                  <span className="truncate font-semibold">{srv.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-2">{srv.ip}</span>
+                                </button>
+                              ))}
+                            </div>
+                            <div className="pt-1.5 border-t border-white/[0.06] px-1">
                               <button
-                                key={srv.id}
                                 onClick={() => {
-                                  onSelectActiveServer(srv.id);
                                   setIsServerDropdownOpen(false);
+                                  handleOpenAddServerModal();
                                 }}
-                                className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 border-2 cursor-pointer ${
-                                  srv.id === activeServerId
-                                    ? 'bg-theme-selected text-white font-bold border-[var(--accent-color)] shadow-sm'
-                                    : 'border-transparent text-slate-300 hover:bg-white/5 hover:text-white'
-                                }`}
+                                className="w-full py-1.5 rounded-xl text-xs text-[var(--accent-light)] font-bold hover:bg-[var(--accent-subtle)] transition flex items-center justify-center gap-1.5 cursor-pointer"
                               >
-                                <span className="truncate font-semibold">{srv.name}</span>
-                                <span className="text-[10px] text-slate-400 font-mono shrink-0 ml-2">{srv.ip}</span>
+                                <Plus className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                                <span>{t.addServer || 'Add Server'}</span>
                               </button>
-                            ))}
+                            </div>
                           </div>
-                          <div className="pt-1.5 border-t border-white/[0.06]">
-                            <button
-                              onClick={() => {
-                                setIsServerDropdownOpen(false);
-                                setActiveTab('server');
-                              }}
-                              className="w-full text-left px-3 py-2 rounded-xl text-xs text-[var(--accent-light)] font-bold hover:bg-[var(--accent-subtle)] transition flex items-center gap-2 cursor-pointer"
-                            >
-                              <Server className="w-3.5 h-3.5 text-[var(--accent-color)]" />
-                              <span>{t.manageServersTitle || 'Manage Servers'}</span>
-                            </button>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
+
+                      {/* Server address, click to copy — plain text rather than its own bordered
+                          chip, so it reads as a detail under the name instead of a second box
+                          stacked directly beneath the name's own button. */}
+                      <div className="mt-0.5 flex items-center">
+                        {displayIp ? (
+                          <button
+                            onClick={handleCopyIp}
+                            className="group/ip inline-flex items-center gap-1.5 text-[13px] text-slate-400 hover:text-slate-200 transition-colors cursor-pointer select-none"
+                            title={t.copied ? t.copied : 'Click to copy server IP'}
+                          >
+                            <span className="font-mono tracking-tight truncate max-w-[190px]">{displayIp}</span>
+                            {copied ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-400 shrink-0">
+                                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                                <span className="text-[11px] font-bold">{t.copied || 'Copied!'}</span>
+                              </span>
+                            ) : (
+                              <Copy className="w-3 h-3 text-slate-500 group-hover/ip:text-[var(--accent-color)] transition-colors shrink-0" />
+                            )}
+                          </button>
+                        ) : (
+                          <span className="text-[13px] text-slate-500 italic">
+                            {t.noAddressConfigured || 'No Address Configured'}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Live Ping & Player Count Badges */}
-                  <div className="flex items-center gap-2.5 text-xs">
-                    <div className="flex items-center gap-1.5 text-slate-300 font-medium tabular-nums">
-                      <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="font-bold text-white tracking-tight">
-                        {(serverStatus.playersOnline ?? 0).toLocaleString()}
-                      </span>
-                      <span className="text-slate-500 font-normal">
-                        /{(serverStatus.playersMax ?? 0).toLocaleString()}
-                      </span>
-                      <span className="text-slate-400 text-[11px] font-normal ml-0.5">
-                        {t.online || 'Online'}
-                      </span>
-                    </div>
+                  {/* Right: Live Server Status Pill & Ping Refresh */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    {savedServers.length === 0 ? (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white/[0.04] text-slate-400 border border-white/[0.08] shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-500" />
+                        <span>{t.noServerAdded || 'No Server'}</span>
+                      </div>
+                    ) : serverStatus.online ? (
+                      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/[0.03] border border-white/[0.08] shadow-sm">
+                        <div className="flex items-center gap-1.5 text-slate-300 font-medium tabular-nums text-xs">
+                          <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span className="font-bold text-white tracking-tight">
+                            {(serverStatus.playersOnline ?? 0).toLocaleString()}
+                          </span>
+                          <span className="text-slate-500 font-normal">
+                            /{(serverStatus.playersMax ?? 0).toLocaleString()}
+                          </span>
+                        </div>
 
-                    <span className="text-white/20 text-xs">•</span>
+                        <span className="text-white/20 text-xs">•</span>
 
-                    <div
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-tight border ${
-                        (serverStatus.pingMs ?? 999) < 80
-                          ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                          : (serverStatus.pingMs ?? 999) < 150
-                          ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                      }`}
+                        <div
+                          className={`inline-flex items-center gap-1 text-[11px] font-bold tracking-tight ${
+                            (serverStatus.pingMs ?? 999) < 80
+                              ? 'text-emerald-400'
+                              : (serverStatus.pingMs ?? 999) < 150
+                              ? 'text-amber-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          <Wifi className="w-3 h-3 shrink-0" />
+                          <span>{serverStatus.pingMs !== undefined ? `${serverStatus.pingMs} ms` : '--'}</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20 shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-pulse" />
+                        <span>{t.offline || 'Offline'}</span>
+                      </div>
+                    )}
+
+                    <button
+                      onClick={handleRefreshPing}
+                      disabled={isPinging || savedServers.length === 0}
+                      className="w-8 h-8 rounded-xl bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.06] text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={t.rescanBtn || 'Refresh server status'}
                     >
-                      <Wifi className="w-3 h-3 shrink-0" />
-                      <span>{serverStatus.pingMs !== undefined ? `${serverStatus.pingMs} ms` : '--'}</span>
-                    </div>
+                      <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
+                    </button>
                   </div>
                 </div>
 
                 {/* Clean Balanced Divider Line */}
                 <div className="h-px bg-white/[0.06] w-full" />
 
-                {/* Bottom Row: Copy IP Button & Switch Toggle for Connect on Play */}
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <button
-                    onClick={handleCopyIp}
-                    className={`h-8 px-3 rounded-xl text-xs flex items-center gap-2 transition-all border cursor-pointer active:scale-95 group ${
-                      copied
-                        ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
-                        : 'bg-white/[0.03] hover:bg-white/[0.06] text-slate-300 hover:text-white border-white/[0.08] hover:border-white/20'
+                {/* Bottom Row: Connect on Play on LEFT, Contextual State / Quick Add on RIGHT */}
+                <div className="flex items-center justify-between gap-3 text-xs h-8">
+                  {/* Switch Toggle with Label on LEFT. A <div>, not a <button> — ToggleSwitch
+                      already renders its own <button role="switch">, and nesting a button
+                      inside a button is invalid HTML: browsers disagree on where the click
+                      lands, and clicking the switch itself fired both handlers and toggled
+                      twice, silently cancelling out. */}
+                  <div
+                    onClick={() => onToggleDirectConnectServer(!directConnectServer)}
+                    className={`flex items-center gap-2.5 px-3 py-1.5 rounded-xl border transition-all cursor-pointer select-none shrink-0 ${
+                      directConnectServer
+                        ? 'bg-[var(--accent-color)]/[0.12] border-[var(--accent-color)]/40 text-white shadow-sm'
+                        : 'bg-white/[0.03] border-white/[0.08] text-slate-400 hover:text-white hover:border-white/15'
                     }`}
-                    title="Click to copy server IP address"
+                    title={t.connectOnPlay || 'Connect on Play'}
                   >
-                    {copied ? (
-                      <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    ) : (
-                      <Copy className="w-3.5 h-3.5 text-[var(--accent-color)] group-hover:brightness-110 shrink-0 transition" />
-                    )}
-                    <span className="font-medium font-mono text-[11px] tracking-tight text-slate-200">
-                      {currentSavedServer?.ip || serverStatus.ip}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-normal">
-                      ({copied ? (t.copied || 'Copied!') : (t.copyAction || 'Copy')})
-                    </span>
-                  </button>
-
-                  {/* Switch Toggle for Direct Connect */}
-                  <div className="flex items-center gap-2.5">
+                    <span className="text-xs font-bold font-riot leading-none">{t.connectOnPlay || 'Connect on Play'}</span>
                     <ToggleSwitch
                       checked={directConnectServer}
                       onChange={onToggleDirectConnectServer}
                       size="sm"
-                      title={t.connectOnPlay || 'Connect on Play'}
                     />
-                    <span
-                      onClick={() => onToggleDirectConnectServer(!directConnectServer)}
-                      className="text-xs font-semibold text-slate-300 hover:text-white select-none cursor-pointer transition-colors"
-                    >
-                      {t.connectOnPlay || 'Connect on Play'}
-                    </span>
                   </div>
+
+                  {/* RIGHT SIDE: Minimal, natural navigation link (enlarged per user request) */}
+                  <button
+                    onClick={() => setActiveTab('server')}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-slate-300 hover:text-white transition-colors cursor-pointer select-none shrink-0 group"
+                    title={t.manageServers || 'Manage Servers'}
+                  >
+                    <span className="leading-none">{t.manageServers || 'Manage Servers'}</span>
+                    <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-white transition-colors" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -915,7 +986,6 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                     ) : (
                       paginatedServers.map((srv) => {
                         const isActive = srv.id === activeServerId;
-                        const isConfirmingDelete = deleteConfirmId === srv.id;
 
                         return (
                           <div
@@ -993,21 +1063,17 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
 
-                              {savedServers.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={(e) => handleDeleteServerWithConfirm(srv.id, e)}
-                                  className={`px-2 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1 active:scale-95 ${
-                                    isConfirmingDelete
-                                      ? 'bg-red-500/20 border border-red-500/40 text-red-400 animate-pulse'
-                                      : 'text-slate-400 hover:text-red-400 hover:bg-red-500/10'
-                                  }`}
-                                  title={isConfirmingDelete ? 'Click again to delete' : 'Delete server'}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                  {isConfirmingDelete && <span className="text-[10px]">{t.deleteConfirmShort}</span>}
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setServerToDelete(srv);
+                                }}
+                                className="p-2 rounded-xl text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition cursor-pointer active:scale-95"
+                                title={t.deleteServerTooltip || 'Delete server'}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
                             </div>
                           </div>
                         );
@@ -1084,16 +1150,29 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleRefreshPing}
-                      disabled={isPinging}
-                      className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
-                      title="Refresh status"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
-                      <span className="hidden sm:inline">{t.refreshPing}</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleRefreshPing}
+                        disabled={isPinging}
+                        className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                        title="Refresh status"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
+                        <span className="hidden sm:inline">{t.refreshPing}</span>
+                      </button>
+
+                      {currentSavedServer && (
+                        <button
+                          type="button"
+                          onClick={() => setServerToDelete(currentSavedServer)}
+                          className="p-2 rounded-xl bg-white/5 hover:bg-rose-500/15 text-slate-400 hover:text-rose-400 border border-white/5 hover:border-rose-500/30 transition cursor-pointer active:scale-95"
+                          title={t.deleteServerTooltip || 'Delete server'}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {/* MOTD Banner — Fixed height, clean, no scrollbar */}
@@ -1211,13 +1290,13 @@ export const ServerHub: React.FC<ServerHubProps> = ({
       {/* Add / Edit Server Modal Dialog */}
       {isServerModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-          <div className="glass-panel w-full max-w-md rounded-3xl border border-white/10 shadow-2xl p-6 space-y-4 animate-scaleUp">
-            <div className="flex items-center justify-between border-b border-white/5 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)]">
-                  <Server className="w-4 h-4" />
+          <div className="glass-panel w-full max-w-lg rounded-3xl border border-white/10 shadow-2xl p-6 space-y-5 animate-scaleUp bg-[#121212]">
+            <div className="flex items-center justify-between border-b border-white/[0.08] pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                  <Server className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-bold text-white tracking-wide">
+                <h3 className="text-lg font-bold font-riot text-white tracking-wide">
                   {isEditingServer ? t.editServer : t.addServer}
                 </h3>
               </div>
@@ -1225,45 +1304,45 @@ export const ServerHub: React.FC<ServerHubProps> = ({
               <button
                 type="button"
                 onClick={() => setIsServerModalOpen(false)}
-                className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer active:scale-95"
+                className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
                 title={t.cancel}
               >
-                <X className="w-4 h-4" />
+                <X className="w-4.5 h-4.5 text-white" strokeWidth={3} />
               </button>
             </div>
 
-            <form onSubmit={handleSaveServerModal} className="space-y-3.5">
+            <form onSubmit={handleSaveServerModal} className="space-y-4">
               <div>
-                <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverName}</label>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">{t.serverName}</label>
                 <input
                   type="text"
                   value={serverNameInput}
                   onChange={(e) => setServerNameInput(e.target.value)}
                   placeholder="e.g. Hypixel Network"
                   required
-                  className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] transition"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-[#181818] border border-white/10 text-sm font-semibold text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition"
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverAddress}</label>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">{t.serverAddress}</label>
                   <input
                     type="text"
                     value={serverIpInput}
                     onChange={(e) => setServerIpInput(e.target.value)}
                     placeholder="mc.hypixel.net"
                     required
-                    className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] transition"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#181818] border border-white/10 text-sm font-semibold text-white font-mono placeholder-slate-500 focus:outline-none focus:border-amber-400 transition"
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-400 mb-1">{t.serverPort}</label>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">{t.serverPort}</label>
                   <input
                     type="number"
                     value={serverPortInput}
                     onChange={(e) => setServerPortInput(Number(e.target.value))}
-                    className="w-full glass-input px-3 py-2 rounded-xl text-xs text-white focus:outline-none focus:border-[var(--accent-color)] transition"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-[#181818] border border-white/10 text-sm font-semibold text-white font-mono focus:outline-none focus:border-amber-400 transition"
                   />
                 </div>
               </div>
@@ -1275,22 +1354,22 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                     type="button"
                     onClick={handleTestPingInModal}
                     disabled={isTestingPing || !serverIpInput.trim()}
-                    className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 text-xs font-semibold text-slate-300 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+                    className="px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-40 text-xs font-semibold text-slate-300 flex items-center gap-2 transition cursor-pointer active:scale-95"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isTestingPing ? 'animate-spin text-[var(--accent-color)]' : ''}`} />
                     <span>{isTestingPing ? t.testingConnection : t.testConnection}</span>
                   </button>
 
                   {testPingResult && (
-                    <div className="text-xs flex items-center gap-1.5">
+                    <div className="text-xs flex items-center gap-1.5 font-medium">
                       {testPingResult.online ? (
                         <>
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                           <span className="text-emerald-400 font-semibold">{testPingResult.pingMs} ms</span>
                         </>
                       ) : (
                         <>
-                          <AlertCircle className="w-3.5 h-3.5 text-rose-400" />
+                          <AlertCircle className="w-4 h-4 text-rose-400" />
                           <span className="text-rose-400 font-semibold">{t.offline}</span>
                         </>
                       )}
@@ -1299,22 +1378,106 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-white/5">
-                <button
-                  type="button"
-                  onClick={() => setIsServerModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer active:scale-95"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  type="submit"
-                  className="btn-primary px-5 py-2 rounded-xl text-xs font-bold shadow-none hover:shadow-none cursor-pointer active:scale-95 transition-all"
-                >
-                  {t.saveServer}
-                </button>
+              <div className="flex items-center justify-between pt-3 border-t border-white/[0.08]">
+                <div>
+                  {isEditingServer && editingServerId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const srv = savedServers.find((s) => s.id === editingServerId);
+                        if (srv) {
+                          setIsServerModalOpen(false);
+                          setServerToDelete(srv);
+                        }
+                      }}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>{t.deleteServer || 'Delete Server'}</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsServerModalOpen(false)}
+                    className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white transition cursor-pointer active:scale-95"
+                  >
+                    {t.cancel}
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold font-riot shadow-md cursor-pointer active:scale-95 transition-all"
+                  >
+                    {t.saveServer}
+                  </button>
+                </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Server Confirmation Modal */}
+      {serverToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md rounded-3xl bg-[#141416] border border-white/10 shadow-2xl p-6 space-y-5 animate-scaleUp">
+            {/* Header / Icon */}
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center justify-center shrink-0 shadow-lg">
+                <Trash2 className="w-6 h-6 stroke-[2]" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white font-riot tracking-wide">
+                  {t.deleteServer || 'Delete Server'}
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {t.deleteServerConfirm || 'Are you sure you want to delete this server?'}
+                </p>
+              </div>
+            </div>
+
+            {/* Target Server Card Preview */}
+            <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/[0.04] border border-white/10 flex items-center justify-center text-[var(--accent-color)] shrink-0">
+                <Server className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-bold text-sm text-white truncate">
+                  {serverToDelete.name}
+                </div>
+                <div className="text-xs text-slate-400 font-mono truncate mt-0.5">
+                  {serverToDelete.ip}{serverToDelete.port && serverToDelete.port !== 25565 ? `:${serverToDelete.port}` : ''}
+                </div>
+              </div>
+            </div>
+
+            {/* Warning description */}
+            <p className="text-xs text-slate-400 leading-relaxed">
+              {t.deleteServerDesc || 'This will remove the server from your saved list. You can add it back at any time.'}
+            </p>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setServerToDelete(null)}
+                className="flex-1 py-2.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-xs font-bold text-slate-300 hover:text-white transition cursor-pointer active:scale-95"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onDeleteServer(serverToDelete.id);
+                  setServerToDelete(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-rose-950/40 active:scale-95"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t.btnDeleteAddon}</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

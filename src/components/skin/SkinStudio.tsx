@@ -312,6 +312,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
   });
 
   const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [isAddCardDragging, setIsAddCardDragging] = useState<boolean>(false);
 
   // Small transient banner for actions that have no other visible feedback (e.g. unequipping)
   const [notification, setNotification] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
@@ -747,10 +748,13 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       }
     };
 
-    initViewer();
+    const timerId = setTimeout(() => {
+      initViewer();
+    }, 280);
 
     return () => {
       isCancelled = true;
+      clearTimeout(timerId);
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
@@ -1078,7 +1082,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto p-10 space-y-7 custom-scrollbar animate-fadeIn">
+    <div className="flex-1 min-h-0 flex flex-col overflow-y-auto p-8 sm:p-10 space-y-6 custom-scrollbar animate-fadeIn">
       {/* Hidden File Input */}
       <input
         ref={fileInputRef}
@@ -1089,7 +1093,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       />
 
       {/* Top Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-12">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pr-12 shrink-0">
         <div>
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 text-[var(--accent-color)] text-xs font-semibold mb-2 tracking-wide">
             <Shirt className="w-4 h-4" />
@@ -1119,7 +1123,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       {/* Small transient feedback banner (e.g. after unequipping a deleted skin) */}
       {notification && (
         <div
-          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs animate-fadeIn ${
+          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs animate-fadeIn shrink-0 ${
             notification.type === 'success'
               ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
               : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-[var(--accent-color)]'
@@ -1143,13 +1147,13 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
       )}
 
       {/* Main Grid: Clean 3D Studio Showcase (Left) & Controls/Library (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-7 items-stretch">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 min-h-0">
         {/* LEFT COLUMN: Full-Bleed Edge-to-Edge 3D Character Studio Preview */}
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`lg:col-span-5 relative rounded-3xl h-[570px] border shadow-2xl overflow-hidden transition-all duration-300 select-none glass-panel bg-[#161719]/90 flex flex-col justify-between ${
+          className={`lg:col-span-5 xl:col-span-5 relative rounded-3xl h-full min-h-[580px] xl:min-h-[620px] border shadow-2xl overflow-hidden transition-all duration-300 select-none glass-panel bg-[#161719]/90 flex flex-col justify-between ${
             isDragging
               ? 'border-[var(--accent-color)] ring-2 ring-[var(--accent-color)]/40 bg-[var(--accent-color)]/[0.04]'
               : 'border-white/10'
@@ -1223,17 +1227,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
             </div>
           </div>
 
-          {/* 3. Persistent Idle Hint: icon-only badge so the panel silently advertises that it
-              accepts drag & drop, without permanent on-screen text. Hidden while a real drag
-              is in progress since the full overlay below takes over at that point. */}
-          {!isDragging && (
-            <div
-              className="absolute bottom-4 right-4 z-30 w-9 h-9 rounded-xl bg-black/50 border border-white/10 backdrop-blur-md flex items-center justify-center text-slate-400 pointer-events-none select-none"
-              title={t.dropHintTooltip || 'You can drag & drop a .PNG skin file here'}
-            >
-              <UploadCloud className="w-4 h-4" />
-            </div>
-          )}
+
 
           {/* 4. Drag Overlay Indicator */}
           {isDragging && (
@@ -1247,21 +1241,20 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
 
           {/* 5. Bottom Floating Animation & Camera Controls Dock */}
           <div className="relative z-30 w-full flex flex-col items-center p-4 pointer-events-none">
-            <div className="bg-black/85 backdrop-blur-xl border-2 border-white/15 p-1.5 rounded-2xl shadow-2xl shadow-black/80 flex items-center gap-1.5 pointer-events-auto">
+            <div className="bg-black/85 backdrop-blur-xl border border-white/15 p-1.5 rounded-2xl shadow-2xl shadow-black/80 flex items-center gap-1.5 pointer-events-auto">
               {/* Animations: Idle, Walk, Run with smooth sliding selection box */}
-              <div className="relative flex items-center gap-1">
+              <div className="relative grid grid-cols-3 w-[174px] h-8 p-0.5 rounded-xl select-none">
                 {/* Smooth sliding active background box */}
                 <div
                   aria-hidden="true"
-                  className="absolute top-0 bottom-0 rounded-xl bg-[var(--accent-color)] shadow-md transition-all duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
+                  className="absolute top-0.5 bottom-0.5 left-0.5 w-[calc((100%-4px)/3)] rounded-xl bg-[var(--accent-color)] shadow-md transition-transform duration-250 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
                   style={{
-                    width: '56px',
-                    left:
+                    transform:
                       animationType === 'idle'
-                        ? '0px'
+                        ? 'translateX(0%)'
                         : animationType === 'walk'
-                        ? '60px'
-                        : '120px',
+                        ? 'translateX(100%)'
+                        : 'translateX(200%)',
                   }}
                 />
 
@@ -1272,17 +1265,19 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
                       key={anim}
                       type="button"
                       onClick={() => handleAnimationChange(anim)}
-                      className={`relative z-10 w-14 h-8 rounded-xl text-xs font-bold font-sans tracking-normal select-none cursor-pointer flex items-center justify-center transition-colors duration-200 ${
+                      className={`relative z-10 w-full h-full rounded-[10px] text-xs font-bold font-sans tracking-normal select-none cursor-pointer flex items-center justify-center text-center transition-colors duration-200 ${
                         isActive
                           ? 'text-[#070a12]'
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      {anim === 'idle'
-                        ? t.animIdle || 'Idle'
-                        : anim === 'walk'
-                        ? t.animWalk || 'Walk'
-                        : t.animRun || 'Run'}
+                      <span className="leading-none select-none">
+                        {anim === 'idle'
+                          ? t.animIdle || 'Idle'
+                          : anim === 'walk'
+                          ? t.animWalk || 'Walk'
+                          : t.animRun || 'Run'}
+                      </span>
                     </button>
                   );
                 })}
@@ -1320,7 +1315,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
         {/* RIGHT COLUMN: Streamlined Unified Skin Management Panel */}
         {/* Drag & drop lives on the 3D preview panel only — this side is browse/manage,
             so a file dragged in doesn't light up two boxes at once. */}
-        <div className="lg:col-span-7 flex flex-col h-[570px]">
+        <div className="lg:col-span-7 xl:col-span-7 flex flex-col h-full min-h-[580px] xl:min-h-[620px]">
           <div
             className="glass-panel rounded-3xl p-5 sm:p-6 border border-white/10 bg-[#161719]/90 shadow-sm flex flex-col h-full overflow-hidden space-y-4 relative"
           >
@@ -1534,13 +1529,34 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
               </div>
             </div>
 
-            {/* Skin Cards Grid (With 3 Columns for Prominent, Rounded, High-Impact Cards) */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5 sm:gap-4 overflow-y-auto p-2 sm:p-2.5 pr-2 custom-scrollbar flex-1 min-h-0">
+            {/* Skin Cards Grid: 3 columns on standard/xl, 4 columns on ultra-wide displays */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-3.5 overflow-y-auto p-2 sm:p-2.5 pr-2 custom-scrollbar flex-1 min-h-0">
               {/* Card #1: Permanent Add Skin Action Slot (Minecraft Bedrock / Roblox Game Style) */}
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="rounded-3xl p-3 border-[2.5px] border-dashed transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[195px] relative group select-none shrink-0 border-white/15 hover:border-[var(--accent-color)]/80 bg-white/[0.02] hover:bg-[var(--accent-color)]/[0.04] hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/30"
-                title={t.browseSkinTooltip || 'Click to browse for a .PNG skin file'}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsAddCardDragging(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsAddCardDragging(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setIsAddCardDragging(false);
+                  const file = e.dataTransfer.files?.[0];
+                  if (file) processSkinFile(file);
+                }}
+                className={`rounded-3xl p-3 border-[2.5px] border-dashed transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[205px] relative group select-none shrink-0 ${
+                  isAddCardDragging
+                    ? 'border-[var(--accent-color)] bg-[var(--accent-color)]/[0.1] ring-2 ring-[var(--accent-color)]/30 scale-[1.02]'
+                    : 'border-white/15 hover:border-[var(--accent-color)]/80 bg-white/[0.02] hover:bg-[var(--accent-color)]/[0.04] hover:-translate-y-0.5 hover:shadow-md hover:shadow-black/30'
+                }`}
+                title={t.browseSkinTooltip || 'Click to browse or drop .PNG skin file here'}
               >
                 {/* Top spacer */}
                 <div className="h-4 w-full shrink-0" />
@@ -1550,16 +1566,13 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
                   <Plus className="w-11 h-11 sm:w-12 sm:h-12 stroke-[2.25] text-[var(--accent-color)] group-hover:scale-110 group-hover:text-white transition-all duration-200 ease-out" />
                 </div>
 
-                {/* Bottom Labels with Title & Drag/Drop PNG Subtext */}
+                {/* Bottom Labels with Title & Concise Subtitle */}
                 <div className="w-full flex flex-col items-center justify-center text-center mt-auto shrink-0 pb-1">
                   <div className="text-sm sm:text-base font-black text-white truncate font-sans group-hover:text-[var(--accent-light)] transition-colors tracking-wide uppercase leading-tight">
                     {t.addSkinBtn || 'Add Skin'}
                   </div>
                   <div className="text-[11px] font-medium text-slate-400 group-hover:text-slate-300 transition-colors font-sans mt-1 tracking-normal">
-                    {t.dropPngSubtext || 'Click to browse'}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-sans mt-0.5 tracking-normal">
-                    {t.dropOnPreviewHint || 'or drag & drop onto the preview'}
+                    {t.dropPngSubtext || 'Browse or drop .PNG'}
                   </div>
                 </div>
               </div>
@@ -1582,7 +1595,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
                         ? (t.equippedSkinTooltip || 'Currently equipped skin')
                         : (t.skinPreviewEquipTooltip || 'Click to preview • Double-click to equip')
                     }
-                    className={`rounded-3xl p-3 border-[2.5px] transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[195px] relative group select-none shrink-0 ${
+                    className={`rounded-3xl p-3 border-[2.5px] transition-all duration-200 cursor-pointer flex flex-col items-center justify-between h-[205px] relative group select-none shrink-0 ${
                       isSelectedForDelete
                         ? 'border-red-500/70 bg-red-500/[0.06] ring-2 ring-red-500/20 -translate-y-0.5'
                         : isSelected

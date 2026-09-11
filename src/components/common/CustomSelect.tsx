@@ -133,25 +133,25 @@ export function CustomSelect<T extends string = string>({
         onClick={handleToggle}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
-        className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl bg-[#141416] border transition-all duration-150 text-xs font-medium cursor-pointer ${
+        className={`w-full flex items-center justify-between gap-2.5 px-4 py-3 rounded-xl bg-[#141416] border transition-all duration-150 text-sm font-medium cursor-pointer ${
           isOpen
             ? 'border-[var(--accent-color)] ring-1 ring-[var(--accent-color)]/30 bg-[#19191d] text-white shadow-lg'
             : 'border-white/[0.08] hover:border-white/20 text-slate-200 hover:bg-[#18181b]'
         } ${disabled ? 'opacity-40 cursor-not-allowed hover:border-white/[0.08] hover:bg-[#141416]' : ''} ${className}`}
       >
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className={`truncate ${selectedOption ? 'text-white' : 'text-slate-500'}`}>
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
+          <span className={`truncate ${selectedOption ? 'text-white font-semibold' : 'text-slate-500'}`}>
             {selectedOption ? selectedOption.label : placeholder}
           </span>
           {selectedOption?.badge && (
-            <span className="text-[10px] px-2 py-0.5 rounded-md font-semibold bg-white/5 border border-white/10 text-slate-400 shrink-0">
+            <span className="text-xs px-2.5 py-0.5 rounded-lg font-semibold bg-white/5 border border-white/10 text-slate-400 shrink-0">
               {selectedOption.badge}
             </span>
           )}
         </div>
 
         <ChevronDown
-          className={`w-4 h-4 text-slate-400 transition-transform duration-200 shrink-0 ${
+          className={`w-4.5 h-4.5 text-slate-400 transition-transform duration-200 shrink-0 ${
             isOpen ? 'rotate-180 text-[var(--accent-light)]' : ''
           }`}
         />
@@ -169,14 +169,14 @@ export function CustomSelect<T extends string = string>({
           {shouldEnableSearch && (
             <div className="px-1.5 pb-1.5 pt-1 border-b border-white/[0.06] mb-1">
               <div className="relative flex items-center">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-2.5 pointer-events-none" />
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 pointer-events-none" />
                 <input
                   ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={searchPlaceholder}
-                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-black/40 border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] font-medium"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-[var(--accent-color)] font-medium"
                   onClick={(e) => e.stopPropagation()}
                 />
               </div>
@@ -186,7 +186,7 @@ export function CustomSelect<T extends string = string>({
           {/* Options List */}
           <div className={`${maxMenuHeight} overflow-y-auto space-y-0.5 custom-scrollbar pr-0.5`}>
             {filteredOptions.length === 0 ? (
-              <div className="py-3 px-3 text-center text-xs text-slate-500 font-medium">
+              <div className="py-3 px-3 text-center text-sm text-slate-500 font-medium">
                 No matching options found
               </div>
             ) : (
@@ -200,7 +200,7 @@ export function CustomSelect<T extends string = string>({
                     aria-selected={isSelected}
                     disabled={opt.disabled}
                     onClick={(e) => handleSelect(opt, e)}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs flex items-center justify-between transition-all duration-150 cursor-pointer ${
+                    className={`w-full text-left px-3.5 py-2.5 rounded-xl text-sm flex items-center justify-between transition-all duration-150 cursor-pointer ${
                       isSelected
                         ? 'bg-[var(--accent-color)]/15 text-[var(--accent-light)] font-bold border border-[var(--accent-color)]/30 shadow-sm'
                         : opt.disabled
@@ -209,20 +209,20 @@ export function CustomSelect<T extends string = string>({
                     }`}
                   >
                     <div className="min-w-0 flex-1 pr-2">
-                      <div className="truncate font-medium flex items-center gap-1.5">
+                      <div className="truncate font-semibold flex items-center gap-2">
                         <span className="truncate">{opt.label}</span>
                       </div>
                       {opt.description && (
-                        <div className="text-[10px] text-slate-400 font-normal truncate mt-0.5 leading-snug">
+                        <div className="text-xs text-slate-400 font-normal truncate mt-0.5 leading-snug">
                           {opt.description}
                         </div>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-2.5 shrink-0">
                       {opt.badge && (
                         <span
-                          className={`text-[10px] px-2 py-0.5 rounded-md font-semibold border ${
+                          className={`text-xs px-2.5 py-0.5 rounded-lg font-semibold border ${
                             isSelected
                               ? 'bg-[var(--accent-color)]/20 border-[var(--accent-color)]/40 text-[var(--accent-light)]'
                               : 'bg-white/5 border-white/10 text-slate-400'
@@ -232,7 +232,7 @@ export function CustomSelect<T extends string = string>({
                         </span>
                       )}
                       {isSelected && (
-                        <Check className="w-3.5 h-3.5 text-[var(--accent-color)] shrink-0" strokeWidth={2.5} />
+                        <Check className="w-4 h-4 text-[var(--accent-color)] shrink-0" strokeWidth={2.5} />
                       )}
                     </div>
                   </button>

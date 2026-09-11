@@ -303,10 +303,13 @@ export const App: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Warm the lazily loaded screens once the first screen is up, so opening them stays instant
+  // Warm the lazily loaded screens once the first screen is up, so opening them stays instant.
+  // Skin is fetched right away rather than on the same 1500ms delay as the others — it's the
+  // tab people tend to open first, and waiting even a few hundred ms after that first click
+  // was noticeable.
   useEffect(() => {
+    loadSkinStudio();
     const timer = setTimeout(() => {
-      loadSkinStudio();
       loadModStore();
       loadSettingsView();
     }, 1500);
@@ -999,11 +1002,11 @@ export const App: React.FC = () => {
             {/* Sidebar on left remains 100% visible and interactive! Backdrop is subtle (bg-black/25) */}
             {currentTab !== 'home' && (
               <div
-                className="absolute inset-0 z-40 flex items-center justify-center p-6 sm:p-8 bg-black/25 backdrop-blur-[2px] animate-modalBackdrop"
+                className="absolute inset-0 z-40 flex items-center justify-center p-3 sm:p-4 md:p-5 lg:p-6 bg-black/25 backdrop-blur-[2px] animate-modalBackdrop"
                 onClick={() => setCurrentTab('home')}
               >
                 <div
-                  className="w-full max-w-6xl h-[92vh] rounded-3xl bg-[#111111]/95 border border-white/10 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-modalScale relative modal-popup-window"
+                  className="w-full max-w-[1400px] h-[94vh] rounded-3xl bg-[#111111]/95 border border-white/10 shadow-2xl backdrop-blur-xl flex flex-col overflow-hidden animate-modalScale relative modal-popup-window"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {/* Floating Close Button - Styled as requested: rounded dark square with bold white X */}

@@ -543,7 +543,7 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
               type="button"
               onClick={() => onInstall(item)}
               disabled={isInstalling || isInstalled}
-              className={`py-1.5 px-3 rounded-xl font-bold font-riot text-xs flex items-center gap-1.5 transition cursor-pointer ${
+              className={`py-1.5 px-2.5 rounded-xl font-bold font-riot text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
                 isInstalled
                   ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm'
                   : isInstalling
@@ -553,17 +553,17 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
             >
               {isInstalled ? (
                 <>
-                  <Check className="w-3.5 h-3.5" />
+                  <Check className="w-3.5 h-3.5 shrink-0" />
                   <span>{t.btnInstalled || 'Installed'}</span>
                 </>
               ) : isInstalling ? (
                 <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>{t.installing || 'Downloading...'}</span>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>{t.installingBtn || 'Installing'}</span>
                 </>
               ) : (
                 <>
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5 shrink-0" />
                   <span>{t.btnInstall || 'Install'}</span>
                 </>
               )}
@@ -785,6 +785,10 @@ export const ModStore: React.FC<ModStoreProps> = ({
       // ignore
     }
   };
+
+  // State for delete addon confirmation dialog
+  const [modToDelete, setModToDelete] = useState<LocalMod | null>(null);
+  const [isDeletingMod, setIsDeletingMod] = useState(false);
 
   const [isInstalledSortDropdownOpen, setIsInstalledSortDropdownOpen] = useState(false);
   const [isInstalledPageSizeDropdownOpen, setIsInstalledPageSizeDropdownOpen] = useState(false);
@@ -1338,35 +1342,29 @@ export const ModStore: React.FC<ModStoreProps> = ({
         {/* Row 1: Profile Selector on Left (above Resource Capsule) | Browse vs Installed on Right (above Download Sources) */}
         <div className="flex flex-wrap items-center justify-between gap-4">
           {/* Target Profile Picker (Enlarged & Prominent for easy visibility) */}
-          <div className="relative min-w-[300px]" ref={profilePickerRef}>
+          <div className="relative min-w-[320px]" ref={profilePickerRef}>
             <button
               type="button"
               onClick={() => setIsProfilePickerOpen(!isProfilePickerOpen)}
-              className="w-full flex items-center justify-between gap-3.5 px-4 py-2.5 rounded-2xl bg-[#161719] hover:bg-[#1f2125] border border-white/10 hover:border-white/20 text-xs transition-colors duration-200 cursor-pointer group shadow-md select-none"
+              className="w-full flex items-center justify-between gap-4 px-4.5 py-3 rounded-2xl bg-[#161719] hover:bg-[#1f2125] border border-white/10 hover:border-white/20 transition-colors duration-200 cursor-pointer group shadow-md select-none"
               title={t.changeProfileTooltip || 'Change target profile for mods'}
             >
               {(() => {
                 const activeLoaderColor = getLoaderColor(activeInstance.loader);
                 return (
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3.5 min-w-0">
                     <div
-                      className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform duration-200 shadow-inner"
-                      style={{
-                        backgroundColor: `${activeLoaderColor}1a`,
-                        borderColor: `${activeLoaderColor}40`,
-                        borderWidth: '1px',
-                        borderStyle: 'solid',
-                        color: activeLoaderColor,
-                      }}
+                      className="shrink-0 flex items-center justify-center"
+                      style={{ color: activeLoaderColor }}
                     >
-                      {getLoaderIcon(activeInstance.loader, 'w-5 h-5')}
+                      {getLoaderIcon(activeInstance.loader, 'w-7 h-7')}
                     </div>
                     <div className="text-left min-w-0">
-                      <div className="text-xs text-slate-400 font-medium leading-none mb-1">{t.installForProfile || 'Install for profile:'}</div>
-                      <div className="text-sm font-bold text-white flex items-center gap-2 truncate max-w-[240px]">
+                      <div className="text-[12.5px] text-slate-400 font-medium leading-none mb-1.5">{t.installForProfile || 'Install for profile:'}</div>
+                      <div className="text-base font-extrabold text-white flex items-center gap-2.5 truncate max-w-[280px]">
                         <span className="truncate">{activeInstance.name}</span>
                         <span
-                          className="text-xs px-2 py-0.5 rounded-md font-sans font-semibold shrink-0 border"
+                          className="text-xs px-2.5 py-0.5 rounded-lg font-sans font-bold shrink-0 border"
                           style={{
                             backgroundColor: `${activeLoaderColor}15`,
                             borderColor: `${activeLoaderColor}30`,
@@ -1381,7 +1379,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                 );
               })()}
               <ChevronDown
-                className={`w-4 h-4 text-slate-400 group-hover:text-white transition-transform duration-200 ml-1 shrink-0 ${
+                className={`w-4.5 h-4.5 text-slate-400 group-hover:text-white transition-transform duration-200 ml-1 shrink-0 ${
                   isProfilePickerOpen ? 'rotate-180' : ''
                 }`}
               />
@@ -1408,26 +1406,22 @@ export const ModStore: React.FC<ModStoreProps> = ({
                           setSelectedLoader(inst.loader);
                           setIsProfilePickerOpen(false);
                         }}
-                        className={`w-full flex items-center justify-between p-2.5 rounded-xl text-xs font-medium transition-colors duration-150 cursor-pointer text-left border ${
+                        className={`w-full flex items-center justify-between p-2.5 rounded-xl transition-colors duration-150 cursor-pointer text-left border ${
                           isCurrent
                             ? 'bg-white/10 text-white border-white/20 shadow-sm'
                             : 'text-slate-300 hover:text-white hover:bg-white/5 border-transparent'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
                           <div
-                            className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-                            style={{
-                              backgroundColor: `${instColor}18`,
-                              borderColor: `${instColor}35`,
-                              color: instColor,
-                            }}
+                            className="w-6 h-6 flex items-center justify-center shrink-0"
+                            style={{ color: instColor }}
                           >
-                            {getLoaderIcon(inst.loader, 'w-4 h-4')}
+                            {getLoaderIcon(inst.loader, 'w-5 h-5')}
                           </div>
                           <div className="truncate flex-1 min-w-0">
-                            <div className="text-xs font-semibold truncate text-white">{inst.name}</div>
-                            <div className="text-xs text-slate-400 font-sans mt-0.5">
+                            <div className="text-sm font-bold truncate text-white">{inst.name}</div>
+                            <div className="text-xs text-slate-400 font-sans font-medium mt-0.5">
                               MC {inst.gameVersion} • <span className="uppercase font-semibold" style={{ color: instColor }}>{inst.loader}</span>
                             </div>
                           </div>
@@ -1576,7 +1570,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           {/* 2-Column Body: Left Filters Sidebar & Right Results Area */}
           <div className="flex flex-col lg:flex-row items-start gap-6">
             {/* LEFT SIDEBAR: FILTERS */}
-            <div className="w-full lg:w-72 shrink-0 space-y-4">
+            <div className="w-full lg:w-56 shrink-0 space-y-4">
               {/* Filter 1: Game Version (Clean list with prominent font, no show all checkbox) */}
               <div className="glass-panel p-4 rounded-2xl border border-white/5 space-y-3">
                 <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-400">
@@ -1706,11 +1700,14 @@ export const ModStore: React.FC<ModStoreProps> = ({
                               : 'text-slate-300 hover:text-white hover:bg-white/[0.04] border-transparent'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
                             <span style={{ color: ldr.color }} className="w-5 h-5 shrink-0 flex items-center justify-center">
                               {ldr.icon}
                             </span>
-                            <span className={`text-sm font-bold font-sans tracking-wide transition-colors ${isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}>
+                            <span
+                              title={ldr.name}
+                              className={`text-xs font-bold font-sans tracking-wide transition-colors truncate ${isSelected ? 'text-white' : 'text-slate-200 group-hover:text-white'}`}
+                            >
                               {ldr.name}
                             </span>
                           </div>
@@ -2004,21 +2001,24 @@ export const ModStore: React.FC<ModStoreProps> = ({
                     )}
                   </span>
 
-                  {/* View Mode Switcher: Grid vs List with smooth sliding indicator */}
-                  <div className="relative inline-flex items-center p-0.5 rounded-xl bg-black/40 border border-white/10 select-none shrink-0">
+                  {/* View Mode Switcher: Grid vs List with macOS Minimalist Frosted sliding indicator in theme accent.
+                      The shift is written in rem (2rem button + 0.25rem gap), not a hardcoded pixel value —
+                      the app sets the root font-size to 15px (see index.css), so a plain `36px` (sized for
+                      the browser-default 16px root) overshoots by a couple of pixels and the highlight lands
+                      to the right of the icon it's supposed to sit behind. */}
+                  <div className="relative inline-flex items-center h-[34px] p-1 rounded-xl bg-[#141416] border border-white/10 select-none shrink-0 shadow-inner gap-1">
                     <div
                       aria-hidden="true"
-                      className="absolute top-0.5 bottom-0.5 rounded-lg bg-[var(--accent-subtle)] border border-[var(--accent-border)] pointer-events-none transition-all duration-200"
+                      className="absolute top-1 bottom-1 left-1 w-8 rounded-lg bg-[var(--accent-subtle)] border border-[var(--accent-color)]/30 shadow-sm pointer-events-none transition-transform duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
                       style={{
-                        transform: viewMode === 'grid' ? 'translateX(0px)' : 'translateX(32px)',
-                        width: '32px',
+                        transform: viewMode === 'grid' ? 'translateX(0)' : 'translateX(2.25rem)',
                       }}
                     />
                     <button
                       type="button"
                       onClick={() => handleViewModeChange('grid')}
-                      className={`relative z-10 w-8 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-                        viewMode === 'grid' ? 'text-[var(--accent-light)]' : 'text-slate-400 hover:text-white'
+                      className={`relative z-10 w-8 h-[24px] flex items-center justify-center rounded-lg transition-colors duration-150 cursor-pointer ${
+                        viewMode === 'grid' ? 'text-[var(--accent-color)]' : 'text-slate-400 hover:text-white'
                       }`}
                       title={t.viewGrid || 'Grid View'}
                     >
@@ -2027,8 +2027,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
                     <button
                       type="button"
                       onClick={() => handleViewModeChange('list')}
-                      className={`relative z-10 w-8 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-                        viewMode === 'list' ? 'text-[var(--accent-light)]' : 'text-slate-400 hover:text-white'
+                      className={`relative z-10 w-8 h-[24px] flex items-center justify-center rounded-lg transition-colors duration-150 cursor-pointer ${
+                        viewMode === 'list' ? 'text-[var(--accent-color)]' : 'text-slate-400 hover:text-white'
                       }`}
                       title={t.viewList || 'List View'}
                     >
@@ -2075,7 +2075,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
               {/* Skeleton loading with realistic sweep animation */}
               {loading && (
                 viewMode === 'grid' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fadeIn">
                     {[1, 2, 3, 4].map((n) => (
                       <div
                         key={n}
@@ -2143,7 +2143,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
               {/* Addon Items: Grid Mode vs List Mode */}
               {!loading && items.length > 0 && (
                 viewMode === 'grid' ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fadeIn">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 animate-fadeIn">
                     {items.map((item) => {
                       const isInstalling = installingId === item.id;
                       const isInstalled =
@@ -2300,7 +2300,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                               type="button"
                               onClick={() => handleInstall(item)}
                               disabled={isInstalling || isInstalled}
-                              className={`py-2.5 px-5 rounded-xl font-bold font-riot text-sm flex items-center gap-2 transition cursor-pointer ${
+                              className={`py-2 px-3.5 rounded-xl font-bold font-riot text-xs sm:text-sm flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
                                 isInstalled
                                   ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shadow-sm'
                                   : isInstalling
@@ -2310,17 +2310,17 @@ export const ModStore: React.FC<ModStoreProps> = ({
                             >
                               {isInstalled ? (
                                 <>
-                                  <Check className="w-4 h-4" />
+                                  <Check className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                                   <span>{t.btnInstalled || 'Installed'}</span>
                                 </>
                               ) : isInstalling ? (
                                 <>
-                                  <RefreshCw className="w-4 h-4 animate-spin" />
-                                  <span>{t.installing || 'Downloading...'}</span>
+                                  <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin shrink-0" />
+                                  <span>{t.installingBtn || 'Installing'}</span>
                                 </>
                               ) : (
                                 <>
-                                  <Download className="w-4 h-4" />
+                                  <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                                   <span>{t.btnInstall || 'Install'}</span>
                                 </>
                               )}
@@ -2732,21 +2732,24 @@ export const ModStore: React.FC<ModStoreProps> = ({
                 )}
               </span>
 
-              {/* View Mode Switcher: Grid vs List with smooth sliding indicator */}
-              <div className="relative inline-flex items-center p-0.5 rounded-xl bg-black/40 border border-white/10 select-none shrink-0">
+              {/* View Mode Switcher: Grid vs List with macOS Minimalist Frosted sliding indicator in theme accent.
+                  The shift is written in rem (2rem button + 0.25rem gap), not a hardcoded pixel value — the
+                  app sets the root font-size to 15px (see index.css), so a plain `36px` (sized for the
+                  browser-default 16px root) overshoots by a couple of pixels and the highlight lands to the
+                  right of the icon it's supposed to sit behind. */}
+              <div className="relative inline-flex items-center h-[34px] p-1 rounded-xl bg-[#141416] border border-white/10 select-none shrink-0 shadow-inner gap-1">
                 <div
                   aria-hidden="true"
-                  className="absolute top-0.5 bottom-0.5 rounded-lg bg-[var(--accent-subtle)] border border-[var(--accent-border)] pointer-events-none transition-all duration-200"
+                  className="absolute top-1 bottom-1 left-1 w-8 rounded-lg bg-[var(--accent-subtle)] border border-[var(--accent-color)]/30 shadow-sm pointer-events-none transition-transform duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]"
                   style={{
-                    transform: installedViewMode === 'grid' ? 'translateX(0px)' : 'translateX(32px)',
-                    width: '32px',
+                    transform: installedViewMode === 'grid' ? 'translateX(0)' : 'translateX(2.25rem)',
                   }}
                 />
                 <button
                   type="button"
                   onClick={() => handleInstalledViewModeChange('grid')}
-                  className={`relative z-10 w-8 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-                    installedViewMode === 'grid' ? 'text-[var(--accent-light)]' : 'text-slate-400 hover:text-white'
+                  className={`relative z-10 w-8 h-[24px] flex items-center justify-center rounded-lg transition-colors duration-150 cursor-pointer ${
+                    installedViewMode === 'grid' ? 'text-[var(--accent-color)]' : 'text-slate-400 hover:text-white'
                   }`}
                   title={t.viewGrid || 'Grid View'}
                 >
@@ -2755,8 +2758,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
                 <button
                   type="button"
                   onClick={() => handleInstalledViewModeChange('list')}
-                  className={`relative z-10 w-8 h-7 flex items-center justify-center rounded-lg transition-colors cursor-pointer ${
-                    installedViewMode === 'list' ? 'text-[var(--accent-light)]' : 'text-slate-400 hover:text-white'
+                  className={`relative z-10 w-8 h-[24px] flex items-center justify-center rounded-lg transition-colors duration-150 cursor-pointer ${
+                    installedViewMode === 'list' ? 'text-[var(--accent-color)]' : 'text-slate-400 hover:text-white'
                   }`}
                   title={t.viewList || 'List View'}
                 >
@@ -2878,7 +2881,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                       {/* Delete Mod */}
                       <button
                         type="button"
-                        onClick={() => handleDeleteInstalled(mod)}
+                        onClick={() => setModToDelete(mod)}
                         className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-500/10 transition cursor-pointer"
                         title={t.btnDeleteAddon || 'Delete'}
                       >
@@ -2976,7 +2979,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => handleDeleteInstalled(mod)}
+                        onClick={() => setModToDelete(mod)}
                         className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-red-500/15 text-slate-400 hover:text-red-400 border border-white/5 hover:border-red-500/30 transition-all cursor-pointer shrink-0"
                         title={t.btnDeleteAddon || 'Delete'}
                       >
@@ -3037,6 +3040,86 @@ export const ModStore: React.FC<ModStoreProps> = ({
         >
           <ArrowUp className="w-5 h-5 text-slate-300 group-hover:text-black transition-colors" />
         </button>
+      )}
+
+      {/* Delete Addon Confirmation Modal */}
+      {modToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="glass-panel w-full max-w-lg rounded-3xl border border-red-500/25 shadow-2xl overflow-hidden animate-scaleUp bg-[#121212]">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-white/[0.08] flex items-center gap-4 bg-red-500/[0.04]">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-bold font-riot text-white tracking-wide">
+                  {t.modalDeleteModTitle || 'Confirm Delete Addon'}
+                </h2>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  {t.modalDeleteModSub || 'Are you sure you want to delete this addon file from the profile?'}
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-5">
+              <div className="p-4.5 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-3.5">
+                <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                  <Package className="w-5 h-5" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-base font-bold text-white truncate">{modToDelete.name}</h4>
+                  <div className="text-xs text-slate-400 font-mono truncate mt-0.5">
+                    {modToDelete.fileName}
+                  </div>
+                </div>
+                <span className="text-xs font-sans text-slate-300 shrink-0 font-medium">
+                  {(modToDelete.sizeBytes / (1024 * 1024)).toFixed(2)} MB
+                </span>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-3">
+                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+                <div className="leading-relaxed">
+                  {t.modalDeleteModWarning || 'This action cannot be undone. The file will be permanently removed from disk.'}
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-6 border-t border-white/[0.08] flex items-center justify-end gap-3 bg-[#161616]/50">
+              <button
+                type="button"
+                disabled={isDeletingMod}
+                onClick={() => setModToDelete(null)}
+                className="px-5 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-sm font-semibold text-slate-300 transition cursor-pointer"
+              >
+                {t.btnCancel || t.cancel || 'Cancel'}
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingMod}
+                onClick={async () => {
+                  if (!activeInstance || !modToDelete) return;
+                  setIsDeletingMod(true);
+                  try {
+                    await deleteAddon(activeInstance.id, installedContentType, modToDelete.fileName);
+                    await loadInstalledItems();
+                    setModToDelete(null);
+                  } catch (err) {
+                    console.error('Delete failed:', err);
+                  } finally {
+                    setIsDeletingMod(false);
+                  }
+                }}
+                className="px-6 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold font-riot flex items-center gap-2 shadow-lg shadow-red-500/20 transition disabled:opacity-50 cursor-pointer active:scale-95"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isDeletingMod ? (t.deletingMod || 'Deleting...') : (t.btnDeleteMod || 'Delete')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modpack Import Modal (.mrpack) */}

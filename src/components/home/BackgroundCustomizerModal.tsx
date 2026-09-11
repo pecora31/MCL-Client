@@ -242,7 +242,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
 
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fadeIn">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
       {cropSource && (
         <ImageCropModal
           isOpen
@@ -255,22 +255,22 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
         />
       )}
       <div
-        className="w-full max-w-2xl rounded-3xl border-2 border-white/[0.08] shadow-[0_32px_80px_-12px_rgba(0,0,0,0.9)] overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp"
-        style={{ background: 'rgba(12,12,14,0.96)', fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
+        className="w-full max-w-2xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-scaleUp bg-[#121212]"
+        style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif" }}
         onClick={(e) => e.stopPropagation()}
       >
 
         {/* Header — clean obsidian matte style */}
-        <div className="px-6 py-5 flex items-start justify-between border-b border-white/[0.04]">
-          <div className="flex items-start gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] shrink-0 mt-0.5">
+        <div className="px-6 py-4.5 flex items-center justify-between border-b border-white/[0.08] bg-[#161616]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
               <Sparkles className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base sm:text-lg font-bold text-white tracking-wide leading-tight">
+              <h2 className="text-lg font-bold font-riot text-white tracking-wide leading-tight">
                 {(t as any).bgModalTitle || 'Customize Launcher Background'}
               </h2>
-              <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+              <p className="text-sm text-slate-400 mt-0.5 leading-relaxed">
                 {(t as any).bgModalDesc || 'Personalize your launcher with videos, wallpapers, or custom photos.'}
               </p>
             </div>
@@ -279,24 +279,24 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center transition cursor-pointer active:scale-95 shrink-0"
+            className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer shrink-0"
             title={t.cancel || 'Close'}
           >
-            <X className="w-4 h-4" />
+            <X className="w-4.5 h-4.5 text-white" strokeWidth={3} />
           </button>
         </div>
 
 
         {/* Modal Body */}
-        <div className="px-6 py-4 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+        <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar flex-1">
           {/* Section 1: Presets Gallery */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-[13px] font-bold text-slate-200 uppercase tracking-wider">
                 <Layers className="w-4 h-4 text-[var(--accent-color)]" />
                 <span>{(t as any).bgPresetTitle || 'Preset Wallpapers'}</span>
               </div>
-              <span className="text-[11px] text-slate-500 font-mono font-bold">HD PRESETS</span>
+              <span className="text-xs text-slate-400 font-mono font-bold">HD PRESETS</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3.5">
@@ -355,13 +355,13 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
           </div>
 
           {/* Section 2: Custom File Upload & URL */}
-          <div className="p-4 rounded-2xl border border-white/[0.06] space-y-3.5" style={{ background: 'rgba(255,255,255,0.02)' }}>
+          <div className="p-4.5 rounded-2xl border border-white/[0.06] space-y-3.5 bg-white/[0.02]">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
+              <div className="flex items-center gap-2 text-[13px] font-bold text-slate-200 uppercase tracking-wider">
                 <Upload className="w-4 h-4 text-[var(--accent-color)]" />
                 <span>{(t as any).bgUploadTitle || 'Upload Custom File'}</span>
               </div>
-              <span className="text-[11px] text-slate-500 font-mono">
+              <span className="text-xs text-slate-400 font-mono">
                 {(t as any).bgFileTypeHint || 'Image / Video / GIF'}
               </span>
             </div>
@@ -386,7 +386,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
               <button
                 type="button"
                 onClick={handleBrowseNativeFile}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-xs font-bold flex items-center justify-center gap-2 transition cursor-pointer active:scale-95 shrink-0"
+                className="w-full sm:w-auto px-4.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-slate-200 text-sm font-semibold flex items-center justify-center gap-2 transition cursor-pointer active:scale-95 shrink-0"
               >
                 <Upload className="w-4 h-4" />
                 <span>{(t as any).bgUploadBtn || 'Choose File from Computer'}</span>
@@ -394,7 +394,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
 
               {/* URL Direct Input */}
               <div className="relative flex-1 w-full">
-                <Link className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                <Link className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
                   type="text"
                   value={customUrlInput}
@@ -404,13 +404,13 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
                   }}
                   onKeyDown={(e) => e.key === 'Enter' && handleApplyUrl()}
                   placeholder={(t as any).bgUrlInputPlaceholder || 'Or paste image/video URL directly...'}
-                  className="w-full bg-black/50 border border-white/[0.08] rounded-xl pl-9 pr-16 py-2.5 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-[var(--accent-color)] transition"
+                  className="w-full bg-black/50 border border-white/[0.08] rounded-xl pl-10 pr-20 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 transition"
                 />
                 {customUrlInput.trim() && (
                   <button
                     type="button"
                     onClick={handleApplyUrl}
-                    className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg bg-[var(--accent-color)] hover:bg-[var(--accent-hover)] text-slate-950 font-bold text-xs transition cursor-pointer active:scale-95"
+                    className="btn-primary absolute right-1.5 top-1/2 -translate-y-1/2 px-3.5 py-1.5 rounded-lg font-bold text-xs transition cursor-pointer active:scale-95 shadow-sm"
                   >
                     {(t as any).bgApply || 'Apply'}
                   </button>
@@ -422,20 +422,20 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
           </div>
 
           {/* Section 3: Sliders (Dim Overlay Darkness & Backdrop Blur) */}
-          <div className="p-4 rounded-2xl border border-white/[0.06] space-y-4" style={{ background: 'rgba(255,255,255,0.02)' }}>
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-300 uppercase tracking-wider">
+          <div className="p-4.5 rounded-2xl border border-white/[0.06] space-y-4 bg-white/[0.02]">
+            <div className="flex items-center gap-2 text-[13px] font-bold text-slate-200 uppercase tracking-wider">
               <Sliders className="w-4 h-4 text-[var(--accent-color)]" />
               <span>{(t as any).bgBrightness || 'Brightness & Overlay'}</span>
             </div>
 
             {/* Slider 1: Dim Darkness */}
             <div className="space-y-2">
-              <div className="flex items-center justify-between text-xs text-slate-200">
+              <div className="flex items-center justify-between text-sm text-slate-200">
                 <span className="flex items-center gap-2 font-semibold">
                   <Eye className="w-4 h-4 text-slate-400" />
                   <span>{(t as any).bgDimOverlay || 'Dim Overlay Darkness'}</span>
                 </span>
-                <span className="font-mono text-xs text-[var(--accent-light)] font-bold">{localOpacity}%</span>
+                <span className="font-mono text-sm text-[var(--accent-light)] font-bold">{localOpacity}%</span>
               </div>
               <SmoothRange
                 min={0}
@@ -447,7 +447,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
                   onUpdateSettings({ bgOpacity: val / 100 });
                 }}
               />
-              <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
                 <span>0%</span>
                 <span>30% default</span>
                 <span>85%</span>
@@ -455,13 +455,13 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
             </div>
 
             {/* Slider 2: Backdrop Blur */}
-            <div className="space-y-2 pt-3 border-t border-white/[0.04]">
-              <div className="flex items-center justify-between text-xs text-slate-200">
+            <div className="space-y-2 pt-3.5 border-t border-white/[0.04]">
+              <div className="flex items-center justify-between text-sm text-slate-200">
                 <span className="flex items-center gap-2 font-semibold">
                   <Sparkles className="w-4 h-4 text-slate-400" />
                   <span>{(t as any).bgBlurLabel || 'Backdrop Blur'}</span>
                 </span>
-                <span className="font-mono text-xs text-[var(--accent-light)] font-bold">{localBlur}px</span>
+                <span className="font-mono text-sm text-[var(--accent-light)] font-bold">{localBlur}px</span>
               </div>
               <SmoothRange
                 min={0}
@@ -473,7 +473,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
                   onUpdateSettings({ bgBlur: val });
                 }}
               />
-              <div className="flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              <div className="flex items-center justify-between text-xs text-slate-400 font-mono">
                 <span>0px</span>
                 <span>4px</span>
                 <span>16px</span>
@@ -483,11 +483,11 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-white/[0.04] flex items-center justify-between">
+        <div className="px-6 py-4 border-t border-white/[0.08] bg-[#161616]/50 flex items-center justify-between">
           <button
             type="button"
             onClick={handleResetDefault}
-            className="px-4 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] text-xs font-semibold text-slate-400 hover:text-white flex items-center gap-2 transition cursor-pointer active:scale-95"
+            className="px-4.5 py-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] text-sm font-semibold text-slate-300 hover:text-white flex items-center gap-2 transition cursor-pointer active:scale-95"
           >
             <RotateCcw className="w-4 h-4" />
             <span>{(t as any).bgResetDefault || 'Reset to Default'}</span>
@@ -496,7 +496,7 @@ export const BackgroundCustomizerModal: React.FC<BackgroundCustomizerModalProps>
           <button
             type="button"
             onClick={onClose}
-            className="px-7 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/10 text-white font-bold text-xs shadow-md cursor-pointer active:scale-95 transition"
+            className="btn-primary px-7 py-2.5 rounded-xl font-bold font-riot text-sm shadow-md cursor-pointer active:scale-95 transition"
           >
             {(t as any).done || 'Done'}
           </button>

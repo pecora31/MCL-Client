@@ -42,6 +42,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     MINECRAFT_AVATAR_ICONS[0];
 
   const activeNavIndex = navItems.findIndex((item) => item.id === currentTab);
+  const navContainerRef = React.useRef<HTMLDivElement>(null);
+  const buttonRefs = React.useRef<Record<string, HTMLButtonElement | null>>({});
+  const [indicatorTop, setIndicatorTop] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    const el = buttonRefs.current[currentTab];
+    const container = navContainerRef.current;
+    if (el && container) {
+      const elRect = el.getBoundingClientRect();
+      const containerRect = container.getBoundingClientRect();
+      setIndicatorTop(elRect.top - containerRect.top);
+    } else {
+      setIndicatorTop(null);
+    }
+  }, [currentTab]);
 
   return (
     <aside className="w-20 bg-[#111111]/[0.86] flex flex-col justify-between items-center py-5 select-none z-50 shrink-0 h-full border-none shadow-none">
@@ -54,17 +69,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {/* Vertically Centered Navigation Menu Cluster with Smooth Sliding Indicator & Active Tile */}
+      {/* Vertically Centered Navigation Menu Cluster with Smooth Sliding Active Indicator & Tile */}
       <div className="flex-1 flex flex-col items-center justify-center w-full">
-        <div className="relative flex flex-col items-center gap-7 w-full">
+        <div ref={navContainerRef} className="relative flex flex-col items-center gap-7 w-full">
           {/* Smooth Sliding Active Indicator Bar along Left Edge */}
           <div
             className="absolute left-0 w-1.5 rounded-r bg-[var(--accent-color)] shadow-accent-glow transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
             style={{
-              transform: `translateY(${activeNavIndex !== -1 ? activeNavIndex * 76 + 6 : 6}px)`,
+              top: `${(indicatorTop ?? 0) + 6}px`,
               height: '36px',
-              opacity: activeNavIndex !== -1 ? 1 : 0,
-              top: 0,
+              opacity: indicatorTop !== null ? 1 : 0,
             }}
           />
 
@@ -72,9 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div
             className="absolute left-0 right-0 mx-auto w-12 h-12 rounded-xl bg-white/10 shadow-sm transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] pointer-events-none"
             style={{
-              transform: `translateY(${activeNavIndex !== -1 ? activeNavIndex * 76 : 0}px)`,
-              opacity: activeNavIndex !== -1 ? 1 : 0,
-              top: 0,
+              top: `${indicatorTop ?? 0}px`,
+              opacity: indicatorTop !== null ? 1 : 0,
             }}
           />
 
@@ -82,8 +95,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
-              <div key={item.id} className="relative group flex items-center justify-center w-full h-12">
+              <div key={item.id} className="relative group flex items-center justify-center w-full h-12 shrink-0">
                 <button
+                  ref={(el) => {
+                    buttonRefs.current[item.id] = el;
+                  }}
                   onClick={() => {
                     setIsProfileCardOpen(false);
                     onTabChange(item.id as NavigationTab);

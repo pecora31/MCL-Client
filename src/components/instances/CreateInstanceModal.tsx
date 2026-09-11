@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Layers, Plus, ChevronDown, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
+import { X, Layers, Plus, AlertCircle, HardDrive, FolderOpen } from 'lucide-react';
 import type { ModLoader, GameInstance, VersionItem, SystemInfo, JavaInstallation } from '../../types';
 import {
   fetchMojangVersions,
@@ -12,10 +12,12 @@ import {
 } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
-import { SmoothRange } from '../common/SmoothRange';
+import { Radio } from '../common/Radio';
+import { RamAllocationField } from '../common/RamAllocationField';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { GameWindowSelector } from './GameWindowSelector';
 import { buildJavaOptions, javaChoiceToProfile, requiredJavaMajor } from '../../services/java';
+import { FabricIcon, ForgeIcon, NeoForgeIcon, QuiltIcon, VanillaIcon } from '../mods/ModIcons';
 
 interface CreateInstanceModalProps {
   isOpen: boolean;
@@ -255,16 +257,16 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-      <div className="w-full max-w-xl bg-[#121212] rounded-2xl border border-white/[0.08] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      <div className="w-full max-w-2xl bg-[#121212] rounded-2xl border border-white/[0.08] shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/[0.08] bg-[#161616]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
-              <Layers className="w-4 h-4" />
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/[0.08] bg-[#161616]">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30 shrink-0">
+              <Layers className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold font-riot text-white">Create New Profile</h2>
-              <p className="text-xs text-slate-400">Configure Minecraft version, mod loader, and RAM</p>
+              <h2 className="text-lg font-bold font-riot text-white">Create New Profile</h2>
+              <p className="text-sm text-slate-400 mt-0.5">Configure Minecraft version, mod loader, and RAM</p>
             </div>
           </div>
           <button
@@ -273,7 +275,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer"
             title="Close"
           >
-            <X className="w-4 h-4 text-white" strokeWidth={3} />
+            <X className="w-4.5 h-4.5 text-white" strokeWidth={3} />
           </button>
         </div>
 
@@ -281,7 +283,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
         <form onSubmit={handleSubmit} noValidate className="p-6 space-y-5 overflow-y-auto flex-1">
           {/* Instance Name */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-[13px] font-bold text-slate-200 uppercase tracking-wider mb-2">
               Profile Name
             </label>
             <input
@@ -293,19 +295,19 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
               }}
               placeholder="e.g. Friends Survival (1.21.4 Fabric)"
               required
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-amber-400"
+              className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] border border-white/10 text-base font-semibold text-white focus:outline-none focus:border-amber-400"
             />
           </div>
 
           {/* Minecraft Version Selector */}
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[13px] font-bold text-slate-200 uppercase tracking-wider">
                 Minecraft Version
               </label>
               <div
                 onClick={() => setShowSnapshots(!showSnapshots)}
-                className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 cursor-pointer select-none transition-colors"
+                className="flex items-center gap-2 text-sm text-slate-400 hover:text-slate-200 cursor-pointer select-none transition-colors"
               >
                 <ToggleSwitch
                   size="sm"
@@ -313,7 +315,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                   onChange={setShowSnapshots}
                   title="Show Snapshots"
                 />
-                <span>Show Snapshots</span>
+                <span className="font-semibold">Show Snapshots</span>
               </div>
             </div>
 
@@ -328,17 +330,20 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
 
           {/* Mod Loader Selector */}
           <div>
-            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+            <label className="block text-[13px] font-bold text-slate-200 uppercase tracking-wider mb-2.5">
               Mod Loader
             </label>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+            {/* auto-fit rather than a hardcoded column count: an extra loader added later
+                (Quilt joined this list once already) wraps onto its own row of evenly
+                stretched buttons instead of leaving a lone button stranded on one. */}
+            <div className="grid grid-cols-5 gap-2.5">
               {(
                 [
-                  { id: 'fabric', label: 'Fabric', desc: 'Fast, light' },
-                  { id: 'forge', label: 'Forge', desc: 'Classic' },
-                  { id: 'neoforge', label: 'NeoForge', desc: 'Modern' },
-                  { id: 'quilt', label: 'Quilt', desc: 'Modular' },
-                  { id: 'vanilla', label: 'Vanilla', desc: 'Clean' },
+                  { id: 'fabric', label: 'Fabric', icon: <FabricIcon className="w-6 h-6" />, color: '#00d2d3' },
+                  { id: 'forge', label: 'Forge', icon: <ForgeIcon className="w-6 h-6" />, color: '#dfa863' },
+                  { id: 'neoforge', label: 'NeoForge', icon: <NeoForgeIcon className="w-6 h-6" />, color: '#fa8231' },
+                  { id: 'quilt', label: 'Quilt', icon: <QuiltIcon className="w-6 h-6" />, color: '#c56cf0' },
+                  { id: 'vanilla', label: 'Vanilla', icon: <VanillaIcon className="w-6 h-6" />, color: '#2ed573' },
                 ] as const
               ).map((item) => {
                 const isSelected = loader === item.id;
@@ -347,14 +352,21 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                     key={item.id}
                     type="button"
                     onClick={() => handleLoaderChange(item.id)}
-                    className={`p-2.5 rounded-xl border-2 text-center transition-all duration-150 flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    className={`group py-3.5 px-2 rounded-2xl border-2 text-center transition-colors duration-150 flex flex-col items-center justify-center gap-2 cursor-pointer select-none ${
                       isSelected
-                        ? 'bg-[var(--accent-color)]/[0.04] border-[var(--accent-color)] text-white shadow-md shadow-black/30 font-bold -translate-y-0.5'
-                        : 'bg-white/[0.02] border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200'
+                        ? 'bg-[var(--accent-color)]/[0.08] border-[var(--accent-color)] text-white shadow-sm'
+                        : 'bg-white/[0.02] border-white/10 text-slate-400 hover:border-white/25 hover:text-slate-200 hover:bg-white/[0.04]'
                     }`}
                   >
-                    <span className="font-bold text-xs">{item.label}</span>
-                    <span className="text-[10px] text-slate-400 opacity-80">{item.desc}</span>
+                    <div
+                      className="w-7 h-7 flex items-center justify-center shrink-0 transition-colors duration-150"
+                      style={{ color: isSelected ? item.color : undefined }}
+                    >
+                      {item.icon}
+                    </div>
+                    <span className={`font-bold text-xs sm:text-sm tracking-wide transition-colors duration-150 ${isSelected ? 'text-white' : 'text-slate-300 group-hover:text-white'}`}>
+                      {item.label}
+                    </span>
                   </button>
                 );
               })}
@@ -364,7 +376,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           {/* Loader Version if not vanilla */}
           {loader !== 'vanilla' && (
             <div>
-              <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+              <label className="block text-[13px] font-bold text-slate-200 uppercase tracking-wider mb-2">
                 {loader.toUpperCase()} Loader Version
               </label>
               <CustomSelect
@@ -383,49 +395,7 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
             </div>
           )}
 
-          {/* RAM Allocation Slider */}
-          <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="flex items-center justify-between text-xs font-semibold mb-1">
-              <span className="text-slate-300 uppercase tracking-wider">Allocated RAM:</span>
-              <span className="text-[var(--accent-color)] text-sm font-bold">{(maxRam / 1024).toFixed(1)} GB RAM</span>
-            </div>
-            {(() => {
-              // Draggable all the way to what's actually installed rather than stopping at
-              // the recommended ceiling — going past it is allowed, just called out below.
-              const sliderMax = systemInfo?.totalRamMb ?? 16384;
-              const span = Math.max(sliderMax - 2048, 1024);
-              // Where "recommended" actually falls along that same range, so the label
-              // below sits above the point it describes instead of a fixed middle slot.
-              const recommendedPct = systemInfo
-                ? Math.min(88, Math.max(12, Math.round(((systemInfo.recommendedRamMb - 2048) / span) * 100)))
-                : 50;
-              return (
-                <>
-                  <SmoothRange min={2048} max={sliderMax} step={1024} value={maxRam} onChange={setMaxRam} />
-                  <div className="relative h-4 text-[10px] text-slate-500 mt-1">
-                    <span className="absolute left-0">2 GB</span>
-                    {systemInfo && (
-                      <span
-                        className="absolute -translate-x-1/2 text-slate-400 whitespace-nowrap"
-                        style={{ left: `${recommendedPct}%` }}
-                      >
-                        {(systemInfo.recommendedRamMb / 1024).toFixed(0)} GB recommended
-                      </span>
-                    )}
-                    <span className="absolute right-0">
-                      {systemInfo ? `${(systemInfo.totalRamMb / 1024).toFixed(0)} GB installed` : '16 GB'}
-                    </span>
-                  </div>
-                </>
-              );
-            })()}
-            {systemInfo && maxRam > systemInfo.recommendedMaxRamMb && (
-              <p className="text-[10px] text-amber-300 leading-relaxed pt-1">
-                This is more than the computer can comfortably spare — Windows and the game itself may not
-                have enough memory left to run.
-              </p>
-            )}
-          </div>
+          <RamAllocationField value={maxRam} onChange={setMaxRam} systemInfo={systemInfo} />
 
           {/* Game Window Resolution */}
           <GameWindowSelector
@@ -439,14 +409,14 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           />
 
           {/* Java Runtime */}
-          <div className="space-y-2 p-4 rounded-xl bg-white/[0.02] border border-white/[0.06]">
-            <div className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Java Runtime</div>
+          <div className="space-y-2 p-4.5 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+            <div className="text-[13px] font-bold text-slate-200 uppercase tracking-wider mb-1.5">Java Runtime</div>
             <CustomSelect
               value={javaPath}
               onChange={setJavaPath}
               options={javaOptions}
             />
-            <p className="text-[10px] text-slate-500 leading-relaxed">
+            <p className="text-xs text-slate-400 leading-relaxed mt-1.5 font-medium">
               {javaList.length === 0
                 ? 'No Java on this computer yet — the launcher can download the one this version needs when you play.'
                 : `Automatic selects ${getRecommendedJava()} for Minecraft ${gameVersion}.`}
@@ -454,10 +424,10 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           </div>
 
           {/* In-Game Skin Feature Toggle */}
-          <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between">
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between">
             <div>
-              <div className="text-xs font-bold text-white">In-game Team Skin Sync</div>
-              <div className="text-[11px] text-slate-400">
+              <div className="text-sm font-bold text-white">In-game Team Skin Sync</div>
+              <div className="text-xs text-slate-400 mt-0.5">
                 {loader === 'vanilla'
                   ? 'Needs a mod loader. Choose Fabric, Forge, NeoForge or Quilt to use this.'
                   : "Installs CustomSkinLoader so friends can see each other's custom skins"}
@@ -473,48 +443,36 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           </div>
 
           {/* Profile Storage Directory Selection */}
-          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
-            <div className="flex items-center gap-2">
-              <HardDrive className="w-4 h-4 text-amber-400" />
-              <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">{t.installDirTitle}</span>
+          <div className="p-4.5 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
+            <div className="flex items-center gap-2.5">
+              <HardDrive className="w-4.5 h-4.5 text-amber-400" />
+              <span className="text-[13px] font-bold text-slate-200 uppercase tracking-wider">{t.installDirTitle}</span>
             </div>
 
-            <div className="space-y-2">
-              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+            <div className="space-y-2.5">
+              <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
                 !useCustomDir
                   ? 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-white'
                   : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/10'
               }`}>
-                <input
-                  type="radio"
-                  name="dirOption"
-                  checked={!useCustomDir}
-                  onChange={() => setUseCustomDir(false)}
-                  className="mt-0.5 accent-[var(--accent-color)] cursor-pointer"
-                />
+                <Radio name="dirOption" checked={!useCustomDir} onChange={() => setUseCustomDir(false)} className="mt-0.5" />
                 <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold text-slate-200">{t.useDefaultDir}</div>
-                  <div className="text-[11px] font-medium text-slate-400 truncate mt-0.5">
+                  <div className="text-sm font-semibold text-slate-200">{t.useDefaultDir}</div>
+                  <div className="text-xs font-medium text-slate-400 truncate mt-0.5">
                     {defaultGameDir ? `${defaultGameDir}\\instances\\...` : '%APPDATA%\\MCL Client\\instances\\...'}
                   </div>
                 </div>
               </label>
 
-              <label className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer transition ${
+              <label className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition ${
                 useCustomDir
                   ? 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-white'
                   : 'bg-black/20 border-white/5 text-slate-400 hover:border-white/10'
               }`}>
-                <input
-                  type="radio"
-                  name="dirOption"
-                  checked={useCustomDir}
-                  onChange={() => setUseCustomDir(true)}
-                  className="mt-0.5 accent-[var(--accent-color)] cursor-pointer"
-                />
+                <Radio name="dirOption" checked={useCustomDir} onChange={() => setUseCustomDir(true)} className="mt-0.5" />
                 <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-slate-200">{t.useCustomDir}</div>
-                  <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                  <div className="text-sm font-semibold text-slate-200">{t.useCustomDir}</div>
+                  <div className="text-xs text-slate-400 mt-0.5 leading-snug">
                     {t.customDirHint}
                   </div>
 
@@ -525,15 +483,15 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
                         value={customDirPath}
                         onChange={(e) => setCustomDirPath(e.target.value)}
                         placeholder="D:\Games\Minecraft\MyPack"
-                        className="flex-1 px-3 py-2 rounded-xl bg-[#141414] border border-white/10 text-xs font-medium text-white focus:outline-none focus:border-amber-400"
+                        className="flex-1 px-3.5 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-sm font-medium text-white focus:outline-none focus:border-amber-400"
                       />
                       <button
                         type="button"
                         onClick={handleBrowseFolder}
                         disabled={isBrowsingDir}
-                        className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-xs font-semibold text-white flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                        className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/10 text-sm font-semibold text-white flex items-center gap-2 transition cursor-pointer shrink-0"
                       >
-                        <FolderOpen className="w-3.5 h-3.5 text-amber-400" />
+                        <FolderOpen className="w-4 h-4 text-amber-400" />
                         <span>{t.btnBrowse}</span>
                       </button>
                     </div>
@@ -544,26 +502,26 @@ export const CreateInstanceModal: React.FC<CreateInstanceModalProps> = ({
           </div>
 
           {/* Java Recommendation */}
-          <div className="flex items-center gap-2 text-xs text-slate-400 px-1">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-            <span className="font-medium">Assigned runtime: <strong className="font-bold text-slate-200">{getRecommendedJava()}</strong></span>
+          <div className="flex items-center gap-2.5 text-sm text-slate-300 px-1 font-medium">
+            <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>Assigned runtime: <strong className="font-bold text-white">{getRecommendedJava()}</strong></span>
           </div>
 
           {/* Footer Buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.06]">
+          <div className="flex items-center justify-end gap-3 pt-3.5 border-t border-white/[0.06]">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition cursor-pointer"
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white transition cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loader !== 'vanilla' && !loaderVersion}
-              className="btn-primary px-6 py-2 rounded-xl text-xs font-bold font-riot flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold font-riot flex items-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shadow-md"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" strokeWidth={3} />
               <span>Create Profile</span>
             </button>
           </div>
