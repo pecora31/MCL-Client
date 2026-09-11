@@ -1,7 +1,22 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Server, Play, Square, Download, RefreshCw, AlertCircle, Copy, Check, ExternalLink } from 'lucide-react';
+import {
+  Server,
+  Play,
+  Square,
+  Download,
+  RefreshCw,
+  AlertCircle,
+  Copy,
+  Check,
+  ExternalLink,
+  Cloud,
+  Monitor,
+  Plus,
+  Trash2,
+} from 'lucide-react';
 import { invokeCommand, isTauri } from '../../services/api';
+import { loadRemoteHosts, saveRemoteHosts, remoteAgent, type RemoteHost } from '../../services/remoteAgent';
 import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
@@ -14,19 +29,25 @@ interface HostServerViewProps {
   onOpenCreateModal: () => void;
 }
 
-// Forge and NeoForge ship an installer that has to run as its own process to produce a
-// server — not built yet (see server_host.rs), so only these three can be hosted for now.
-const HOSTABLE_LOADERS = new Set(['vanilla', 'fabric', 'quilt']);
+/** A stand-in for the desktop app's own PID map, used only to key the "already running" check. */
+const LOCAL_HOST_ID = 'local';
 
 /**
- * Host and play a profile's world on this same computer — MCL downloads the matching server
- * jar, runs it in the background, and exposes its online-mode and a few other settings right
- * here, with no folder to point at: the server lives inside the profile's own directory, so
- * MCL already knows exactly where it is.
+ * Host and play a profile's world — either on this computer, where MCL already knows the
+ * server's folder from the profile itself, or on a remote machine running the standalone MCL
+ * Agent daemon (src-tauri/src/bin/mcl_agent.rs), reached over its token-authenticated HTTP API
+ * instead of SSH.
  */
 export const HostServerView: React.FC<HostServerViewProps> = ({ instances, language, onOpenCreateModal }) => {
   const t = getTranslation(language);
   const [selectedId, setSelectedId] = useState(instances[0]?.id || '');
+  const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([]);
+  const [selectedHostId, setSelectedHostId] = useState<string>(LOCAL_HOST_ID);
+  const [isAddHostOpen, setIsAddHostOpen] = useState(false);
+  const [newHostName, setNewHostName] = useState('');
+  const [newHostUrl, setNewHostUrl] = useState('');
+  const [newHostToken, setNewHostToken] = useState('');
+
   const [status, setStatus] = useState<HostedServerStatus | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [minRam, setMinRam] = useState(1024);
@@ -42,9 +63,11 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const instance = instances.find((i) => i.id === selectedId) || null;
+  const selectedHost = selectedHostId === LOCAL_HOST_ID ? null : remoteHosts.find((h) => h.id === selectedHostId) || null;
 
   useEffect(() => {
     invokeCommand<SystemInfo>('get_system_info').then(setSystemInfo).catch(() => {});
+    setRemoteHosts(loadRemoteHosts());
   }, []);
 
   // Instances can still be loading when this view first mounts, so the initial state's
@@ -56,18 +79,26 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [instances]);
 
-  const refreshStatus = async (id: string) => {
-    if (!id) {
+  const refreshStatus = async () => {
+    if (!instance) {
       setStatus(null);
       setSummary(null);
       return;
     }
     try {
-      const s = await invokeCommand<HostedServerStatus>('get_hosted_server_status', { instanceId: id });
+      let s: HostedServerStatus;
+      if (selectedHost) {
+        s = await remoteAgent.status(selectedHost);
+      } else {
+        s = await invokeCommand<HostedServerStatus>('get_hosted_server_status', { instanceId: instance.id });
+      }
       setStatus(s);
       if (s.hasJar) {
         try {
-          setSummary(await invokeCommand<ServerPropertiesSummary>('read_server_properties', { dir: s.serverDir }));
+          const props = selectedHost
+            ? await remoteAgent.getProperties(selectedHost)
+            : await invokeCommand<ServerPropertiesSummary>('read_server_properties', { dir: s.serverDir });
+          setSummary(props);
         } catch {
           setSummary(null);
         }
@@ -82,11 +113,14 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   useEffect(() => {
     setError('');
     setEulaAccepted(false);
-    refreshStatus(selectedId);
+    refreshStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId]);
+  }, [selectedId, selectedHostId]);
 
+  // Local console output arrives as a Tauri event; a remote agent's arrives over its own SSE
+  // stream, since there's no shared process for the desktop app to listen to.
   useEffect(() => {
+    if (selectedHost) return;
     if (!isTauri()) return;
     const unlisten = listen<string>('server-log', (event) => {
       setLogs((prev) => [...prev.slice(-500), event.payload]);
@@ -94,7 +128,17 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     return () => {
       unlisten.then((f) => f());
     };
-  }, []);
+  }, [selectedHost]);
+
+  useEffect(() => {
+    if (!selectedHost) return;
+    setLogs([]);
+    const source = new EventSource(remoteAgent.logsUrl(selectedHost));
+    source.onmessage = (event) => {
+      setLogs((prev) => [...prev.slice(-500), event.data]);
+    };
+    return () => source.close();
+  }, [selectedHost]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -103,11 +147,11 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   // Poll while a server is running so Stop (triggered elsewhere, or the server dying on its
   // own) is reflected here without the player having to switch tabs and back.
   useEffect(() => {
-    if (!status?.running || !selectedId) return;
-    const interval = setInterval(() => refreshStatus(selectedId), 4000);
+    if (!status?.running || !instance) return;
+    const interval = setInterval(() => refreshStatus(), 4000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.running, selectedId]);
+  }, [status?.running, selectedId, selectedHostId]);
 
   if (instances.length === 0) {
     return (
@@ -132,8 +176,6 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     );
   }
 
-  const loaderSupported = instance ? HOSTABLE_LOADERS.has(instance.loader) : false;
-
   const profileOptions: SelectOption<string>[] = instances.map((i) => ({
     value: i.id,
     label: i.name,
@@ -150,17 +192,53 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const updateSummary = (patch: Partial<ServerPropertiesSummary>) =>
     setSummary((prev) => (prev ? { ...prev, ...patch } : prev));
 
+  const handleAddHost = () => {
+    if (!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim()) return;
+    const host: RemoteHost = {
+      id: `${Date.now()}`,
+      name: newHostName.trim(),
+      url: newHostUrl.trim(),
+      token: newHostToken.trim(),
+    };
+    const next = [...remoteHosts, host];
+    setRemoteHosts(next);
+    saveRemoteHosts(next);
+    setSelectedHostId(host.id);
+    setNewHostName('');
+    setNewHostUrl('');
+    setNewHostToken('');
+    setIsAddHostOpen(false);
+  };
+
+  const handleRemoveHost = (id: string) => {
+    const next = remoteHosts.filter((h) => h.id !== id);
+    setRemoteHosts(next);
+    saveRemoteHosts(next);
+    if (selectedHostId === id) setSelectedHostId(LOCAL_HOST_ID);
+  };
+
   const handlePrepare = async () => {
     if (!instance) return;
     setIsPreparing(true);
     setError('');
     try {
-      const s = await invokeCommand<HostedServerStatus>('prepare_hosted_server', {
-        instanceId: instance.id,
-        acceptEula: eulaAccepted,
-      });
+      let s: HostedServerStatus;
+      if (selectedHost) {
+        s = await remoteAgent.prepare(selectedHost, {
+          loader: instance.loader,
+          gameVersion: instance.gameVersion,
+          loaderVersion: instance.loaderVersion,
+          acceptEula: eulaAccepted,
+        });
+        setSummary(await remoteAgent.getProperties(selectedHost));
+      } else {
+        s = await invokeCommand<HostedServerStatus>('prepare_hosted_server', {
+          instanceId: instance.id,
+          acceptEula: eulaAccepted,
+        });
+        setSummary(await invokeCommand<ServerPropertiesSummary>('read_server_properties', { dir: s.serverDir }));
+      }
       setStatus(s);
-      setSummary(await invokeCommand<ServerPropertiesSummary>('read_server_properties', { dir: s.serverDir }));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -174,11 +252,15 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     setError('');
     setLogs([]);
     try {
-      const [javaBin] = await invokeCommand<[string, number, string]>('find_best_java', {
-        gameVersion: instance.gameVersion,
-      });
-      await invokeCommand('start_hosted_server', { instanceId: instance.id, javaBin, minRam, maxRam });
-      setTimeout(() => refreshStatus(instance.id), 800);
+      if (selectedHost) {
+        await remoteAgent.start(selectedHost, { minRam, maxRam });
+      } else {
+        const [javaBin] = await invokeCommand<[string, number, string]>('find_best_java', {
+          gameVersion: instance.gameVersion,
+        });
+        await invokeCommand('start_hosted_server', { instanceId: instance.id, javaBin, minRam, maxRam });
+      }
+      setTimeout(() => refreshStatus(), 800);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -190,8 +272,12 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     if (!instance) return;
     setIsStopping(true);
     try {
-      await invokeCommand('stop_hosted_server', { instanceId: instance.id });
-      setTimeout(() => refreshStatus(instance.id), 500);
+      if (selectedHost) {
+        await remoteAgent.stop(selectedHost);
+      } else {
+        await invokeCommand('stop_hosted_server', { instanceId: instance.id });
+      }
+      setTimeout(() => refreshStatus(), 500);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -202,17 +288,35 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const handleSaveProperties = async () => {
     if (!status || !summary) return;
     try {
-      await invokeCommand('write_server_properties', { dir: status.serverDir, summary });
+      if (selectedHost) {
+        await remoteAgent.setProperties(selectedHost, summary);
+      } else {
+        await invokeCommand('write_server_properties', { dir: status.serverDir, summary });
+      }
     } catch (err) {
       setError(String(err));
     }
   };
 
+  const displayAddress = (() => {
+    if (!selectedHost) return 'localhost:25565';
+    try {
+      return `${new URL(selectedHost.url).hostname}:25565`;
+    } catch {
+      return selectedHost.url;
+    }
+  })();
+
   const handleCopyAddress = () => {
-    navigator.clipboard.writeText('localhost:25565');
+    navigator.clipboard.writeText(displayAddress);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  const hostOptions: SelectOption<string>[] = [
+    { value: LOCAL_HOST_ID, label: t.hostServerThisComputer || 'This Computer' },
+    ...remoteHosts.map((h) => ({ value: h.id, label: h.name, badge: 'REMOTE' })),
+  ];
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto p-10 space-y-7 custom-scrollbar">
@@ -229,21 +333,85 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
         </p>
       </div>
 
-      {/* Profile picker */}
-      <div className="max-w-2xl">
-        <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-          {t.hostServerProfileLabel || 'Profile to Host'}
-        </label>
-        <CustomSelect value={selectedId} onChange={setSelectedId} options={profileOptions} />
+      <div className="max-w-2xl grid grid-cols-2 gap-4">
+        {/* Profile picker */}
+        <div>
+          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+            {t.hostServerProfileLabel || 'Profile to Host'}
+          </label>
+          <CustomSelect value={selectedId} onChange={setSelectedId} options={profileOptions} />
+        </div>
+
+        {/* Where to host: this computer, or a saved remote MCL Agent */}
+        <div>
+          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+            {t.hostServerWhereLabel || 'Where'}
+          </label>
+          <CustomSelect value={selectedHostId} onChange={setSelectedHostId} options={hostOptions} />
+        </div>
       </div>
 
-      {instance && !loaderSupported && (
-        <div className="max-w-2xl p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 text-sm flex items-start gap-3">
-          <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-          <span>
-            {t.hostServerLoaderUnsupported ||
-              'Hosting a Forge or NeoForge server is not supported yet — only Vanilla, Fabric and Quilt profiles can be hosted right now.'}
-          </span>
+      <div className="max-w-2xl flex items-center gap-2 -mt-3">
+        {selectedHost && (
+          <button
+            type="button"
+            onClick={() => handleRemoveHost(selectedHost.id)}
+            className="text-xs font-semibold text-slate-500 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition"
+          >
+            <Trash2 className="w-3 h-3" />
+            <span>{t.hostServerRemoveHost || 'Remove this host'}</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => setIsAddHostOpen((v) => !v)}
+          className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer ml-auto"
+        >
+          <Plus className="w-3 h-3" />
+          <span>{t.hostServerAddRemote || 'Add a remote host'}</span>
+        </button>
+      </div>
+
+      {isAddHostOpen && (
+        <div className="max-w-2xl p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
+          <div className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>
+              {t.hostServerRemoteWarning ||
+                'The agent speaks plain HTTP — only use an address reached through an SSH tunnel or a TLS reverse proxy, never a raw public IP.'}
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <input
+              type="text"
+              placeholder={t.hostServerRemoteNamePlaceholder || 'Name (e.g. My VPS)'}
+              value={newHostName}
+              onChange={(e) => setNewHostName(e.target.value)}
+              className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+            />
+            <input
+              type="text"
+              placeholder={t.hostServerRemoteUrlPlaceholder || 'http://host:8642'}
+              value={newHostUrl}
+              onChange={(e) => setNewHostUrl(e.target.value)}
+              className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+            />
+          </div>
+          <input
+            type="password"
+            placeholder={t.hostServerRemoteTokenPlaceholder || 'Bearer token (printed when the agent first starts)'}
+            value={newHostToken}
+            onChange={(e) => setNewHostToken(e.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+          />
+          <button
+            type="button"
+            onClick={handleAddHost}
+            disabled={!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim()}
+            className="btn-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
+          >
+            {t.btnSave || 'Save'}
+          </button>
         </div>
       )}
 
@@ -254,13 +422,16 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
         </div>
       )}
 
-      {instance && loaderSupported && (
+      {instance && (
         <div className="max-w-2xl space-y-5">
           {!status?.hasJar ? (
             /* Not prepared yet: EULA + download */
             <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
               <div>
-                <h3 className="text-base font-bold text-white">{t.hostServerPrepareTitle || 'Set up the server'}</h3>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  {selectedHost ? <Cloud className="w-4 h-4 text-[var(--accent-color)]" /> : <Monitor className="w-4 h-4 text-[var(--accent-color)]" />}
+                  <span>{t.hostServerPrepareTitle || 'Set up the server'}</span>
+                </h3>
                 <p className="text-sm text-slate-400 mt-1">
                   {t.hostServerPrepareDesc ||
                     "Downloads a dedicated server matching this profile's loader and version, right into its own folder."}
@@ -335,7 +506,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                       <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
                         {t.hostServerAddress || 'Address to join'}
                       </div>
-                      <div className="text-xs font-mono font-semibold text-white truncate">localhost:25565</div>
+                      <div className="text-xs font-mono font-semibold text-white truncate">{displayAddress}</div>
                     </div>
                     <button
                       type="button"
@@ -355,7 +526,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                       setMaxRam(v);
                       setMinRam((m) => Math.min(m, v));
                     }}
-                    systemInfo={systemInfo}
+                    systemInfo={selectedHost ? null : systemInfo}
                     min={1024}
                     step={512}
                   />
@@ -370,7 +541,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   </span>
                   <button
                     type="button"
-                    onClick={() => refreshStatus(instance.id)}
+                    onClick={() => refreshStatus()}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
                     title={t.rescanBtn || 'Refresh'}
                   >

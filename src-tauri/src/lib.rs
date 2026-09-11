@@ -1,16 +1,16 @@
 mod addon_registry;
 mod discord_rpc;
 mod game_stats;
-mod hidden_process;
+pub mod hidden_process;
 mod instance_manager;
-mod java_detector;
+pub mod java_detector;
 mod java_runtime;
 mod minecraft_core;
 mod modpack_installer;
 mod mod_conflicts;
-mod models;
-mod server_config;
-mod server_host;
+pub mod models;
+pub mod server_config;
+pub mod server_host;
 mod server_ping;
 
 use models::{
@@ -87,9 +87,22 @@ fn require_instance(instance_id: &str) -> Result<GameInstance, String> {
         .ok_or_else(|| format!("No profile found with id {}", instance_id))
 }
 
+/// Where a profile's self-hosted server lives — inside the profile's own folder, not
+/// somewhere new MCL has to remember separately, so every other feature that already knows
+/// where a profile lives (Server Config among them) keeps working here unchanged.
+fn server_dir_for(instance: &GameInstance) -> std::path::PathBuf {
+    instance_manager::get_instance_dir(&instance.id).join("server")
+}
+
 #[tauri::command]
 fn get_hosted_server_status(instance_id: String) -> Result<HostedServerStatus, String> {
-    Ok(server_host::get_status(&require_instance(&instance_id)?))
+    let instance = require_instance(&instance_id)?;
+    Ok(server_host::get_status(
+        &server_dir_for(&instance),
+        &instance.loader,
+        &instance.game_version,
+        instance.loader_version.as_deref(),
+    ))
 }
 
 #[tauri::command]
@@ -99,7 +112,7 @@ async fn prepare_hosted_server(instance_id: String, accept_eula: bool) -> Result
         return Err("Hosting a server means accepting Mojang's EULA first.".to_string());
     }
     let instance_dir = instance_manager::get_instance_dir(&instance_id);
-    let server_dir = server_host::server_dir_for(&instance);
+    let server_dir = server_dir_for(&instance);
     let common_dir = instance_manager::get_launcher_dir().join("common");
 
     server_host::prepare_server_jar(
@@ -113,7 +126,12 @@ async fn prepare_hosted_server(instance_id: String, accept_eula: bool) -> Result
     server_host::accept_eula(&server_dir)?;
     server_host::sync_mods_to_server(&instance_dir, &server_dir)?;
 
-    Ok(server_host::get_status(&instance))
+    Ok(server_host::get_status(
+        &server_dir,
+        &instance.loader,
+        &instance.game_version,
+        instance.loader_version.as_deref(),
+    ))
 }
 
 #[tauri::command]
@@ -124,13 +142,27 @@ fn start_hosted_server(
     min_ram: u32,
     max_ram: u32,
 ) -> Result<(), String> {
+    use tauri::Emitter;
     let instance = require_instance(&instance_id)?;
-    server_host::start_server(&app_handle, &instance, &java_bin, min_ram, max_ram)
+    let server_dir = server_dir_for(&instance);
+    server_host::start_server(
+        &server_dir,
+        &instance.loader,
+        &instance.game_version,
+        instance.loader_version.as_deref(),
+        &java_bin,
+        min_ram,
+        max_ram,
+        move |line| {
+            let _ = app_handle.emit("server-log", line);
+        },
+    )
 }
 
 #[tauri::command]
 fn stop_hosted_server(instance_id: String) -> Result<bool, String> {
-    server_host::stop_server(&instance_id)
+    let instance = require_instance(&instance_id)?;
+    server_host::stop_server(&server_dir_for(&instance))
 }
 
 #[tauri::command]

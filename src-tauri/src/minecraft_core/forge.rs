@@ -236,24 +236,13 @@ pub async fn install_and_resolve(
     })
 }
 
-async fn run_installer(
-    app_handle: &AppHandle,
+async fn download_installer(
     loader: &str,
     display: &str,
     game_version: &str,
     loader_version: &str,
     common_dir: &Path,
-) -> Result<(), String> {
-    let _ = app_handle.emit(
-        "mc-log",
-        format!(
-            "[{}] [MCL] Running the {} installer for {} (first launch of this profile only)...",
-            chrono::Local::now().format("%H:%M:%S"),
-            display,
-            loader_version
-        ),
-    );
-
+) -> Result<PathBuf, String> {
     let url = installer_url(loader, game_version, loader_version);
     let installer_path = common_dir.join("installers").join(format!(
         "{}-{}-installer.jar",
@@ -287,6 +276,90 @@ async fn run_installer(
         fs::write(&installer_path, &bytes)
             .map_err(|e| format!("Cannot save the {} installer: {}", display, e))?;
     }
+
+    Ok(installer_path)
+}
+
+/// Where the installer's own generated run script points `java` at via `@<file>` — the
+/// same maven coordinate `installer_url` downloads from, just the version folder under
+/// `libraries/` instead of a remote jar. Every loader/version combo this launcher installs
+/// (1.17+) uses this run-script layout; older Forge produced a single runnable server jar
+/// instead, which isn't handled here.
+pub fn server_args_file(loader: &str, game_version: &str, loader_version: &str, libraries_dir: &Path) -> PathBuf {
+    let script_name = if cfg!(target_os = "windows") { "win_args.txt" } else { "unix_args.txt" };
+    let (group, artifact, version) = match loader {
+        "neoforge" if game_version == "1.20.1" => {
+            ("net/neoforged", "forge", format!("{}-{}", game_version, loader_version))
+        }
+        "neoforge" => ("net/neoforged", "neoforge", loader_version.to_string()),
+        _ => ("net/minecraftforge", "forge", format!("{}-{}", game_version, loader_version)),
+    };
+    libraries_dir.join(group).join(artifact).join(&version).join(script_name)
+}
+
+/// Runs the official installer in `--installServer` mode, the server-side counterpart of
+/// `install_and_resolve` — it leaves a `libraries/` folder and a `win_args.txt`/`unix_args.txt`
+/// argfile in `server_dir` instead of patching a client install under `common_dir`.
+pub async fn install_server(
+    loader: &str,
+    game_version: &str,
+    loader_version: &str,
+    common_dir: &Path,
+    server_dir: &Path,
+) -> Result<(), String> {
+    let display = if loader == "neoforge" { "NeoForge" } else { "Forge" };
+    let installer_path = download_installer(loader, display, game_version, loader_version, common_dir).await?;
+    fs::create_dir_all(server_dir).map_err(|e| e.to_string())?;
+
+    let (java_bin, _, _) = crate::java_detector::find_best_java_for_version(game_version);
+    let mut command = crate::hidden_process::hidden_command(&java_bin);
+    command
+        .arg("-jar")
+        .arg(&installer_path)
+        .arg("--installServer")
+        .current_dir(server_dir);
+
+    let output = command
+        .output()
+        .map_err(|e| format!("Cannot run the {} installer with {}: {}", display, java_bin, e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let tail: String = stderr.chars().rev().take(600).collect::<Vec<_>>().into_iter().rev().collect();
+        return Err(format!("The {} server installer failed. {}", display, tail.trim()));
+    }
+
+    let args_file = server_args_file(loader, game_version, loader_version, &server_dir.join("libraries"));
+    if !args_file.exists() {
+        return Err(format!(
+            "The {} installer finished but left no {} — Minecraft {} may be too old for this install method.",
+            display,
+            args_file.file_name().unwrap_or_default().to_string_lossy(),
+            game_version
+        ));
+    }
+    Ok(())
+}
+
+async fn run_installer(
+    app_handle: &AppHandle,
+    loader: &str,
+    display: &str,
+    game_version: &str,
+    loader_version: &str,
+    common_dir: &Path,
+) -> Result<(), String> {
+    let _ = app_handle.emit(
+        "mc-log",
+        format!(
+            "[{}] [MCL] Running the {} installer for {} (first launch of this profile only)...",
+            chrono::Local::now().format("%H:%M:%S"),
+            display,
+            loader_version
+        ),
+    );
+
+    let installer_path = download_installer(loader, display, game_version, loader_version, common_dir).await?;
 
     // The installer refuses to run without this file, even though this launcher never
     // reads it, so a stub is enough.
@@ -399,6 +472,26 @@ mod tests {
         assert_eq!(
             substitute("--fml.forgeVersion=${version_name}", libraries, "neoforge-21.1.250"),
             "--fml.forgeVersion=neoforge-21.1.250"
+        );
+    }
+
+    #[test]
+    fn locates_the_server_argfile_each_loader_writes_under_libraries() {
+        let libs = Path::new("C:\\server\\libraries");
+        let script = if cfg!(target_os = "windows") { "win_args.txt" } else { "unix_args.txt" };
+
+        assert_eq!(
+            server_args_file("forge", "1.21.1", "52.1.0", libs),
+            libs.join("net/minecraftforge/forge/1.21.1-52.1.0").join(script)
+        );
+        assert_eq!(
+            server_args_file("neoforge", "1.21.1", "21.1.250", libs),
+            libs.join("net/neoforged/neoforge/21.1.250").join(script)
+        );
+        // NeoForge 1.20.1 published under the inherited Forge coordinate, same as install_and_resolve.
+        assert_eq!(
+            server_args_file("neoforge", "1.20.1", "47.1.106", libs),
+            libs.join("net/neoforged/forge/1.20.1-47.1.106").join(script)
         );
     }
 

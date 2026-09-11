@@ -1,28 +1,32 @@
-// Self-hosting: run a dedicated server for a profile's own loader/version, on this machine,
-// so its owner can host and join from the same computer without touching a terminal.
+// Self-hosting: run a dedicated server for a given loader/version on this machine, so its
+// owner can host and join without touching a terminal.
 //
-// The server lives at `<instance_dir>/server/` — inside the profile's own folder, not
-// somewhere new MCL has to remember separately, so every other feature that already knows
-// where a profile lives (Server Config among them) keeps working here unchanged.
+// Every function here takes plain loader/version/directory values rather than a `GameInstance`
+// or a Tauri `AppHandle`, so this module has no dependency on the desktop app's profile model
+// or its UI runtime — the desktop app's Tauri commands resolve those from a profile and pass
+// the raw values in, and the standalone `mcl-agent` binary (managing a server on a remote
+// machine that has no concept of an MCL profile) calls the exact same functions directly.
 
-use crate::models::GameInstance;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter};
 
-/// One running server's PID, keyed by instance id. A plain `u32` (0 = not running) per
-/// instance, the same shape `launcher.rs` uses for the foreground game process.
+/// One running server's PID, keyed by its server directory (as a string) rather than an
+/// instance id, so the same map works whether the caller is the desktop app (one entry per
+/// profile) or the agent (a single entry for the one server it manages).
 static RUNNING_SERVERS: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
 
 fn with_running<T>(f: impl FnOnce(&mut HashMap<String, u32>) -> T) -> T {
     let mut guard = RUNNING_SERVERS.lock().unwrap_or_else(|e| e.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
     f(map)
+}
+
+fn dir_key(server_dir: &Path) -> String {
+    server_dir.to_string_lossy().to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,42 +37,61 @@ pub struct HostedServerStatus {
     pub server_dir: String,
 }
 
-pub fn server_dir_for(instance: &GameInstance) -> PathBuf {
-    crate::instance_manager::get_instance_dir(&instance.id).join("server")
-}
-
-pub fn get_status(instance: &GameInstance) -> HostedServerStatus {
-    let dir = server_dir_for(instance);
-    let running = with_running(|m| m.get(&instance.id).copied().unwrap_or(0) != 0);
+pub fn get_status(
+    server_dir: &Path,
+    loader: &str,
+    game_version: &str,
+    loader_version: Option<&str>,
+) -> HostedServerStatus {
+    let running = with_running(|m| m.get(&dir_key(server_dir)).copied().unwrap_or(0) != 0);
     HostedServerStatus {
         running,
-        has_jar: dir.join("server.jar").exists(),
-        server_dir: dir.to_string_lossy().to_string(),
+        has_jar: is_prepared(server_dir, loader, game_version, loader_version),
+        server_dir: dir_key(server_dir),
     }
 }
 
-/// Downloads a ready-to-run server jar for the profile's loader into `<server_dir>/server.jar`.
-/// Vanilla and Fabric/Quilt each publish one directly; Forge/NeoForge instead ship an
-/// installer that has to be run as its own process to produce a server — not built yet, so
-/// hosting is only offered for the loaders this can actually prepare.
+/// Whether a server has already been prepared in this directory. Vanilla/Fabric/Quilt drop a
+/// single runnable `server.jar`; Forge/NeoForge's installer instead leaves a `libraries/`
+/// tree plus a `win_args.txt`/`unix_args.txt` argfile that `start_server` launches java with.
+fn is_prepared(server_dir: &Path, loader: &str, game_version: &str, loader_version: Option<&str>) -> bool {
+    match loader {
+        "forge" | "neoforge" => match loader_version {
+            Some(loader_version) => crate::minecraft_core::forge::server_args_file(
+                loader,
+                game_version,
+                loader_version,
+                &server_dir.join("libraries"),
+            )
+            .exists(),
+            None => false,
+        },
+        _ => server_dir.join("server.jar").exists(),
+    }
+}
+
+/// Prepares a ready-to-run server for the given loader inside `server_dir`. Vanilla and
+/// Fabric/Quilt each publish a single jar directly; Forge/NeoForge instead run their own
+/// installer in `--installServer` mode, the same official tool `install_and_resolve` runs
+/// for the client side.
 pub async fn prepare_server_jar(
     loader: &str,
     game_version: &str,
     loader_version: Option<&str>,
     common_dir: &Path,
     server_dir: &Path,
-) -> Result<PathBuf, String> {
+) -> Result<(), String> {
     std::fs::create_dir_all(server_dir).map_err(|e| e.to_string())?;
-    let dest = server_dir.join("server.jar");
 
-    let url = match loader {
+    match loader {
         "vanilla" => {
             let details = crate::minecraft_core::version::get_version_details(common_dir, game_version).await?;
-            details
+            let url = details
                 .downloads
                 .server
                 .ok_or_else(|| format!("Minecraft {} has no server download listed.", game_version))?
-                .url
+                .url;
+            download_to_file(&url, &server_dir.join("server.jar")).await?;
         }
         "fabric" | "quilt" => {
             let endpoints = crate::minecraft_core::fabric::loader_endpoints(loader)
@@ -76,22 +99,22 @@ pub async fn prepare_server_jar(
             let loader_ver = loader_version
                 .ok_or_else(|| format!("This profile has no {} version selected.", endpoints.display_name))?;
             let installer_ver = latest_installer_version(endpoints.meta_root).await?;
-            format!(
+            let url = format!(
                 "{}/versions/loader/{}/{}/{}/server/jar",
                 endpoints.meta_root, game_version, loader_ver, installer_ver
-            )
+            );
+            download_to_file(&url, &server_dir.join("server.jar")).await?;
         }
         "forge" | "neoforge" => {
-            return Err(format!(
-                "Hosting a {} server isn't supported yet — only Vanilla, Fabric and Quilt can be hosted right now.",
-                loader
-            ));
+            let loader_ver = loader_version
+                .ok_or_else(|| "This profile has no loader version selected.".to_string())?;
+            crate::minecraft_core::forge::install_server(loader, game_version, loader_ver, common_dir, server_dir)
+                .await?;
         }
         other => return Err(format!("Unknown loader: {}", other)),
-    };
+    }
 
-    download_to_file(&url, &dest).await?;
-    Ok(dest)
+    Ok(())
 }
 
 #[derive(Deserialize)]
@@ -143,9 +166,11 @@ pub fn accept_eula(server_dir: &Path) -> Result<(), String> {
     std::fs::write(server_dir.join("eula.txt"), "eula=true\n").map_err(|e| e.to_string())
 }
 
-/// Copies the profile's own mods into the server's mods folder so both sides match without
-/// the player keeping two folders in sync by hand. Client-only mods are not a problem here:
-/// every current loader already skips a mod declared client-only when running as a server.
+/// Copies mods from `instance_dir/mods` into the server's mods folder so both sides match
+/// without the player keeping two folders in sync by hand. Client-only mods are not a problem
+/// here: every current loader already skips a mod declared client-only when running as a
+/// server. Only meaningful for the desktop app — the agent has no such source folder to copy
+/// from, since a remote server manages its own mods directly.
 pub fn sync_mods_to_server(instance_dir: &Path, server_dir: &Path) -> Result<(), String> {
     let src = instance_dir.join("mods");
     if !src.exists() {
@@ -164,29 +189,47 @@ pub fn sync_mods_to_server(instance_dir: &Path, server_dir: &Path) -> Result<(),
     Ok(())
 }
 
-/// Starts the server jar already prepared in `<instance_dir>/server/`, streaming its console
-/// output to the frontend as `server-log` events the same way `launcher.rs` streams the
-/// game's own output as `mc-log`.
+/// Starts the server already prepared in `server_dir`, calling `on_log` with each console
+/// line as it's produced. The desktop app forwards those as `server-log` Tauri events; the
+/// agent fans them out to whichever HTTP clients are currently watching its log stream.
 pub fn start_server(
-    app_handle: &AppHandle,
-    instance: &GameInstance,
+    server_dir: &Path,
+    loader: &str,
+    game_version: &str,
+    loader_version: Option<&str>,
     java_bin: &str,
     min_ram_mb: u32,
     max_ram_mb: u32,
+    on_log: impl Fn(String) + Send + Sync + 'static,
 ) -> Result<(), String> {
-    let server_dir = server_dir_for(instance);
-    if !server_dir.join("server.jar").exists() {
-        return Err("No server.jar prepared for this profile yet.".to_string());
+    if !is_prepared(server_dir, loader, game_version, loader_version) {
+        return Err("No server prepared for this profile yet.".to_string());
     }
-    if with_running(|m| m.get(&instance.id).copied().unwrap_or(0) != 0) {
-        return Err("This profile's server is already running.".to_string());
+    let key = dir_key(server_dir);
+    if with_running(|m| m.get(&key).copied().unwrap_or(0) != 0) {
+        return Err("This server is already running.".to_string());
     }
 
     let mut cmd = crate::hidden_process::hidden_command(java_bin);
     cmd.arg(format!("-Xms{}M", min_ram_mb));
     cmd.arg(format!("-Xmx{}M", max_ram_mb));
-    cmd.arg("-jar").arg("server.jar").arg("--nogui");
-    cmd.current_dir(&server_dir);
+    match loader {
+        "forge" | "neoforge" => {
+            // Mirrors the run.bat/run.sh the installer itself generates: java expanded
+            // with the installer's own argfile, which already carries the main class,
+            // classpath and mod-loader arguments.
+            let loader_version = loader_version
+                .ok_or_else(|| "This profile has no loader version selected.".to_string())?;
+            let args_file =
+                crate::minecraft_core::forge::server_args_file(loader, game_version, loader_version, &server_dir.join("libraries"));
+            cmd.arg(format!("@{}", args_file.to_string_lossy()));
+            cmd.arg("--nogui");
+        }
+        _ => {
+            cmd.arg("-jar").arg("server.jar").arg("--nogui");
+        }
+    }
+    cmd.current_dir(server_dir);
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -195,34 +238,38 @@ pub fn start_server(
         .map_err(|e| format!("Could not start the server ({}): {}", java_bin, e))?;
     let pid = child.id();
     with_running(|m| {
-        m.insert(instance.id.clone(), pid);
+        m.insert(key.clone(), pid);
     });
 
-    for pipe in [child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>)]
-        .into_iter()
-        .flatten()
+    let on_log = std::sync::Arc::new(on_log);
+    for pipe in [
+        child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+        child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
+    ]
+    .into_iter()
+    .flatten()
     {
-        let app = app_handle.clone();
+        let on_log = on_log.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(pipe).lines().map_while(Result::ok) {
-                let _ = app.emit("server-log", line);
+                on_log(line);
             }
         });
     }
 
-    let instance_id = instance.id.clone();
     std::thread::spawn(move || {
         let _ = child.wait();
         with_running(|m| {
-            m.insert(instance_id.clone(), 0);
+            m.insert(key.clone(), 0);
         });
     });
 
     Ok(())
 }
 
-pub fn stop_server(instance_id: &str) -> Result<bool, String> {
-    let pid = with_running(|m| m.get(instance_id).copied().unwrap_or(0));
+pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
+    let key = dir_key(server_dir);
+    let pid = with_running(|m| m.get(&key).copied().unwrap_or(0));
     if pid == 0 {
         return Ok(false);
     }
@@ -241,7 +288,7 @@ pub fn stop_server(instance_id: &str) -> Result<bool, String> {
     }
 
     with_running(|m| {
-        m.insert(instance_id.to_string(), 0);
+        m.insert(key, 0);
     });
     Ok(true)
 }
@@ -251,13 +298,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_fresh_instance_reports_not_running_and_no_jar() {
+    fn a_fresh_server_dir_reports_not_running_and_no_jar() {
         let map_before = with_running(|m| m.clone());
         assert!(!map_before.contains_key("never-started"));
     }
 
     #[test]
     fn stopping_a_server_that_was_never_started_reports_nothing_to_stop() {
-        assert_eq!(stop_server("nonexistent-instance-id"), Ok(false));
+        assert_eq!(stop_server(Path::new("Z:\\nonexistent-server-dir")), Ok(false));
     }
 }
