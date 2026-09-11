@@ -133,3 +133,16 @@ pub struct StorageCleanupReport {
     pub message: String,
 }
 
+/// The handful of server.properties settings the Server Config editor exposes — everything
+/// else in the file is left untouched, see `server_config::apply_updates`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerPropertiesSummary {
+    pub online_mode: bool,
+    pub pvp: bool,
+    pub white_list: bool,
+    pub difficulty: String,
+    pub max_players: u32,
+    pub motd: String,
+}
+

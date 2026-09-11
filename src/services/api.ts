@@ -32,6 +32,8 @@ export const TAURI_COMMANDS = [
   'select_file',
   'scan_storage_cleanup',
   'execute_storage_cleanup',
+  'read_server_properties',
+  'write_server_properties',
   'detect_java',
   'find_best_java',
   'get_system_info',
@@ -991,6 +993,20 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         javaRuntimesDeleted: 2,
         message: 'Mock cleanup complete',
       } as unknown as T;
+
+    case 'read_server_properties':
+      return {
+        onlineMode: true,
+        pvp: true,
+        whiteList: false,
+        difficulty: 'easy',
+        maxPlayers: 20,
+        motd: 'A Minecraft Server',
+      } as unknown as T;
+
+    case 'write_server_properties':
+      console.log('Mock write_server_properties:', args);
+      return undefined as unknown as T;
 
     case 'select_folder':
     case 'select_file':

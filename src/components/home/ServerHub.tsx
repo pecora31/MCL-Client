@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Pause, Trash2, Edit3, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon } from 'lucide-react';
+import { Play, Wifi, Users, Server, Copy, Check, RefreshCw, Square, ChevronDown, Plus, Pause, Trash2, Edit3, X, Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDownAZ, ArrowUpZA, Activity, CheckCircle2, AlertCircle, Image as ImageIcon, Settings2 } from 'lucide-react';
 import type { GameInstance, ServerStatus, LaunchProgress, SavedServer } from '../../types';
 import { pingServer, isTauri } from '../../services/api';
 import packageJson from '../../../package.json';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
+import { ServerConfigModal } from '../server/ServerConfigModal';
 
 interface ServerHubProps {
   instances: GameInstance[];
@@ -179,6 +180,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
 
   // Modal Dialog states (Add / Edit Server)
   const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+  const [isServerConfigOpen, setIsServerConfigOpen] = useState(false);
   const [isEditingServer, setIsEditingServer] = useState(false);
   const [editingServerId, setEditingServerId] = useState<string | null>(null);
   const [serverNameInput, setServerNameInput] = useState('');
@@ -831,14 +833,25 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={handleOpenAddServerModal}
-                      className="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-none hover:shadow-none cursor-pointer shrink-0 active:scale-95 transition-all"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>{t.addServer}</span>
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setIsServerConfigOpen(true)}
+                        title={t.serverConfigTooltip || "Edit a server's online-mode and other settings"}
+                        className="px-3.5 py-2 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Settings2 className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                        <span>{t.serverConfigTitle || 'Server Config'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenAddServerModal}
+                        className="btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-none hover:shadow-none cursor-pointer active:scale-95 transition-all"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{t.addServer}</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* Search and Sort Toolbar */}
@@ -1481,6 +1494,8 @@ export const ServerHub: React.FC<ServerHubProps> = ({
           </div>
         </div>
       )}
+
+      <ServerConfigModal isOpen={isServerConfigOpen} onClose={() => setIsServerConfigOpen(false)} language={language} />
     </div>
   );
 };

@@ -298,3 +298,13 @@ export interface StorageCleanupReport {
   message: string;
 }
 
+/** The handful of server.properties settings the Server Config editor exposes. */
+export interface ServerPropertiesSummary {
+  onlineMode: boolean;
+  pvp: boolean;
+  whiteList: boolean;
+  difficulty: 'peaceful' | 'easy' | 'normal' | 'hard';
+  maxPlayers: number;
+  motd: string;
+}
+

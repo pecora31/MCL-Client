@@ -9,11 +9,12 @@ mod minecraft_core;
 mod modpack_installer;
 mod mod_conflicts;
 mod models;
+mod server_config;
 mod server_ping;
 
 use models::{
-    GameInstance, JavaInstallation, LocalMod, ServerStatus, StorageCleanupReport,
-    StorageCleanupScanResult, SystemInfo,
+    GameInstance, JavaInstallation, LocalMod, ServerPropertiesSummary, ServerStatus,
+    StorageCleanupReport, StorageCleanupScanResult, SystemInfo,
 };
 use base64::Engine as _;
 use tauri::Manager;
@@ -67,6 +68,16 @@ fn execute_storage_cleanup(
         clean_orphaned_instances,
         clean_java_runtimes,
     )
+}
+
+#[tauri::command]
+fn read_server_properties(dir: String) -> Result<ServerPropertiesSummary, String> {
+    server_config::read_server_properties(&dir)
+}
+
+#[tauri::command]
+fn write_server_properties(dir: String, summary: ServerPropertiesSummary) -> Result<(), String> {
+    server_config::write_server_properties(&dir, &summary)
 }
 
 #[tauri::command]
@@ -548,6 +559,8 @@ pub fn run() {
             select_file,
             scan_storage_cleanup,
             execute_storage_cleanup,
+            read_server_properties,
+            write_server_properties,
             detect_java,
             find_best_java,
             get_system_info,
