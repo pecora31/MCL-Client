@@ -4,6 +4,7 @@ use super::fabric::{get_loader_meta, loader_endpoints, parse_maven_coord};
 use super::version::{get_version_details, is_library_allowed_on_windows};
 use crate::instance_manager::{get_instance_dir, get_launcher_dir, setup_in_game_skin_support};
 use crate::models::GameInstance;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -12,6 +13,16 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use tauri::{AppHandle, Emitter, Manager};
 
 static CURRENT_GAME_PID: AtomicU32 = AtomicU32::new(0);
+
+/// Removes duplicate paths from a classpath list, keeping the first occurrence of each.
+/// Used where a Forge/NeoForge-resolved library list is merged ahead of vanilla's own —
+/// the two overlap for ordinary shared dependencies, and while a flat classpath tolerates
+/// the same path twice, NeoForge's BootstrapLauncher builds a Java module layer from it and
+/// crashes on any duplicate ("Duplicate key ...commons-lang3...jar" is this exact bug).
+fn dedup_classpath(entries: &mut Vec<PathBuf>) {
+    let mut seen = HashSet::new();
+    entries.retain(|p| seen.insert(p.clone()));
+}
 
 /// The one Forge/NeoForge main class, of the several this launcher has met, that resolves
 /// a Java module layer and needs the client jar renamed to the loader's own version id to
@@ -375,6 +386,15 @@ pub async fn prepare_and_launch(
 
     // Add client.jar to classpath
     classpath_entries.push(game_client_jar_path);
+
+    // Forge/NeoForge's own resolved libraries are merged ahead of the vanilla ones above
+    // (see the comment there), and the two lists are not guaranteed disjoint — NeoForge
+    // ships its own copy of ordinary dependencies vanilla already lists too (commons-lang3
+    // has crashed a real launch this way). A flat classpath tolerates the same path twice,
+    // but BootstrapLauncher builds a Java module layer from it and refuses to start on any
+    // duplicate. Keep the first occurrence of each path, since that comment's ordering
+    // (Forge's patched copy before vanilla's) is what makes the right one win.
+    dedup_classpath(&mut classpath_entries);
 
     // Build Classpath String (Windows uses semicolon ';')
     let classpath_str = classpath_entries
@@ -1119,6 +1139,63 @@ fn extract_natives_from_libraries(app_handle: &AppHandle, libraries_dir: &Path, 
     }
 }
 
+
+#[cfg(test)]
+mod dedup_classpath_tests {
+    use super::dedup_classpath;
+    use std::path::PathBuf;
+
+    #[test]
+    fn drops_a_later_duplicate_of_an_earlier_path() {
+        let mut cp = vec![
+            PathBuf::from(r"D:\instances\common\libraries\forge\patched.jar"),
+            PathBuf::from(r"D:\instances\common\libraries\commons-lang3.jar"),
+            PathBuf::from(r"D:\instances\common\libraries\commons-lang3.jar"),
+        ];
+        dedup_classpath(&mut cp);
+        assert_eq!(
+            cp,
+            vec![
+                PathBuf::from(r"D:\instances\common\libraries\forge\patched.jar"),
+                PathBuf::from(r"D:\instances\common\libraries\commons-lang3.jar"),
+            ]
+        );
+    }
+
+    #[test]
+    fn different_paths_with_the_same_file_name_are_not_treated_as_duplicates() {
+        // Dedup is by exact path, not by file name — a same-named jar resolved to two
+        // genuinely different locations is left alone; only an identical path twice (what
+        // the Forge/vanilla merge this guards actually produces) gets collapsed.
+        let mut cp = vec![
+            PathBuf::from("forge-resolved/asm.jar"),
+            PathBuf::from("vanilla/asm.jar"),
+        ];
+        let original = cp.clone();
+        dedup_classpath(&mut cp);
+        assert_eq!(cp, original);
+    }
+
+    #[test]
+    fn keeps_the_first_occurrence_when_the_same_path_repeats() {
+        // The merge this guards puts Forge's own resolved libraries ahead of vanilla's, on
+        // purpose, so when both resolve a library to the identical on-disk path, the copy
+        // that survives is still the first (Forge's) one, not whichever the set happens to
+        // keep.
+        let shared = PathBuf::from(r"D:\instances\common\libraries\org\ow2\asm\asm\9.7\asm-9.7.jar");
+        let mut cp = vec![shared.clone(), shared.clone()];
+        dedup_classpath(&mut cp);
+        assert_eq!(cp, vec![shared]);
+    }
+
+    #[test]
+    fn leaves_a_classpath_with_no_duplicates_untouched() {
+        let mut cp = vec![PathBuf::from("a.jar"), PathBuf::from("b.jar")];
+        let original = cp.clone();
+        dedup_classpath(&mut cp);
+        assert_eq!(cp, original);
+    }
+}
 
 #[cfg(test)]
 mod offline_uuid_tests {
