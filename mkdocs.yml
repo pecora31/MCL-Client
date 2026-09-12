@@ -1,0 +1,73 @@
+site_name: MCL Client Documentation
+site_description: Documentation for MCL Client, a custom Minecraft launcher built with Tauri and React.
+site_url: https://pecora31.github.io/MCL-Client/
+repo_url: https://github.com/pecora31/MCL-Client
+repo_name: pecora31/MCL-Client
+edit_uri: edit/main/docs/
+
+# Internal notes that live in docs/ for convenience but are not part of the published site.
+exclude_docs: |
+  backend-review.md
+
+theme:
+  name: material
+  logo: assets/logo.png
+  favicon: assets/logo.png
+  icon:
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - navigation.tracking
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.edit
+    - toc.follow
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Setup:
+      - Getting Started: getting-started.md
+      - Creating a Profile: creating-a-profile.md
+  - Playing:
+      - Mod Manager: mod-manager.md
+      - Skin Studio: skin-studio.md
+      - Server Hub and Server Config: server-hub-and-server-config.md
+      - Sharing Profiles: sharing-profiles.md
+  - Hosting a Server:
+      - Hosting Locally: hosting-a-server-locally.md
+      - MCL Agent (Remote Hosting): mcl-agent-remote-hosting.md
+  - Reference:
+      - Settings: settings.md
+      - Storage Cleanup: storage-cleanup.md
+      - Troubleshooting and FAQ: troubleshooting-and-faq.md
