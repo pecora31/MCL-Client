@@ -51,10 +51,12 @@ Tài liệu này ghi lại chi tiết quá trình bàn giao từ **Claude (Sessi
 
 ---
 
-## 3. Hướng Dẫn Cho Phiên Tiếp Quản Kế Tiếp
+## 3. Hướng Dẫn Cho Phiên Tiếp Quản Kế Tiếp (Claude)
 1. **Kiến trúc Host Server**: Module `server_host.rs` vẫn giữ nguyên interface nhận giá trị thô (`loader`, `game_version`, `server_dir`), không phụ thuộc vào `GameInstance`.
 2. **Log File**: File log của ứng dụng desktop hiện được lưu tại `C:\Users\<User>\AppData\Roaming\<AppIdentifier>\logs\app.log` (Windows) hoặc tương đương trên Linux/macOS.
 3. **Launch Engine**: Các hàm xây dựng tham số trong `launcher.rs` đã có unit test bảo vệ tại phần cuối file `#[cfg(test)] mod game_args_tests`. Chạy `cargo test` để xác minh khi thay đổi flag.
+4. **Deploy Cloudflare D1 & R2**: Toàn bộ file schema D1 (`tools/worker-schemas/d1-schema.sql`) và tài liệu kiến trúc (`tools/worker-schemas/README.md`) đã sẵn sàng. Khi người dùng muốn kích hoạt trên Cloudflare thật, Claude có thể hướng dẫn người dùng chạy `npx wrangler login` hoặc tạo D1 `mcl-auth-db` & R2 bucket `mcl-skins` trực tiếp trên web Dashboard.
+5. **Multi-binary Cargo Run**: Đã cấu hình `default-run = "mcl-client"` và `[[bin]]` trong `Cargo.toml` để lệnh `npx tauri dev` luôn chạy binary launcher mà không bị xung đột với `mcl-agent`.
 
 ---
 
