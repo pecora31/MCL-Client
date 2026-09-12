@@ -167,6 +167,12 @@ fn stop_hosted_server(instance_id: String) -> Result<bool, String> {
 }
 
 #[tauri::command]
+fn send_hosted_server_command(instance_id: String, command: String) -> Result<(), String> {
+    let instance = require_instance(&instance_id)?;
+    server_host::send_command(&server_dir_for(&instance), &command)
+}
+
+#[tauri::command]
 fn get_game_data_dir() -> String {
     instance_manager::get_launcher_dir().to_string_lossy().to_string()
 }
@@ -651,6 +657,7 @@ pub fn run() {
             prepare_hosted_server,
             start_hosted_server,
             stop_hosted_server,
+            send_hosted_server_command,
             remote_agent::remote_agent_status,
             remote_agent::remote_agent_prepare,
             remote_agent::remote_agent_start,
@@ -658,6 +665,7 @@ pub fn run() {
             remote_agent::remote_agent_get_properties,
             remote_agent::remote_agent_set_properties,
             remote_agent::remote_agent_sync_mods,
+            remote_agent::remote_agent_send_command,
             remote_agent::remote_agent_start_log_stream,
             remote_agent::remote_agent_stop_log_stream,
             detect_java,

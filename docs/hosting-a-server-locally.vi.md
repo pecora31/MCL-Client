@@ -17,6 +17,17 @@ Những tuỳ chọn quen thuộc từ [Cấu Hình Server](server-hub-and-serve
 
 Khi server đang chạy, tab hiển thị địa chỉ để tham gia, mặc định là `localhost:25565`, kèm nút sao chép. Bất kỳ ai trong cùng mạng, hoặc kết nối qua một công cụ như Radmin VPN, đều có thể vào bằng địa chỉ máy của bạn trên cùng port đó.
 
+## Trạng thái và console
+
+Chấm trạng thái cạnh nút Bắt Đầu/Dừng phản ánh đúng những gì server đang làm:
+
+* **Stopped**, màu xám, không có gì đang chạy.
+* **Starting**, màu vàng, tiến trình đã khởi chạy nhưng thế giới chưa tải xong.
+* **Running**, màu xanh lá, sẵn sàng cho người chơi.
+* **Crashed**, màu đỏ, server tự thoát chứ không phải do bạn dừng, xem console để biết lý do.
+
+Bảng console không chỉ để đọc, gõ lệnh vào ô ngay bên dưới nó (`op <player>`, `whitelist add <player>`, `say hello`, hoặc bất kỳ lệnh nào bạn thường gõ trực tiếp ở terminal của server) rồi bấm Gửi. Gõ `stop` ở đó hoạt động y hệt bấm nút Dừng, vẫn cho server lưu thế giới trước khi thoát.
+
 ## Mod
 
 Mod đã cài sẵn trong profile sẽ tự động được copy vào server khi bạn thiết lập. Mod đánh dấu chỉ dùng phía client không phải vấn đề, mọi loader hiện nay đều tự bỏ qua các mod đó khi chạy dưới dạng server, chúng đơn giản là không làm gì ở đó.

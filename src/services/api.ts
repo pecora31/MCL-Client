@@ -38,6 +38,7 @@ export const TAURI_COMMANDS = [
   'prepare_hosted_server',
   'start_hosted_server',
   'stop_hosted_server',
+  'send_hosted_server_command',
   'remote_agent_status',
   'remote_agent_prepare',
   'remote_agent_start',
@@ -45,6 +46,7 @@ export const TAURI_COMMANDS = [
   'remote_agent_get_properties',
   'remote_agent_set_properties',
   'remote_agent_sync_mods',
+  'remote_agent_send_command',
   'remote_agent_start_log_stream',
   'remote_agent_stop_log_stream',
   'detect_java',
@@ -1023,28 +1025,29 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'get_hosted_server_status':
       return {
-        running: false,
+        state: 'stopped',
         hasJar: false,
         serverDir: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient\\instances\\mock\\server',
       } as unknown as T;
 
     case 'prepare_hosted_server':
       return {
-        running: false,
+        state: 'stopped',
         hasJar: true,
         serverDir: 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient\\instances\\mock\\server',
       } as unknown as T;
 
     case 'start_hosted_server':
     case 'stop_hosted_server':
+    case 'send_hosted_server_command':
       console.log(`Mock ${cmd}:`, args);
       return undefined as unknown as T;
 
     case 'remote_agent_status':
-      return { running: false, hasJar: false, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
+      return { state: 'stopped', hasJar: false, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
 
     case 'remote_agent_prepare':
-      return { running: false, hasJar: true, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
+      return { state: 'stopped', hasJar: true, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
 
     case 'remote_agent_get_properties':
       return {
@@ -1063,6 +1066,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
     case 'remote_agent_start':
     case 'remote_agent_stop':
     case 'remote_agent_set_properties':
+    case 'remote_agent_send_command':
     case 'remote_agent_start_log_stream':
     case 'remote_agent_stop_log_stream':
       console.log(`Mock ${cmd}:`, args);

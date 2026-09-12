@@ -12,7 +12,25 @@ Hãy coi token và chứng chỉ cùng nhau tương đương với một SSH key
 
 ## Thiết lập agent trên VPS
 
-Build trực tiếp trên VPS, hầu hết các nhà cung cấp VPS đều chạy Linux:
+Hầu hết nhà cung cấp VPS chạy Linux, nên cách nhanh nhất là dùng script cài đặt, tự tải sẵn binary (không cần Rust toolchain) và thiết lập thành systemd service tự khởi động cùng hệ thống:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh | sudo bash
+```
+
+Cách này hiện chỉ hỗ trợ Linux x86_64, binary dựng sẵn được publish từ mỗi bản release có gắn tag. Khi chạy xong, script sẽ in ra URL, bearer token và chứng chỉ bạn cần cho bước tiếp theo.
+
+Muốn đổi port hoặc thư mục dữ liệu, đặt biến môi trường tương ứng trước khi chạy:
+
+```bash
+sudo MCL_AGENT_DIR=/opt/mcl-agent MCL_AGENT_PORT=9000 bash -c "$(curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh)"
+```
+
+Mở port đang dùng (`8642` mặc định) trong firewall của VPS và trong security group của nhà cung cấp nếu có, tách biệt với port của server Minecraft (`25565` mặc định, cũng cần mở để người chơi thực sự vào được). Java cũng cần được cài sẵn trên VPS, agent chỉ dùng bản Java có sẵn ở đó, nó không tự tải Java giống như ứng dụng desktop.
+
+### Build từ source nếu cần
+
+Nếu bạn dùng kiến trúc khác, hoặc muốn tự build:
 
 ```bash
 curl https://sh.rustup.rs -sSf | sh
@@ -23,15 +41,9 @@ cargo build --release --bin mcl-agent --features agent
 ./target/release/mcl-agent
 ```
 
-Lần đầu chạy sẽ in ra ba thứ bạn cần:
+Lần đầu chạy vẫn in ra đúng ba thứ như trên: địa chỉ đang lắng nghe, bearer token, và đường dẫn đến file chứng chỉ (`agent-cert.pem`).
 
-* Địa chỉ đang lắng nghe
-* Một bearer token
-* Đường dẫn đến file chứng chỉ (`agent-cert.pem`)
-
-Mở port mà nó in ra (`8642` mặc định) trong firewall của VPS và trong security group của nhà cung cấp nếu có, tách biệt với port của server Minecraft (`25565` mặc định, cũng cần mở để người chơi thực sự vào được). Java cũng cần được cài sẵn trên VPS, agent chỉ dùng bản Java có sẵn ở đó, nó không tự tải Java giống như ứng dụng desktop.
-
-Để giữ agent chạy sau khi bạn đóng phiên SSH, và tự khởi động lại khi VPS reboot, hãy chạy agent như một systemd service thay vì chạy trực tiếp trong terminal. Hỏi trong issue hoặc discussion nếu bạn muốn có sẵn file unit mẫu.
+Nếu chạy trực tiếp kiểu này thay vì qua script cài đặt, agent sẽ dừng ngay khi bạn đóng phiên SSH, và không tự chạy lại sau khi reboot, hãy tự bọc nó bằng systemd service (file unit của script cài đặt là một điểm khởi đầu tốt, xem `/etc/systemd/system/mcl-agent.service` trên máy nào đã chạy script đó).
 
 ## Thêm host trong MCL
 

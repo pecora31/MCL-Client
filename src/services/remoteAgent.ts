@@ -73,6 +73,8 @@ export const remoteAgent = {
     invokeCommand<ServerPropertiesSummary>('remote_agent_get_properties', { host: toHostArg(host) }),
   setProperties: (host: RemoteHost, summary: ServerPropertiesSummary) =>
     invokeCommand<void>('remote_agent_set_properties', { host: toHostArg(host), summary }),
+  sendCommand: (host: RemoteHost, command: string) =>
+    invokeCommand<void>('remote_agent_send_command', { host: toHostArg(host), command }),
   /** Uploads whatever mod jars the agent doesn't already have; returns how many were sent. */
   syncMods: (host: RemoteHost, instanceId: string) =>
     invokeCommand<number>('remote_agent_sync_mods', { host: toHostArg(host), instanceId }),

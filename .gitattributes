@@ -1,0 +1,4 @@
+# Shell scripts run on Linux; a CRLF line ending breaks the shebang line and every "$'\r':
+# command not found" after it, so these must never be checked out with Windows line endings
+# regardless of the cloning machine's own autocrlf setting.
+*.sh text eol=lf

@@ -9,18 +9,46 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::process::Stdio;
+use std::process::{ChildStdin, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
-/// One running server's PID, keyed by its server directory (as a string) rather than an
-/// instance id, so the same map works whether the caller is the desktop app (one entry per
-/// profile) or the agent (a single entry for the one server it manages).
-static RUNNING_SERVERS: Mutex<Option<HashMap<String, u32>>> = Mutex::new(None);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ServerState {
+    Stopped,
+    Starting,
+    Running,
+    Crashed,
+}
 
-fn with_running<T>(f: impl FnOnce(&mut HashMap<String, u32>) -> T) -> T {
+struct RunningEntry {
+    pid: u32,
+    state: ServerState,
+    /// Set right before a stop is requested (gracefully or by force), so the wait thread can
+    /// tell an intentional shutdown apart from the process dying on its own.
+    expected_stop: bool,
+}
+
+/// One entry per server directory (as a string) rather than an instance id, so the same map
+/// works whether the caller is the desktop app (one entry per profile) or the agent (a single
+/// entry for the one server it manages).
+static RUNNING_SERVERS: Mutex<Option<HashMap<String, RunningEntry>>> = Mutex::new(None);
+
+/// The running process's stdin, kept separately since `ChildStdin` cannot be cloned or copied
+/// into `RunningEntry` alongside the plain state fields above.
+static STDIN_HANDLES: Mutex<Option<HashMap<String, ChildStdin>>> = Mutex::new(None);
+
+fn with_running<T>(f: impl FnOnce(&mut HashMap<String, RunningEntry>) -> T) -> T {
     let mut guard = RUNNING_SERVERS.lock().unwrap_or_else(|e| e.into_inner());
+    let map = guard.get_or_insert_with(HashMap::new);
+    f(map)
+}
+
+fn with_stdin<T>(f: impl FnOnce(&mut HashMap<String, ChildStdin>) -> T) -> T {
+    let mut guard = STDIN_HANDLES.lock().unwrap_or_else(|e| e.into_inner());
     let map = guard.get_or_insert_with(HashMap::new);
     f(map)
 }
@@ -32,7 +60,7 @@ fn dir_key(server_dir: &Path) -> String {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedServerStatus {
-    pub running: bool,
+    pub state: ServerState,
     pub has_jar: bool,
     pub server_dir: String,
 }
@@ -43,9 +71,9 @@ pub fn get_status(
     game_version: &str,
     loader_version: Option<&str>,
 ) -> HostedServerStatus {
-    let running = with_running(|m| m.get(&dir_key(server_dir)).copied().unwrap_or(0) != 0);
+    let state = with_running(|m| m.get(&dir_key(server_dir)).map(|e| e.state)).unwrap_or(ServerState::Stopped);
     HostedServerStatus {
-        running,
+        state,
         has_jar: is_prepared(server_dir, loader, game_version, loader_version),
         server_dir: dir_key(server_dir),
     }
@@ -189,6 +217,13 @@ pub fn sync_mods_to_server(instance_dir: &Path, server_dir: &Path) -> Result<(),
     Ok(())
 }
 
+/// Every current loader (Vanilla, Fabric, Forge, NeoForge, Quilt, and the forks built on top
+/// of them) prints this exact line, unmodified from vanilla's own `MinecraftServer` class,
+/// once the world has finished loading and the server is ready to accept players.
+fn looks_like_ready_line(line: &str) -> bool {
+    line.contains("Done (")
+}
+
 /// Starts the server already prepared in `server_dir`, calling `on_log` with each console
 /// line as it's produced. The desktop app forwards those as `server-log` Tauri events; the
 /// agent fans them out to whichever HTTP clients are currently watching its log stream.
@@ -206,7 +241,7 @@ pub fn start_server(
         return Err("No server prepared for this profile yet.".to_string());
     }
     let key = dir_key(server_dir);
-    if with_running(|m| m.get(&key).copied().unwrap_or(0) != 0) {
+    if with_running(|m| m.get(&key).map(|e| e.pid != 0).unwrap_or(false)) {
         return Err("This server is already running.".to_string());
     }
 
@@ -230,6 +265,7 @@ pub fn start_server(
         }
     }
     cmd.current_dir(server_dir);
+    cmd.stdin(Stdio::piped());
     cmd.stdout(Stdio::piped());
     cmd.stderr(Stdio::piped());
 
@@ -237,43 +273,113 @@ pub fn start_server(
         .spawn()
         .map_err(|e| format!("Could not start the server ({}): {}", java_bin, e))?;
     let pid = child.id();
+
+    if let Some(stdin) = child.stdin.take() {
+        with_stdin(|m| {
+            m.insert(key.clone(), stdin);
+        });
+    }
     with_running(|m| {
-        m.insert(key.clone(), pid);
+        m.insert(key.clone(), RunningEntry { pid, state: ServerState::Starting, expected_stop: false });
     });
 
     let on_log = std::sync::Arc::new(on_log);
-    for pipe in [
-        child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-        child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-    ]
-    .into_iter()
-    .flatten()
-    {
+    for (pipe, watch_for_ready) in [
+        (child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), true),
+        (child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), false),
+    ] {
+        let Some(pipe) = pipe else { continue };
         let on_log = on_log.clone();
+        let key = key.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                if watch_for_ready && looks_like_ready_line(&line) {
+                    with_running(|m| {
+                        if let Some(entry) = m.get_mut(&key) {
+                            if entry.state == ServerState::Starting {
+                                entry.state = ServerState::Running;
+                            }
+                        }
+                    });
+                }
                 on_log(line);
             }
         });
     }
 
     std::thread::spawn(move || {
-        let _ = child.wait();
+        let exit = child.wait();
+        with_stdin(|m| {
+            m.remove(&key);
+        });
         with_running(|m| {
-            m.insert(key.clone(), 0);
+            let expected = m.get(&key).map(|e| e.expected_stop).unwrap_or(false);
+            let crashed = !expected && !matches!(exit, Ok(status) if status.success());
+            m.insert(
+                key.clone(),
+                RunningEntry {
+                    pid: 0,
+                    state: if crashed { ServerState::Crashed } else { ServerState::Stopped },
+                    expected_stop: false,
+                },
+            );
         });
     });
 
     Ok(())
 }
 
+/// Writes a line to the running server's console, exactly as if it had been typed at the
+/// server's own terminal, one of "op <player>", "whitelist add <player>", "say hello", and so
+/// on. Recognizing "stop" here (rather than requiring callers to also flag it) means a player
+/// typing it directly into the console box still gets marked as an intentional shutdown.
+pub fn send_command(server_dir: &Path, command: &str) -> Result<(), String> {
+    let key = dir_key(server_dir);
+    if command.trim().eq_ignore_ascii_case("stop") {
+        with_running(|m| {
+            if let Some(entry) = m.get_mut(&key) {
+                entry.expected_stop = true;
+            }
+        });
+    }
+    with_stdin(|m| {
+        let stdin = m.get_mut(&key).ok_or_else(|| "This server is not running.".to_string())?;
+        stdin
+            .write_all(format!("{}\n", command).as_bytes())
+            .and_then(|_| stdin.flush())
+            .map_err(|e| format!("Could not send the command: {}", e))
+    })
+}
+
+/// Stops the server gracefully with the same "stop" command a player would type, giving it up
+/// to 10 seconds to save the world and exit on its own before force-killing it. A forced kill
+/// mid-save risks corrupting whatever the server hadn't finished writing yet, so this is worth
+/// the wait whenever the process is still responsive enough to accept the command at all.
 pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
     let key = dir_key(server_dir);
-    let pid = with_running(|m| m.get(&key).copied().unwrap_or(0));
+    let pid = with_running(|m| m.get(&key).map(|e| e.pid).unwrap_or(0));
     if pid == 0 {
         return Ok(false);
     }
 
+    with_running(|m| {
+        if let Some(entry) = m.get_mut(&key) {
+            entry.expected_stop = true;
+        }
+    });
+
+    if send_command(server_dir, "stop").is_ok() {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while Instant::now() < deadline {
+            let still_running = with_running(|m| m.get(&key).map(|e| e.pid != 0).unwrap_or(false));
+            if !still_running {
+                return Ok(true);
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+    }
+
+    // Either stdin was already gone or it did not exit in time; force-kill as a fallback.
     #[cfg(target_os = "windows")]
     {
         let _ = crate::hidden_process::hidden_command("taskkill")
@@ -287,9 +393,6 @@ pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
             .output();
     }
 
-    with_running(|m| {
-        m.insert(key, 0);
-    });
     Ok(true)
 }
 
@@ -299,12 +402,25 @@ mod tests {
 
     #[test]
     fn a_fresh_server_dir_reports_not_running_and_no_jar() {
-        let map_before = with_running(|m| m.clone());
-        assert!(!map_before.contains_key("never-started"));
+        let map_before = with_running(|m| m.iter().map(|(k, _)| k.clone()).collect::<Vec<_>>());
+        assert!(!map_before.contains(&"never-started".to_string()));
     }
 
     #[test]
     fn stopping_a_server_that_was_never_started_reports_nothing_to_stop() {
         assert_eq!(stop_server(Path::new("Z:\\nonexistent-server-dir")), Ok(false));
+    }
+
+    #[test]
+    fn sending_a_command_to_a_server_that_is_not_running_fails_clearly() {
+        let err = send_command(Path::new("Z:\\nonexistent-server-dir-2"), "say hi").unwrap_err();
+        assert!(err.contains("not running"));
+    }
+
+    #[test]
+    fn a_directory_with_no_entry_reports_stopped() {
+        let dir = Path::new("Z:\\never-touched-server-dir");
+        let status = get_status(dir, "vanilla", "1.21.1", None);
+        assert_eq!(status.state, ServerState::Stopped);
     }
 }

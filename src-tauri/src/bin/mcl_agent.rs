@@ -116,7 +116,7 @@ async fn require_token(State(state): State<Arc<AppState>>, req: Request, next: N
 async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<HostedServerStatus> {
     let Some(spec) = read_spec(&state) else {
         return Ok(Json(HostedServerStatus {
-            running: false,
+            state: server_host::ServerState::Stopped,
             has_jar: false,
             server_dir: state.server_dir().to_string_lossy().to_string(),
         }));
@@ -210,8 +210,27 @@ async fn start(State(state): State<Arc<AppState>>, Json(body): Json<StartRequest
 }
 
 async fn stop(State(state): State<Arc<AppState>>) -> ApiResult<StartResponse> {
-    let stopped = server_host::stop_server(&state.server_dir()).map_err(server_error)?;
+    // stop_server blocks the calling thread for up to 10s waiting for a graceful shutdown,
+    // so it runs on a blocking-pool thread instead of tying up an async worker.
+    let dir = state.server_dir();
+    let stopped = tokio::task::spawn_blocking(move || server_host::stop_server(&dir))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(server_error)?;
     Ok(Json(StartResponse { started: !stopped }))
+}
+
+#[derive(Deserialize)]
+struct ConsoleCommandBody {
+    command: String,
+}
+
+async fn send_console_command(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<ConsoleCommandBody>,
+) -> Result<StatusCode, ApiError> {
+    server_host::send_command(&state.server_dir(), &body.command).map_err(bad_request)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 async fn get_properties(State(state): State<Arc<AppState>>) -> ApiResult<ServerPropertiesSummary> {
@@ -351,6 +370,7 @@ async fn main() {
         .route("/v1/prepare", post(prepare))
         .route("/v1/start", post(start))
         .route("/v1/stop", post(stop))
+        .route("/v1/console", post(send_console_command))
         .route("/v1/properties", get(get_properties).post(set_properties))
         .route("/v1/mods", get(list_mods))
         .route("/v1/mods/:filename", post(upload_mod))

@@ -308,9 +308,13 @@ export interface ServerPropertiesSummary {
   motd: string;
 }
 
-/** Whether a profile's self-hosted server has a jar ready and is currently running. */
+/** "starting" covers everything from process launch until the world finishes loading;
+ *  "crashed" is an exit nobody asked for, cleared back to "stopped" on the next status read. */
+export type HostedServerState = 'stopped' | 'starting' | 'running' | 'crashed';
+
+/** Whether a profile's self-hosted server has a jar ready and what it's currently doing. */
 export interface HostedServerStatus {
-  running: boolean;
+  state: HostedServerState;
   hasJar: boolean;
   serverDir: string;
 }

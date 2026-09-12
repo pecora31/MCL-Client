@@ -142,6 +142,17 @@ pub async fn remote_agent_stop(host: RemoteHostConfig) -> Result<(), String> {
     post_no_content(&host, "/v1/stop", &Value::Null).await
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConsoleCommandBody {
+    command: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_send_command(host: RemoteHostConfig, command: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/console", &ConsoleCommandBody { command }).await
+}
+
 #[tauri::command]
 pub async fn remote_agent_get_properties(host: RemoteHostConfig) -> Result<ServerPropertiesSummary, String> {
     get_json(&host, "/v1/properties").await

@@ -12,7 +12,25 @@ Treat the token and the certificate together as equivalent to an SSH key, anyone
 
 ## Setting up the agent on a VPS
 
-Build it directly on the VPS, most VPS providers run Linux:
+Most VPS providers run Linux, so the quickest path is the install script, which downloads a prebuilt binary (no Rust toolchain needed) and sets it up as a systemd service that starts on boot:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh | sudo bash
+```
+
+This only works on x86_64 Linux for now, the prebuilt binary is published from every tagged release. When it finishes, it prints the URL, bearer token, and certificate you need for the next step.
+
+To change the port or data directory it uses, set the matching environment variable before running it:
+
+```bash
+sudo MCL_AGENT_DIR=/opt/mcl-agent MCL_AGENT_PORT=9000 bash -c "$(curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh)"
+```
+
+Open the port it uses (`8642` by default) in the VPS firewall and in your provider's security group if it has one, separately from the Minecraft server's own port (`25565` by default, also needs to be open for players to actually join). Java also needs to already be installed on the VPS, the agent finds and uses whatever is there, it does not download Java for you the way the desktop app does.
+
+### Building from source instead
+
+If you are on a different architecture, or want to build it yourself:
 
 ```bash
 curl https://sh.rustup.rs -sSf | sh
@@ -23,15 +41,13 @@ cargo build --release --bin mcl-agent --features agent
 ./target/release/mcl-agent
 ```
 
-The first run prints three things you will need:
+The first run prints the same three things either way:
 
 * The address it is listening on
 * A bearer token
 * The path to its certificate file (`agent-cert.pem`)
 
-Open the port it prints (`8642` by default) in the VPS firewall and in your provider's security group if it has one, separately from the Minecraft server's own port (`25565` by default, also needs to be open for players to actually join). Java also needs to already be installed on the VPS, the agent finds and uses whatever is there, it does not download Java for you the way the desktop app does.
-
-To keep the agent running after you close the SSH session, and to have it start again on reboot, run it as a systemd service rather than directly in a terminal. Ask in an issue or a discussion if you would like a ready made unit file.
+If you run it directly like this instead of through the install script, it stops the moment you close the SSH session, and won't come back after a reboot, wrap it in a systemd service yourself to keep it running (the install script's own unit file is a good starting point, see `/etc/systemd/system/mcl-agent.service` on a machine where you already ran it).
 
 ## Adding the host in MCL
 

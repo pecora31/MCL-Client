@@ -62,6 +62,8 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const [logs, setLogs] = useState<string[]>([]);
   const [summary, setSummary] = useState<ServerPropertiesSummary | null>(null);
   const [copied, setCopied] = useState(false);
+  const [consoleCommand, setConsoleCommand] = useState('');
+  const [isSendingCommand, setIsSendingCommand] = useState(false);
   const logEndRef = useRef<HTMLDivElement>(null);
 
   const instance = instances.find((i) => i.id === selectedId) || null;
@@ -153,14 +155,16 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [logs]);
 
-  // Poll while a server is running so Stop (triggered elsewhere, or the server dying on its
-  // own) is reflected here without the player having to switch tabs and back.
+  // Poll while a server is starting or running, so a crash, a "stop" typed straight into the
+  // console, or the starting-to-running transition all show up here without the player having
+  // to switch tabs and back.
+  const isPolling = status?.state === 'starting' || status?.state === 'running';
   useEffect(() => {
-    if (!status?.running || !instance) return;
-    const interval = setInterval(() => refreshStatus(), 4000);
+    if (!isPolling || !instance) return;
+    const interval = setInterval(() => refreshStatus(), status?.state === 'starting' ? 1500 : 4000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status?.running, selectedId, selectedHostId]);
+  }, [isPolling, status?.state, selectedId, selectedHostId]);
 
   if (instances.length === 0) {
     return (
@@ -307,6 +311,25 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
       }
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const handleSendCommand = async () => {
+    const command = consoleCommand.trim();
+    if (!command) return;
+    setIsSendingCommand(true);
+    setError('');
+    try {
+      if (selectedHost) {
+        await remoteAgent.sendCommand(selectedHost, command);
+      } else if (instance) {
+        await invokeCommand('send_hosted_server_command', { instanceId: instance.id, command });
+      }
+      setConsoleCommand('');
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsSendingCommand(false);
     }
   };
 
@@ -502,14 +525,23 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   <div className="flex items-center gap-2.5">
                     <span
                       className={`w-2.5 h-2.5 rounded-full shrink-0 ${
-                        status.running ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]' : 'bg-slate-500'
+                        status.state === 'running'
+                          ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+                          : status.state === 'starting'
+                          ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.6)] animate-pulse'
+                          : status.state === 'crashed'
+                          ? 'bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.6)]'
+                          : 'bg-slate-500'
                       }`}
                     />
                     <span className="text-sm font-bold text-white">
-                      {status.running ? t.hostServerRunning || 'Running' : t.hostServerStopped || 'Stopped'}
+                      {status.state === 'running' && (t.hostServerRunning || 'Running')}
+                      {status.state === 'starting' && (t.hostServerStatusStarting || 'Starting')}
+                      {status.state === 'crashed' && (t.hostServerStatusCrashed || 'Crashed')}
+                      {status.state === 'stopped' && (t.hostServerStopped || 'Stopped')}
                     </span>
                   </div>
-                  {status.running ? (
+                  {status.state === 'running' || status.state === 'starting' ? (
                     <button
                       type="button"
                       onClick={handleStop}
@@ -532,7 +564,13 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   )}
                 </div>
 
-                {status.running && (
+                {status.state === 'crashed' && (
+                  <p className="text-xs text-rose-300/90 leading-relaxed">
+                    {t.hostServerCrashedHint || 'The server exited on its own — check the console below for what happened, then press Start to try again.'}
+                  </p>
+                )}
+
+                {status.state === 'running' && (
                   <div className="flex items-center justify-between p-3 rounded-xl bg-black/40 border border-white/5">
                     <div className="min-w-0">
                       <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
@@ -551,7 +589,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   </div>
                 )}
 
-                {!status.running && (
+                {(status.state === 'stopped' || status.state === 'crashed') && (
                   <RamAllocationField
                     value={maxRam}
                     onChange={(v) => {
@@ -600,6 +638,30 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   )}
                   <div ref={logEndRef} />
                 </div>
+                {(status.state === 'running' || status.state === 'starting') && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      handleSendCommand();
+                    }}
+                    className="flex items-center gap-2 px-3 py-2.5 border-t border-white/[0.06]"
+                  >
+                    <input
+                      type="text"
+                      value={consoleCommand}
+                      onChange={(e) => setConsoleCommand(e.target.value)}
+                      placeholder={t.hostServerConsoleCommandPlaceholder || 'Type a command (e.g. op Steve)...'}
+                      className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-[var(--accent-color)]"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!consoleCommand.trim() || isSendingCommand}
+                      className="px-3.5 py-2 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-white shrink-0 cursor-pointer active:scale-95 transition disabled:opacity-40"
+                    >
+                      {t.hostServerSendBtn || 'Send'}
+                    </button>
+                  </form>
+                )}
               </div>
 
               {/* Server settings, no folder picker needed — MCL already knows where this one is */}

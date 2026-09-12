@@ -1,0 +1,52 @@
+name: Agent Release
+
+# Builds the standalone mcl-agent binary for Linux VPS hosts and attaches it to the same
+# GitHub Release the desktop app publishes under, so both come from the one tag push.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to build (e.g. v0.3.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-agent:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Build mcl-agent
+        working-directory: src-tauri
+        run: cargo build --release --bin mcl-agent --features agent
+
+      - name: Package the binary
+        run: |
+          mkdir -p dist-agent
+          cp src-tauri/target/release/mcl-agent dist-agent/mcl-agent-linux-x86_64
+          chmod +x dist-agent/mcl-agent-linux-x86_64
+
+      - name: Attach to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          files: dist-agent/mcl-agent-linux-x86_64
+          # The desktop app's own release job already creates this release; this just adds
+          # an asset to it rather than replacing anything.
+          fail_on_unmatched_files: true
