@@ -87,7 +87,7 @@ markdown_extensions:
   - pymdownx.inlinehilite
   - tables
   - toc:
-      permalink: true
+      permalink: false
 
 nav:
   - Home: index.md

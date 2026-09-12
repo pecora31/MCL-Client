@@ -167,3 +167,8 @@
 [data-md-color-scheme="default"] .md-typeset a {
   color: #0969da;
 }
+
+/* Hide permalink paragraph symbol (¶) on headings */
+.md-typeset .headerlink {
+  display: none !important;
+}
