@@ -22,15 +22,15 @@ theme:
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
-      accent: deep purple
+      primary: black
+      accent: blue
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
-      accent: deep purple
+      primary: white
+      accent: blue
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
