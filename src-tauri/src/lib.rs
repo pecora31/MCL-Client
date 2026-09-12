@@ -9,6 +9,7 @@ mod minecraft_core;
 mod modpack_installer;
 mod mod_conflicts;
 pub mod models;
+mod remote_agent;
 pub mod server_config;
 pub mod server_host;
 mod server_ping;
@@ -650,6 +651,15 @@ pub fn run() {
             prepare_hosted_server,
             start_hosted_server,
             stop_hosted_server,
+            remote_agent::remote_agent_status,
+            remote_agent::remote_agent_prepare,
+            remote_agent::remote_agent_start,
+            remote_agent::remote_agent_stop,
+            remote_agent::remote_agent_get_properties,
+            remote_agent::remote_agent_set_properties,
+            remote_agent::remote_agent_sync_mods,
+            remote_agent::remote_agent_start_log_stream,
+            remote_agent::remote_agent_stop_log_stream,
             detect_java,
             find_best_java,
             get_system_info,

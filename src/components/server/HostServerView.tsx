@@ -47,6 +47,8 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const [newHostName, setNewHostName] = useState('');
   const [newHostUrl, setNewHostUrl] = useState('');
   const [newHostToken, setNewHostToken] = useState('');
+  const [newHostCertPem, setNewHostCertPem] = useState('');
+  const [isSyncingMods, setIsSyncingMods] = useState(false);
 
   const [status, setStatus] = useState<HostedServerStatus | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -117,8 +119,10 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selectedHostId]);
 
-  // Local console output arrives as a Tauri event; a remote agent's arrives over its own SSE
-  // stream, since there's no shared process for the desktop app to listen to.
+  // Local console output arrives as a Tauri event straight from the game process; a remote
+  // agent's is tailed by the Rust backend (its certificate-pinned HTTPS client) and re-emitted
+  // as its own event tagged with the host's id, since the webview itself can't make that
+  // pinned connection directly.
   useEffect(() => {
     if (selectedHost) return;
     if (!isTauri()) return;
@@ -133,12 +137,17 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   useEffect(() => {
     if (!selectedHost) return;
     setLogs([]);
-    const source = new EventSource(remoteAgent.logsUrl(selectedHost));
-    source.onmessage = (event) => {
-      setLogs((prev) => [...prev.slice(-500), event.data]);
+    remoteAgent.startLogStream(selectedHost, selectedHost.id).catch((err) => setError(String(err)));
+    const unlisten = listen<{ streamId: string; line: string }>('remote-server-log', (event) => {
+      if (event.payload.streamId !== selectedHost.id) return;
+      setLogs((prev) => [...prev.slice(-500), event.payload.line]);
+    });
+    return () => {
+      unlisten.then((f) => f());
+      remoteAgent.stopLogStream(selectedHost.id).catch(() => {});
     };
-    return () => source.close();
-  }, [selectedHost]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHost?.id]);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -193,12 +202,13 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     setSummary((prev) => (prev ? { ...prev, ...patch } : prev));
 
   const handleAddHost = () => {
-    if (!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim()) return;
+    if (!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim() || !newHostCertPem.trim()) return;
     const host: RemoteHost = {
       id: `${Date.now()}`,
       name: newHostName.trim(),
       url: newHostUrl.trim(),
       token: newHostToken.trim(),
+      certPem: newHostCertPem.trim(),
     };
     const next = [...remoteHosts, host];
     setRemoteHosts(next);
@@ -207,6 +217,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     setNewHostName('');
     setNewHostUrl('');
     setNewHostToken('');
+    setNewHostCertPem('');
     setIsAddHostOpen(false);
   };
 
@@ -231,6 +242,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
           acceptEula: eulaAccepted,
         });
         setSummary(await remoteAgent.getProperties(selectedHost));
+        await remoteAgent.syncMods(selectedHost, instance.id).catch(() => {});
       } else {
         s = await invokeCommand<HostedServerStatus>('prepare_hosted_server', {
           instanceId: instance.id,
@@ -295,6 +307,19 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
       }
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const handleSyncMods = async () => {
+    if (!selectedHost || !instance) return;
+    setIsSyncingMods(true);
+    setError('');
+    try {
+      await remoteAgent.syncMods(selectedHost, instance.id);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsSyncingMods(false);
     }
   };
 
@@ -374,11 +399,11 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
 
       {isAddHostOpen && (
         <div className="max-w-2xl p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
-          <div className="flex items-start gap-2 text-xs text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="flex items-start gap-2 text-xs text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-lg p-2.5">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent-color)]" />
             <span>
               {t.hostServerRemoteWarning ||
-                'The agent speaks plain HTTP — only use an address reached through an SSH tunnel or a TLS reverse proxy, never a raw public IP.'}
+                "The agent prints its address, bearer token and certificate path the first time it runs — paste that certificate file's contents below so MCL knows it's really talking to your server."}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -391,7 +416,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
             />
             <input
               type="text"
-              placeholder={t.hostServerRemoteUrlPlaceholder || 'http://host:8642'}
+              placeholder={t.hostServerRemoteUrlPlaceholder || 'https://host:8642'}
               value={newHostUrl}
               onChange={(e) => setNewHostUrl(e.target.value)}
               className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
@@ -404,10 +429,17 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
             onChange={(e) => setNewHostToken(e.target.value)}
             className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
           />
+          <textarea
+            placeholder={t.hostServerRemoteCertPlaceholder || '-----BEGIN CERTIFICATE-----\n... (paste agent-cert.pem here) ...\n-----END CERTIFICATE-----'}
+            value={newHostCertPem}
+            onChange={(e) => setNewHostCertPem(e.target.value)}
+            rows={4}
+            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[var(--accent-color)] resize-none"
+          />
           <button
             type="button"
             onClick={handleAddHost}
-            disabled={!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim()}
+            disabled={!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim() || !newHostCertPem.trim()}
             className="btn-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
           >
             {t.btnSave || 'Save'}
@@ -532,6 +564,18 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   />
                 )}
               </div>
+
+              {selectedHost && (
+                <button
+                  type="button"
+                  onClick={handleSyncMods}
+                  disabled={isSyncingMods}
+                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMods ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingMods ? t.hostServerSyncingMods || 'Syncing mods...' : t.hostServerSyncMods || 'Sync Mods to This Host'}</span>
+                </button>
+              )}
 
               {/* Live console */}
               <div className="rounded-2xl bg-black/60 border border-white/[0.06] overflow-hidden">

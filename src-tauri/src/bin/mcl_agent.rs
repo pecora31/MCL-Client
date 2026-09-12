@@ -3,27 +3,31 @@
 //! instead of over SSH. It reuses the exact same `server_host`/`server_config` logic the
 //! desktop app's "Host Server" tab calls directly, through a small authenticated HTTP API.
 //!
-//! Security model for this first version: every request needs a bearer token (generated on
-//! first run, saved next to the data directory), but the API itself speaks plain HTTP — it
-//! has no TLS of its own. Bind it to `127.0.0.1` and reach it through an SSH tunnel, or put a
-//! real reverse proxy (Caddy, nginx) in front of it for a TLS-terminated public address.
-//! Setting `MCL_AGENT_BIND=0.0.0.0` without either of those exposes the control token to
-//! anyone who can see the traffic.
+//! Security model: every request needs a bearer token (generated on first run, saved next to
+//! the data directory), and the API is served over TLS using a self-signed certificate the
+//! agent generates for itself on first run — there's no CA behind it, so the desktop app has
+//! to be told to trust that exact certificate (pasted in once, the same way the token is)
+//! rather than relying on hostname/CA validation. This is certificate *pinning*, not the
+//! usual browser trust model: it's secure as long as the certificate was copied over a
+//! channel the operator already trusts (the same one used to hand over the token), and it
+//! needs no domain name, no ACME setup and no reverse proxy in front of it.
 
 use app_lib::models::ServerPropertiesSummary;
 use app_lib::server_config;
 use app_lib::server_host::{self, HostedServerStatus};
-use axum::extract::{Request, State};
+use axum::extract::{Path as AxumPath, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use axum_server::tls_rustls::RustlsConfig;
 use futures_util::StreamExt;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use std::convert::Infallible;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::broadcast;
@@ -224,6 +228,48 @@ async fn set_properties(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Serialize)]
+struct ModFile {
+    name: String,
+    size_bytes: u64,
+}
+
+/// Lists the jars already sitting in the server's `mods/` folder, so the desktop app can
+/// upload only what's missing instead of resending every mod on every sync.
+async fn list_mods(State(state): State<Arc<AppState>>) -> ApiResult<Vec<ModFile>> {
+    let dir = state.server_dir().join("mods");
+    let mut mods = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("jar") {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else { continue };
+            let size_bytes = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            mods.push(ModFile { name: name.to_string(), size_bytes });
+        }
+    }
+    Ok(Json(mods))
+}
+
+/// Saves one mod jar's raw bytes into the server's `mods/` folder. One request per file
+/// rather than a multipart batch — simpler on both ends, and large modpacks already upload
+/// incrementally since `list_mods` lets the client skip files it already sent.
+async fn upload_mod(
+    State(state): State<Arc<AppState>>,
+    AxumPath(filename): AxumPath<String>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err(bad_request("Invalid mod filename."));
+    }
+    let dir = state.server_dir().join("mods");
+    std::fs::create_dir_all(&dir).map_err(|e| server_error(e.to_string()))?;
+    std::fs::write(dir.join(&filename), &body).map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.log_tx.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
@@ -234,6 +280,29 @@ async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stre
 
 async fn health() -> Json<serde_json::Value> {
     Json(serde_json::json!({ "ok": true }))
+}
+
+/// Generates and persists a self-signed certificate on first run — persisted so restarts
+/// keep the same certificate the operator already pinned in MCL, instead of silently
+/// breaking every saved connection on every restart.
+fn load_or_create_cert(data_dir: &PathBuf) -> std::io::Result<(String, String)> {
+    let cert_path = data_dir.join("agent-cert.pem");
+    let key_path = data_dir.join("agent-key.pem");
+    if let (Ok(cert), Ok(key)) = (std::fs::read_to_string(&cert_path), std::fs::read_to_string(&key_path)) {
+        if !cert.trim().is_empty() && !key.trim().is_empty() {
+            return Ok((cert, key));
+        }
+    }
+
+    std::fs::create_dir_all(data_dir)?;
+    let subject_alt_names = vec!["mcl-agent".to_string(), "localhost".to_string()];
+    let certified_key = rcgen::generate_simple_self_signed(subject_alt_names)
+        .unwrap_or_else(|e| panic!("could not generate a self-signed certificate: {}", e));
+    let cert_pem = certified_key.cert.pem();
+    let key_pem = certified_key.key_pair.serialize_pem();
+    std::fs::write(&cert_path, &cert_pem)?;
+    std::fs::write(&key_path, &key_pem)?;
+    Ok((cert_pem, key_pem))
 }
 
 fn load_or_create_token(data_dir: &PathBuf) -> std::io::Result<String> {
@@ -257,6 +326,10 @@ fn load_or_create_token(data_dir: &PathBuf) -> std::io::Result<String> {
 
 #[tokio::main]
 async fn main() {
+    // Multiple TLS backends are reachable through this dependency tree, so rustls can't pick
+    // one on its own — pin aws-lc-rs explicitly before anything touches TLS.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     let data_dir = std::env::var("MCL_AGENT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("./mcl-agent-data"));
@@ -267,6 +340,9 @@ async fn main() {
         .unwrap_or(8642);
 
     let token = load_or_create_token(&data_dir).expect("could not read or create the agent's token file");
+    let (cert_pem, key_pem) =
+        load_or_create_cert(&data_dir).expect("could not read or create the agent's TLS certificate");
+    let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
     let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx });
 
@@ -276,6 +352,8 @@ async fn main() {
         .route("/v1/start", post(start))
         .route("/v1/stop", post(stop))
         .route("/v1/properties", get(get_properties).post(set_properties))
+        .route("/v1/mods", get(list_mods))
+        .route("/v1/mods/:filename", post(upload_mod))
         .route("/v1/logs", get(logs))
         .route("/v1/health", get(health))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
@@ -287,21 +365,30 @@ async fn main() {
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(state);
 
-    let addr = format!("{}:{}", bind, port);
-    let listener = tokio::net::TcpListener::bind(&addr)
+    let addr: SocketAddr = format!("{}:{}", bind, port)
+        .parse()
+        .unwrap_or_else(|e| panic!("invalid bind address {}:{}: {}", bind, port, e));
+    let tls_config = RustlsConfig::from_pem(cert_pem.into_bytes(), key_pem.into_bytes())
         .await
-        .unwrap_or_else(|e| panic!("could not bind {}: {}", addr, e));
+        .expect("invalid TLS certificate/key pair");
 
-    println!("MCL Agent listening on {}", addr);
+    println!("MCL Agent listening on https://{}", addr);
     println!("Bearer token: {}", token);
+    println!(
+        "TLS certificate: {} — paste this file's contents into MCL when adding this host \
+         (self-signed, so MCL pins the exact certificate instead of trusting a CA).",
+        cert_path.display()
+    );
     if bind == "0.0.0.0" {
         println!(
-            "WARNING: bound to all interfaces but this API is plain HTTP — put it behind an \
-             SSH tunnel or a TLS reverse proxy before exposing it publicly. The bearer token \
-             above is the only thing standing between anyone who can reach this port and full \
-             control of this server."
+            "WARNING: bound to all interfaces. The bearer token and the pinned certificate \
+             are the only things standing between anyone who can reach this port and full \
+             control of this server — keep both as secret as an SSH key."
         );
     }
 
-    axum::serve(listener, app).await.expect("agent server crashed");
+    axum_server::bind_rustls(addr, tls_config)
+        .serve(app.into_make_service())
+        .await
+        .expect("agent server crashed");
 }

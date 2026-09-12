@@ -38,6 +38,15 @@ export const TAURI_COMMANDS = [
   'prepare_hosted_server',
   'start_hosted_server',
   'stop_hosted_server',
+  'remote_agent_status',
+  'remote_agent_prepare',
+  'remote_agent_start',
+  'remote_agent_stop',
+  'remote_agent_get_properties',
+  'remote_agent_set_properties',
+  'remote_agent_sync_mods',
+  'remote_agent_start_log_stream',
+  'remote_agent_stop_log_stream',
   'detect_java',
   'find_best_java',
   'get_system_info',
@@ -1028,6 +1037,34 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'start_hosted_server':
     case 'stop_hosted_server':
+      console.log(`Mock ${cmd}:`, args);
+      return undefined as unknown as T;
+
+    case 'remote_agent_status':
+      return { running: false, hasJar: false, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
+
+    case 'remote_agent_prepare':
+      return { running: false, hasJar: true, serverDir: '/home/mcl/mcl-agent-data/server' } as unknown as T;
+
+    case 'remote_agent_get_properties':
+      return {
+        onlineMode: true,
+        pvp: true,
+        whiteList: false,
+        difficulty: 'easy',
+        maxPlayers: 20,
+        motd: 'A Minecraft Server',
+      } as unknown as T;
+
+    case 'remote_agent_sync_mods':
+      console.log('Mock remote_agent_sync_mods:', args);
+      return 0 as unknown as T;
+
+    case 'remote_agent_start':
+    case 'remote_agent_stop':
+    case 'remote_agent_set_properties':
+    case 'remote_agent_start_log_stream':
+    case 'remote_agent_stop_log_stream':
       console.log(`Mock ${cmd}:`, args);
       return undefined as unknown as T;
 

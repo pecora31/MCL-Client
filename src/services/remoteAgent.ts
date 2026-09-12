@@ -1,16 +1,18 @@
-// Talks to a standalone "MCL Agent" — the small daemon from src-tauri/src/bin/mcl_agent.rs
-// that runs on a remote/VPS-hosted machine and exposes the exact same prepare/start/stop
-// operations the desktop app runs locally in server_host.rs, over a token-authenticated HTTP
-// API. This lets the Host Server tab manage a real remote server the same way it manages one
-// on this computer, without SSH.
+// Talks to a remote MCL Agent (src-tauri/src/bin/mcl_agent.rs) via Tauri commands that make
+// the actual HTTPS calls in Rust — the Tauri webview's own fetch() cannot be told to trust a
+// self-signed certificate, so cert-pinned requests must originate from the Rust backend
+// (see src-tauri/src/remote_agent.rs) rather than this file directly hitting the network.
+import { invokeCommand } from './api';
 import type { HostedServerStatus, ServerPropertiesSummary } from '../types';
 
 export interface RemoteHost {
   id: string;
   name: string;
-  /** e.g. "http://203.0.113.10:8642" — no trailing slash required. */
+  /** e.g. "https://203.0.113.10:8642" — no trailing slash required. */
   url: string;
   token: string;
+  /** The agent's self-signed certificate, PEM-encoded, pasted in by the operator. */
+  certPem: string;
 }
 
 const REMOTE_HOSTS_KEY = 'mcl_remote_hosts';
@@ -32,22 +34,14 @@ export function saveRemoteHosts(hosts: RemoteHost[]) {
   }
 }
 
-async function agentFetch<T>(host: RemoteHost, path: string, init?: RequestInit): Promise<T> {
-  const base = host.url.replace(/\/+$/, '');
-  const res = await fetch(`${base}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${host.token}`,
-      'Content-Type': 'application/json',
-      ...(init?.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}) as { error?: string });
-    throw new Error(body.error || `The agent replied with HTTP ${res.status}.`);
-  }
-  if (res.status === 204) return undefined as unknown as T;
-  return (await res.json()) as T;
+interface HostArg {
+  url: string;
+  token: string;
+  certPem: string;
+}
+
+function toHostArg(host: RemoteHost): HostArg {
+  return { url: host.url, token: host.token, certPem: host.certPem };
 }
 
 export interface RemotePrepareRequest {
@@ -63,15 +57,28 @@ export interface RemoteStartRequest {
 }
 
 export const remoteAgent = {
-  status: (host: RemoteHost) => agentFetch<HostedServerStatus>(host, '/v1/status'),
+  status: (host: RemoteHost) => invokeCommand<HostedServerStatus>('remote_agent_status', { host: toHostArg(host) }),
   prepare: (host: RemoteHost, body: RemotePrepareRequest) =>
-    agentFetch<HostedServerStatus>(host, '/v1/prepare', { method: 'POST', body: JSON.stringify(body) }),
+    invokeCommand<HostedServerStatus>('remote_agent_prepare', {
+      host: toHostArg(host),
+      loader: body.loader,
+      gameVersion: body.gameVersion,
+      loaderVersion: body.loaderVersion,
+      acceptEula: body.acceptEula,
+    }),
   start: (host: RemoteHost, body: RemoteStartRequest) =>
-    agentFetch<{ started: boolean }>(host, '/v1/start', { method: 'POST', body: JSON.stringify(body) }),
-  stop: (host: RemoteHost) => agentFetch<{ started: boolean }>(host, '/v1/stop', { method: 'POST' }),
-  getProperties: (host: RemoteHost) => agentFetch<ServerPropertiesSummary>(host, '/v1/properties'),
+    invokeCommand<void>('remote_agent_start', { host: toHostArg(host), minRam: body.minRam, maxRam: body.maxRam }),
+  stop: (host: RemoteHost) => invokeCommand<void>('remote_agent_stop', { host: toHostArg(host) }),
+  getProperties: (host: RemoteHost) =>
+    invokeCommand<ServerPropertiesSummary>('remote_agent_get_properties', { host: toHostArg(host) }),
   setProperties: (host: RemoteHost, summary: ServerPropertiesSummary) =>
-    agentFetch<void>(host, '/v1/properties', { method: 'POST', body: JSON.stringify(summary) }),
-  /** No custom headers on EventSource, so the token rides in the query string instead. */
-  logsUrl: (host: RemoteHost) => `${host.url.replace(/\/+$/, '')}/v1/logs?token=${encodeURIComponent(host.token)}`,
+    invokeCommand<void>('remote_agent_set_properties', { host: toHostArg(host), summary }),
+  /** Uploads whatever mod jars the agent doesn't already have; returns how many were sent. */
+  syncMods: (host: RemoteHost, instanceId: string) =>
+    invokeCommand<number>('remote_agent_sync_mods', { host: toHostArg(host), instanceId }),
+  /** Starts forwarding this host's console output as `remote-server-log` Tauri events tagged
+   *  with `streamId` (pass the host's own id) — listen for that event, filter by streamId. */
+  startLogStream: (host: RemoteHost, streamId: string) =>
+    invokeCommand<void>('remote_agent_start_log_stream', { host: toHostArg(host), streamId }),
+  stopLogStream: (streamId: string) => invokeCommand<void>('remote_agent_stop_log_stream', { streamId }),
 };

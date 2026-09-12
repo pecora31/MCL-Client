@@ -42,14 +42,25 @@ tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
 toml = "1.0.7"
 axum = { version = "0.7", optional = true }
+axum-server = { version = "0.7", optional = true, features = ["tls-rustls"] }
+rcgen = { version = "0.13", optional = true }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["aws-lc-rs"] }
 rand = { version = "0.8", optional = true }
 tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
 tower-http = { version = "0.6", optional = true, features = ["cors"] }
 
+[dev-dependencies]
+# Only for remote_agent.rs's test, which spins up a throwaway TLS server to prove the
+# certificate-pinning path actually rejects an unpinned client — never shipped in the app.
+axum = "0.7"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+rcgen = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
+
 [features]
 # The agent binary is a separate, opt-in build: the desktop app never links axum, and a
 # plain `cargo build`/`cargo tauri build` for the launcher does not need it resolved.
-agent = ["dep:axum", "dep:rand", "dep:tokio-stream", "dep:tower-http"]
+agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:rand", "dep:tokio-stream", "dep:tower-http"]
 
 [[bin]]
 name = "mcl-agent"
