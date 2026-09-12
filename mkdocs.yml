@@ -5,9 +5,10 @@ repo_url: https://github.com/pecora31/MCL-Client
 repo_name: pecora31/MCL-Client
 edit_uri: edit/main/docs/
 
-# Internal notes that live in docs/ for convenience but are not part of the published site.
+# Internal notes and build config that live in docs/ for convenience but are not part of the published site.
 exclude_docs: |
   backend-review.md
+  requirements.txt
 
 theme:
   name: material
@@ -18,21 +19,21 @@ theme:
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: deep purple
+      accent: deep purple
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: indigo
-      accent: indigo
+      primary: deep purple
+      accent: deep purple
       toggle:
         icon: material/weather-night
         name: Switch to dark mode
   features:
-    - navigation.tabs
     - navigation.sections
+    - navigation.expand
     - navigation.top
     - navigation.footer
     - navigation.tracking
@@ -41,6 +42,36 @@ theme:
     - content.code.copy
     - content.action.edit
     - toc.follow
+
+plugins:
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+        - locale: vi
+          name: Tiếng Việt
+          build: true
+          nav_translations:
+            Home: Trang Chủ
+            Setup: Cài Đặt Ban Đầu
+            Getting Started: Bắt Đầu
+            Creating a Profile: Tạo Profile
+            Playing: Chơi Game
+            Mod Manager: Quản Lý Mod
+            Skin Studio: Skin Studio
+            Server Hub and Server Config: Quản Lý Server và Cấu Hình
+            Sharing Profiles: Chia Sẻ Profile
+            Hosting a Server: Tự Host Server
+            Hosting Locally: Host Trên Máy Của Bạn
+            MCL Agent (Remote Hosting): MCL Agent (Host Từ Xa)
+            Reference: Tài Liệu Tham Khảo
+            Settings: Cài Đặt
+            Storage Cleanup: Dọn Dẹp Bộ Nhớ
+            Troubleshooting and FAQ: Khắc Phục Sự Cố và FAQ
+  - search
 
 markdown_extensions:
   - admonition
