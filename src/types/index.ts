@@ -319,3 +319,35 @@ export interface HostedServerStatus {
   serverDir: string;
 }
 
+export interface P2PMemberInfo {
+  username: string;
+  nodeId: string;
+  pingMs?: number | null;
+  joinedAt: number;
+  isHost: boolean;
+}
+
+export interface P2PHostStatus {
+  isRunning: boolean;
+  ticket?: string | null;
+  nodeId?: string | null;
+  roomName?: string | null;
+  hasPassword: boolean;
+  targetPort: number;
+  connectedPeersCount: number;
+  members: P2PMemberInfo[];
+  directAddresses: string[];
+  isLocked: boolean;
+}
+
+export interface P2PClientStatus {
+  isConnected: boolean;
+  roomName?: string | null;
+  localPort?: number | null;
+  remoteNodeId?: string | null;
+  hostUsername?: string | null;
+  pingMs?: number | null;
+  members: P2PMemberInfo[];
+  error?: string | null;
+}
+

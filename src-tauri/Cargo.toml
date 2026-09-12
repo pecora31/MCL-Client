@@ -41,6 +41,7 @@ discord-rich-presence = "1.1.0"
 tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
 toml = "1.0.7"
+iroh = "0.33"
 axum = { version = "0.7", optional = true }
 axum-server = { version = "0.7", optional = true, features = ["tls-rustls"] }
 rcgen = { version = "0.13", optional = true }

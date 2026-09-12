@@ -10,6 +10,9 @@ import type {
   LocalMod,
   MrpackManifestSummary,
   GameInstance,
+  P2PHostStatus,
+  P2PClientStatus,
+  P2PMemberInfo,
 } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -78,6 +81,14 @@ export const TAURI_COMMANDS = [
   'app_hide',
   'app_close',
   'set_window_size',
+  'p2p_start_host',
+  'p2p_stop_host',
+  'p2p_get_host_status',
+  'p2p_kick_peer',
+  'p2p_toggle_lock',
+  'p2p_start_client',
+  'p2p_stop_client',
+  'p2p_get_client_status',
 ] as const;
 
 export type TauriCommand = (typeof TAURI_COMMANDS)[number];
@@ -896,6 +907,57 @@ export async function pingServer(host: string, port = 25565): Promise<ServerStat
   return { ip: host, port, online: false };
 }
 
+// P2P Direct Connect (iroh QUIC NAT Traversal)
+export async function p2pStartHost(
+  roomName: string,
+  hostUsername: string,
+  password?: string,
+  targetPort = 25565
+): Promise<P2PHostStatus> {
+  return await invokeCommand<P2PHostStatus>('p2p_start_host', {
+    roomName,
+    hostUsername,
+    password: password || null,
+    targetPort,
+  });
+}
+
+export async function p2pStopHost(): Promise<boolean> {
+  return await invokeCommand<boolean>('p2p_stop_host');
+}
+
+export async function p2pGetHostStatus(): Promise<P2PHostStatus> {
+  return await invokeCommand<P2PHostStatus>('p2p_get_host_status');
+}
+
+export async function p2pKickPeer(peerNodeId: string): Promise<boolean> {
+  return await invokeCommand<boolean>('p2p_kick_peer', { peerNodeId });
+}
+
+export async function p2pToggleLock(): Promise<boolean> {
+  return await invokeCommand<boolean>('p2p_toggle_lock');
+}
+
+export async function p2pStartClient(
+  ticket: string,
+  username: string,
+  password?: string
+): Promise<P2PClientStatus> {
+  return await invokeCommand<P2PClientStatus>('p2p_start_client', {
+    ticket,
+    username,
+    password: password || null,
+  });
+}
+
+export async function p2pStopClient(): Promise<boolean> {
+  return await invokeCommand<boolean>('p2p_stop_client');
+}
+
+export async function p2pGetClientStatus(): Promise<P2PClientStatus> {
+  return await invokeCommand<P2PClientStatus>('p2p_get_client_status');
+}
+
 // Browser Mock Handlers
 async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>): Promise<T> {
   switch (cmd) {
@@ -1107,6 +1169,98 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         maxRam: 4096,
         icon: 'package',
         enableSkinInGame: true,
+      } as unknown as T;
+
+    case 'p2p_start_host':
+      return {
+        isRunning: true,
+        ticket: 'bWNscDJwX21vY2tfdGlja2V0X2V4YW1wbGVfMTIzNDU2Nzg5MA',
+        nodeId: '0c8da58367e31391a924a057018b5882f5caeac60a578fe9b9901a39b7d0dc81',
+        roomName: (args.roomName as string) || 'MCL Adventure Room',
+        hasPassword: Boolean(args.password),
+        targetPort: (args.targetPort as number) || 25565,
+        connectedPeersCount: 2,
+        members: [
+          {
+            username: (args.hostUsername as string) || 'HostPlayer',
+            nodeId: '0c8da58367e31391a924a057018b5882f5caeac60a578fe9b9901a39b7d0dc81',
+            pingMs: 0,
+            joinedAt: Math.floor(Date.now() / 1000),
+            isHost: true,
+          },
+          {
+            username: 'Steve_Friend',
+            nodeId: '9fa7b2c019941a87b1c4eac60a578fe9b9901a39b7d0dc82',
+            pingMs: 26.4,
+            joinedAt: Math.floor(Date.now() / 1000) - 180,
+            isHost: false,
+          },
+        ],
+        directAddresses: ['113.190.4.206:55500', '192.168.0.164:55500'],
+        isLocked: false,
+      } as unknown as T;
+
+    case 'p2p_stop_host':
+    case 'p2p_stop_client':
+      return true as unknown as T;
+
+    case 'p2p_get_host_status':
+      return {
+        isRunning: false,
+        ticket: null,
+        nodeId: null,
+        roomName: null,
+        hasPassword: false,
+        targetPort: 25565,
+        connectedPeersCount: 0,
+        members: [],
+        directAddresses: [],
+        isLocked: false,
+      } as unknown as T;
+
+    case 'p2p_kick_peer':
+      return true as unknown as T;
+
+    case 'p2p_toggle_lock':
+      return true as unknown as T;
+
+    case 'p2p_start_client':
+      return {
+        isConnected: true,
+        roomName: 'MCL Adventure Room',
+        localPort: 39565,
+        remoteNodeId: '0c8da58367e31391a924a057018b5882f5caeac60a578fe9b9901a39b7d0dc81',
+        hostUsername: 'HostPlayer',
+        pingMs: 28.5,
+        members: [
+          {
+            username: 'HostPlayer',
+            nodeId: '0c8da58367e31391a924a057018b5882f5caeac60a578fe9b9901a39b7d0dc81',
+            pingMs: 0,
+            joinedAt: Math.floor(Date.now() / 1000) - 300,
+            isHost: true,
+          },
+          {
+            username: (args.username as string) || 'GuestPlayer',
+            nodeId: '9fa7b2c019941a87b1c4eac60a578fe9b9901a39b7d0dc82',
+            pingMs: 28.5,
+            joinedAt: Math.floor(Date.now() / 1000),
+            isHost: false,
+          },
+        ],
+        error: null,
+      } as unknown as T;
+
+    case 'p2p_get_client_status':
+      return {
+        isConnected: false,
+        roomName: null,
+        localPort: null,
+        remoteNodeId: null,
+        hostUsername: null,
+        pingMs: null,
+        members: [],
+        error: null,
       } as unknown as T;
 
     default:

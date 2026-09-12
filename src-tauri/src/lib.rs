@@ -13,6 +13,7 @@ mod remote_agent;
 pub mod server_config;
 pub mod server_host;
 mod server_ping;
+pub mod p2p_tunnel;
 
 use models::{
     GameInstance, JavaInstallation, LocalMod, ServerPropertiesSummary, ServerStatus,
@@ -597,6 +598,66 @@ fn kill_game() -> Result<bool, String> {
     minecraft_core::launcher::kill_current_game()
 }
 
+#[tauri::command]
+async fn p2p_start_host(
+    room_name: Option<String>,
+    host_username: Option<String>,
+    password: Option<String>,
+    target_port: Option<u16>,
+) -> Result<p2p_tunnel::P2PHostStatus, String> {
+    p2p_tunnel::start_p2p_host(
+        room_name.unwrap_or_else(|| "MCL Room".to_string()),
+        host_username.unwrap_or_else(|| "Host".to_string()),
+        password,
+        target_port.unwrap_or(25565),
+    )
+    .await
+}
+
+#[tauri::command]
+async fn p2p_stop_host() -> Result<bool, String> {
+    p2p_tunnel::stop_p2p_host().await
+}
+
+#[tauri::command]
+fn p2p_get_host_status() -> p2p_tunnel::P2PHostStatus {
+    p2p_tunnel::get_p2p_host_status()
+}
+
+#[tauri::command]
+fn p2p_kick_peer(peer_node_id: String) -> Result<bool, String> {
+    Ok(p2p_tunnel::p2p_host_kick_peer(&peer_node_id))
+}
+
+#[tauri::command]
+fn p2p_toggle_lock() -> Result<bool, String> {
+    Ok(p2p_tunnel::p2p_host_toggle_lock())
+}
+
+#[tauri::command]
+async fn p2p_start_client(
+    ticket: String,
+    username: Option<String>,
+    password: Option<String>,
+) -> Result<p2p_tunnel::P2PClientStatus, String> {
+    p2p_tunnel::start_p2p_client(
+        ticket,
+        username.unwrap_or_else(|| "Player".to_string()),
+        password,
+    )
+    .await
+}
+
+#[tauri::command]
+async fn p2p_stop_client() -> Result<bool, String> {
+    p2p_tunnel::stop_p2p_client().await
+}
+
+#[tauri::command]
+fn p2p_get_client_status() -> p2p_tunnel::P2PClientStatus {
+    p2p_tunnel::get_p2p_client_status()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -718,7 +779,15 @@ pub fn run() {
             app_minimize,
             app_hide,
             app_close,
-            set_window_size
+            set_window_size,
+            p2p_start_host,
+            p2p_stop_host,
+            p2p_get_host_status,
+            p2p_kick_peer,
+            p2p_toggle_lock,
+            p2p_start_client,
+            p2p_stop_client,
+            p2p_get_client_status
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

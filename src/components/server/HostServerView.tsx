@@ -22,6 +22,7 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { RamAllocationField } from '../common/RamAllocationField';
 import { Checkbox } from '../common/Checkbox';
+import { P2PDirectConnectCard } from './P2PDirectConnectCard';
 
 interface HostServerViewProps {
   instances: GameInstance[];
@@ -478,6 +479,15 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
           <span>{error}</span>
         </div>
       )}
+
+      {/* P2P Direct Connect (NAT Traversal via iroh) */}
+      <div className="max-w-2xl">
+        <P2PDirectConnectCard
+          language={language}
+          activeInstance={instance}
+          serverPort={25565}
+        />
+      </div>
 
       {instance && (
         <div className="max-w-2xl space-y-5">
