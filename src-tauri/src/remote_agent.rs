@@ -243,35 +243,90 @@ pub fn remote_agent_start_log_stream(app_handle: AppHandle, host: RemoteHostConf
     let sid = stream_id.clone();
 
     let task = tokio::spawn(async move {
-        let response = match client.get(&url).bearer_auth(&token).send().await {
-            Ok(r) => r,
-            Err(e) => {
-                let _ = app_handle.emit(
-                    "remote-server-log",
-                    RemoteLogEvent { stream_id: sid, line: format!("[MCL] Could not reach the agent: {}", e) },
-                );
-                return;
-            }
-        };
+        let mut retry_count = 0;
+        const MAX_RETRIES: u32 = 8;
 
-        use futures_util::StreamExt;
-        let mut stream = response.bytes_stream();
-        let mut buffer = String::new();
-        while let Some(chunk) = stream.next().await {
-            let Ok(bytes) = chunk else { break };
-            buffer.push_str(&String::from_utf8_lossy(&bytes));
-            // SSE frames are separated by a blank line; each carries one or more `data:` lines.
-            while let Some(pos) = buffer.find("\n\n") {
-                let frame = buffer[..pos].to_string();
-                buffer.drain(..pos + 2);
-                for line in frame.lines() {
-                    if let Some(data) = line.strip_prefix("data:") {
+        loop {
+            let response = match client.get(&url).bearer_auth(&token).send().await {
+                Ok(r) if r.status().is_success() => {
+                    if retry_count > 0 {
                         let _ = app_handle.emit(
                             "remote-server-log",
-                            RemoteLogEvent { stream_id: sid.clone(), line: data.trim_start().to_string() },
+                            RemoteLogEvent { stream_id: sid.clone(), line: "[MCL] Connection restored to remote agent.".to_string() },
                         );
+                        retry_count = 0;
+                    }
+                    r
+                }
+                Ok(r) => {
+                    let _ = app_handle.emit(
+                        "remote-server-log",
+                        RemoteLogEvent { stream_id: sid.clone(), line: format!("[MCL] Log stream disconnected (HTTP {}). Retrying...", r.status()) },
+                    );
+                    retry_count += 1;
+                    if retry_count > MAX_RETRIES {
+                        break;
+                    }
+                    let delay = std::cmp::min(1000 * (1 << retry_count.min(4)), 8000);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+                Err(e) => {
+                    let _ = app_handle.emit(
+                        "remote-server-log",
+                        RemoteLogEvent { stream_id: sid.clone(), line: format!("[MCL] Cannot reach agent: {}. Reconnecting...", e) },
+                    );
+                    retry_count += 1;
+                    if retry_count > MAX_RETRIES {
+                        let _ = app_handle.emit(
+                            "remote-server-log",
+                            RemoteLogEvent { stream_id: sid.clone(), line: "[MCL] Max reconnection attempts reached. Check host status.".to_string() },
+                        );
+                        break;
+                    }
+                    let delay = std::cmp::min(1000 * (1 << retry_count.min(4)), 8000);
+                    tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                    continue;
+                }
+            };
+
+            use futures_util::StreamExt;
+            let mut stream = response.bytes_stream();
+            let mut buffer = String::new();
+            let mut stream_died = false;
+
+            while let Some(chunk) = stream.next().await {
+                let Ok(bytes) = chunk else {
+                    stream_died = true;
+                    break;
+                };
+                buffer.push_str(&String::from_utf8_lossy(&bytes));
+                // SSE frames are separated by a blank line; each carries one or more `data:` lines.
+                while let Some(pos) = buffer.find("\n\n") {
+                    let frame = buffer[..pos].to_string();
+                    buffer.drain(..pos + 2);
+                    for line in frame.lines() {
+                        if let Some(data) = line.strip_prefix("data:") {
+                            let _ = app_handle.emit(
+                                "remote-server-log",
+                                RemoteLogEvent { stream_id: sid.clone(), line: data.trim_start().to_string() },
+                            );
+                        }
                     }
                 }
+            }
+
+            // Stream reached EOF or encountered an error while connected
+            if stream_died || buffer.is_empty() {
+                retry_count += 1;
+                if retry_count > MAX_RETRIES {
+                    let _ = app_handle.emit(
+                        "remote-server-log",
+                        RemoteLogEvent { stream_id: sid.clone(), line: "[MCL] Remote agent closed the log connection.".to_string() },
+                    );
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
             }
         }
     });

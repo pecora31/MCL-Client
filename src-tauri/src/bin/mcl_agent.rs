@@ -30,6 +30,7 @@ use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::broadcast;
 
 #[derive(Clone)]
@@ -343,19 +344,33 @@ fn load_or_create_token(data_dir: &PathBuf) -> std::io::Result<String> {
     Ok(token)
 }
 
-#[tokio::main]
-async fn main() {
+/// Resolves one setting as `--flag value` (checked first, since a Windows Service's command
+/// line is the only configuration a freshly (re)started service process reliably sees — the
+/// Service Control Manager does not pick up machine environment variable changes made after
+/// it itself started), then the matching environment variable (the systemd path, and the
+/// simplest way to run this directly during development), then `default`.
+fn config_value(flag: &str, env_key: &str, default: &str) -> String {
+    let args: Vec<String> = std::env::args().collect();
+    if let Some(pos) = args.iter().position(|a| a == flag) {
+        if let Some(value) = args.get(pos + 1) {
+            return value.clone();
+        }
+    }
+    std::env::var(env_key).unwrap_or_else(|_| default.to_string())
+}
+
+/// Runs the agent until `shutdown` resolves, then lets in-flight requests finish (up to 5s)
+/// before returning. Used identically whether the caller is a plain foreground process
+/// (`shutdown` = Ctrl+C) or a Windows Service (`shutdown` = the SCM's Stop control).
+async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
     // Multiple TLS backends are reachable through this dependency tree, so rustls can't pick
     // one on its own — pin aws-lc-rs explicitly before anything touches TLS.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
-    let data_dir = std::env::var("MCL_AGENT_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("./mcl-agent-data"));
-    let bind = std::env::var("MCL_AGENT_BIND").unwrap_or_else(|_| "0.0.0.0".to_string());
-    let port: u16 = std::env::var("MCL_AGENT_PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
+    let data_dir = PathBuf::from(config_value("--dir", "MCL_AGENT_DIR", "./mcl-agent-data"));
+    let bind = config_value("--bind", "MCL_AGENT_BIND", "0.0.0.0");
+    let port: u16 = config_value("--port", "MCL_AGENT_PORT", "8642")
+        .parse()
         .unwrap_or(8642);
 
     let token = load_or_create_token(&data_dir).expect("could not read or create the agent's token file");
@@ -407,8 +422,120 @@ async fn main() {
         );
     }
 
+    let handle = axum_server::Handle::new();
+    let shutdown_handle = handle.clone();
+    tokio::spawn(async move {
+        shutdown.await;
+        shutdown_handle.graceful_shutdown(Some(Duration::from_secs(5)));
+    });
+
     axum_server::bind_rustls(addr, tls_config)
+        .handle(handle)
         .serve(app.into_make_service())
         .await
         .expect("agent server crashed");
+}
+
+/// Ctrl+C, on every platform this builds for — the shutdown trigger for a plain foreground
+/// run, as opposed to a Windows Service's own Stop control (see the `winservice` module).
+async fn ctrl_c_signal() {
+    let _ = tokio::signal::ctrl_c().await;
+}
+
+#[cfg(windows)]
+mod winservice {
+    //! Lets `mcl-agent.exe --service` register itself with Windows' Service Control Manager
+    //! instead of running as a plain foreground process — what `scripts/install-agent.ps1`
+    //! sets up so the agent starts on boot and survives no one being logged in, the Windows
+    //! equivalent of the systemd unit `install-agent.sh` writes on Linux.
+    use std::ffi::OsString;
+    use std::sync::mpsc;
+    use std::time::Duration;
+    use windows_service::service::{
+        ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
+    };
+    use windows_service::service_control_handler::{self, ServiceControlHandlerResult};
+    use windows_service::{define_windows_service, service_dispatcher};
+
+    const SERVICE_NAME: &str = "MCLAgent";
+    const SERVICE_TYPE: ServiceType = ServiceType::OWN_PROCESS;
+
+    define_windows_service!(ffi_service_main, service_main);
+
+    pub fn run_as_service() {
+        // Only returns (with an error) if the SCM dispatcher itself could not start, e.g. this
+        // was run directly outside a service context despite the --service flag.
+        if let Err(e) = service_dispatcher::start(SERVICE_NAME, ffi_service_main) {
+            eprintln!("Could not start as a Windows Service: {}", e);
+            eprintln!("This flag is meant to be used by the Service Control Manager, not run directly.");
+            std::process::exit(1);
+        }
+    }
+
+    fn service_main(_arguments: Vec<OsString>) {
+        let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
+
+        let status_handle = match service_control_handler::register(SERVICE_NAME, move |control| match control {
+            ServiceControl::Stop | ServiceControl::Shutdown => {
+                let _ = shutdown_tx.send(());
+                ServiceControlHandlerResult::NoError
+            }
+            ServiceControl::Interrogate => ServiceControlHandlerResult::NoError,
+            _ => ServiceControlHandlerResult::NotImplemented,
+        }) {
+            Ok(handle) => handle,
+            Err(_) => return,
+        };
+
+        let report = |state: ServiceState, accept: ServiceControlAccept, wait_hint: Duration| {
+            let _ = status_handle.set_service_status(ServiceStatus {
+                service_type: SERVICE_TYPE,
+                current_state: state,
+                controls_accepted: accept,
+                exit_code: ServiceExitCode::Win32(0),
+                checkpoint: 0,
+                wait_hint,
+                process_id: None,
+            });
+        };
+
+        report(ServiceState::StartPending, ServiceControlAccept::empty(), Duration::from_secs(5));
+
+        let runtime = match tokio::runtime::Runtime::new() {
+            Ok(rt) => rt,
+            Err(_) => {
+                report(ServiceState::Stopped, ServiceControlAccept::empty(), Duration::default());
+                return;
+            }
+        };
+
+        report(ServiceState::Running, ServiceControlAccept::STOP, Duration::default());
+
+        runtime.block_on(super::run(async move {
+            // Blocking the shutdown signal's own std channel recv on a tokio worker thread is
+            // fine here: this task does nothing else, and the runtime has other workers free
+            // to serve requests while it waits.
+            let _ = tokio::task::spawn_blocking(move || shutdown_rx.recv()).await;
+        }));
+
+        report(ServiceState::Stopped, ServiceControlAccept::empty(), Duration::default());
+    }
+}
+
+fn main() {
+    let use_service = std::env::args().any(|a| a == "--service");
+
+    #[cfg(windows)]
+    if use_service {
+        winservice::run_as_service();
+        return;
+    }
+    #[cfg(not(windows))]
+    if use_service {
+        eprintln!("--service is only meaningful on Windows; run this directly under systemd on Linux instead.");
+        std::process::exit(1);
+    }
+
+    let runtime = tokio::runtime::Runtime::new().expect("could not start the async runtime");
+    runtime.block_on(run(ctrl_c_signal()));
 }

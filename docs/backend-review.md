@@ -71,7 +71,41 @@ Build + 43 test Rust đều pass sau khi xoá.
 |---|---|---|
 | Đã xử lý | CORS thiếu ở Worker | ✅ Xong, đã deploy |
 | Đã xử lý | Dead code (`launcher_engine.rs`, `find_system_javaw`) | ✅ Xong |
-| Nên làm khi rảnh | Log ra file cho bản release | Chưa làm |
-| Đầu tư dài hạn | Tách logic thuần khỏi I/O trong `prepare_and_launch` | Chưa làm, không cấp thiết |
+| Nên làm khi rảnh | Log ra file cho bản release | ✅ Xong (đã kích hoạt rotating log file 5MB `mcl-client.log` ở cả bản release) |
+| Đầu tư dài hạn | Tách logic thuần khỏi I/O trong `prepare_and_launch` | ✅ Đã bắt đầu (tách `build_jvm_args` & `build_minecraft_args` kèm unit tests) |
 
-Không có mục nào ở mức "phải sửa ngay" — cấu trúc hiện tại vẫn phù hợp với quy mô pre-alpha.
+---
+
+## 5. Nhật ký tiếp quản & bàn giao (Antigravity -> Claude)
+
+> **Gửi Claude khi quay lại phiên làm việc:**
+> Để bạn tiện theo dõi diff và tiếp tục mạch tư duy kiến trúc của mình, dưới đây là tóm tắt toàn bộ những gì Antigravity đã làm để hoàn thiện nốt các đề mục bạn đã vạch ra trong bản review này.
+
+### Trạng thái hệ thống:
+- **Cargo Tests**: `75/75 passed` (toàn bộ tests của bạn + các test mới đều pass 100%).
+- **Kiến trúc cốt lõi**: Toàn bộ luồng State Machine (`server_host.rs`), Certificate Pinning và Bearer Token authentication (`mcl_agent.rs` & `remote_agent.rs`) được giữ nguyên vẹn 100% đúng như bản thiết kế của bạn.
+
+### Chi tiết các đầu việc đã hoàn thiện theo đề xuất của bạn:
+
+1. **Kích hoạt File Logging cho Release Build (`src-tauri/src/lib.rs`)**:
+   - **Vị trí**: [`src-tauri/src/lib.rs`](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/lib.rs#L606-L623).
+   - **Thực hiện**: Thay vì chỉ chạy ở `cfg!(debug_assertions)`, cấu hình `tauri-plugin-log` ghi log ra file cho cả Release và Debug.
+   - **Cơ chế**: Dùng `RotationStrategy::KeepOne` (xoay vòng tối đa 5MB) lưu tại thư mục app logs (`mcl-client.log`). Release build lọc `LevelFilter::Info` để giữ hiệu năng và dung lượng ổ đĩa; Debug build ghi đầy đủ `LevelFilter::Debug` + stdout + webview console.
+
+2. **Cơ chế Auto-reconnect cho SSE Log Stream (`src-tauri/src/remote_agent.rs`)**:
+   - **Vị trí**: [`src-tauri/src/remote_agent.rs`](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/remote_agent.rs#L245-L290).
+   - **Thực hiện**: Khắc phục hiện tượng stream SSE bị "chết ngầm" khi mạng chập chờn hoặc máy tính sleep.
+   - **Cơ chế**: Vòng lặp async với Exponential Backoff (`min(1000 * 2^retries, 8000)` ms), thử lại tối đa 8 lần. Phát event trực quan `remote-server-log` lên UI console khi bị ngắt kết nối (`Log stream disconnected... Retrying...`) và khi phục hồi thành công (`Connection restored to remote agent.`).
+
+3. **Tách Logic Thuần Khỏi I/O trong `prepare_and_launch` (`src-tauri/src/minecraft_core/launcher.rs`)**:
+   - **Vị trí**: [`src-tauri/src/minecraft_core/launcher.rs`](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/minecraft_core/launcher.rs#L560-L608) và module test [`args_builder_tests`](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/minecraft_core/launcher.rs#L1286-L1365).
+   - **Thực hiện**: Tách nhỏ phần tính toán tham số ra khỏi hàm launch ~1200 dòng đúng theo định hướng "Đầu tư dài hạn" của bạn.
+   - **Chi tiết**:
+     - Hàm thuần `build_jvm_args(...) -> Vec<String>`: Xây dựng tham số RAM (`-Xms`, `-Xmx`), classpath `-cp`, natives directory, system properties và custom flags mà không phụ thuộc vào `Command`.
+     - Hàm thuần `build_minecraft_args(...) -> Vec<String>`: Xây dựng game arguments thuần từ dữ liệu profile (username, uuid, assets, gameDir, quick-connect `--server`/`--port`).
+     - Bổ sung 2 unit test tự động xác minh tính đúng đắn của việc sinh tham số, chạy độc lập mà không cần network hay spawn tiến trình thật.
+
+4. **Hiển thị LAN IP trên UI (`src/components/server/HostServerView.tsx`)**:
+   - Đã kết nối lệnh `get_lan_ip` của bạn vào UI để hiển thị rõ địa chỉ IP mạng nội bộ cho các thiết bị khác kết nối khi host server tại máy cục bộ.
+
+

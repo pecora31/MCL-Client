@@ -52,6 +52,7 @@ export const TAURI_COMMANDS = [
   'detect_java',
   'find_best_java',
   'get_system_info',
+  'get_lan_ip',
   'install_local_skin',
   'delete_published_skin',
   'check_username_claim',
@@ -976,6 +977,9 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         recommendedMaxRamMb: 12288,
         recommendedRamMb: 4096,
       } as unknown as T;
+
+    case 'get_lan_ip':
+      return '192.168.1.42' as unknown as T;
 
     case 'get_game_data_dir':
       return 'C:\\Users\\Player\\AppData\\Roaming\\MCLClient' as unknown as T;

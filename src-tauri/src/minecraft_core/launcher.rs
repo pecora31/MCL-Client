@@ -55,6 +55,117 @@ fn ensure_loader_client_jar(
     Ok(target)
 }
 
+/// Builds JVM launch arguments purely from configuration without performing I/O.
+/// Separated from prepare_and_launch to enable deterministic unit testing.
+pub fn build_jvm_args(
+    min_ram: u32,
+    max_ram: u32,
+    custom_jvm_args: Option<&str>,
+    extra_jvm_args: &[String],
+    natives_dir: &Path,
+    instance_dir: &Path,
+    classpath_str: &str,
+) -> Vec<String> {
+    let mut args = Vec::new();
+
+    // Memory arguments
+    args.push(format!("-Xms{}M", min_ram));
+    args.push(format!("-Xmx{}M", max_ram));
+
+    // Custom JVM Flags
+    if let Some(custom) = custom_jvm_args {
+        for flag in custom.split_whitespace() {
+            args.push(flag.to_string());
+        }
+    }
+
+    // Loader-specific module path and --add-opens flags
+    for extra in extra_jvm_args {
+        args.push(extra.clone());
+    }
+
+    // Standard JVM settings
+    args.push("-Dfile.encoding=UTF-8".to_string());
+    args.push(format!("-Djava.library.path={}", natives_dir.display()));
+    args.push(format!("-Dminecraft.applet.TargetDirectory={}", instance_dir.display()));
+    args.push("-Dminecraft.launcher.brand=MCL Client".to_string());
+    args.push("-Dminecraft.launcher.version=2.0.0".to_string());
+
+    // Classpath
+    args.push("-cp".to_string());
+    args.push(classpath_str.to_string());
+
+    args
+}
+
+/// Builds Minecraft game arguments purely from profile state and version meta without performing I/O.
+/// Separated from prepare_and_launch to enable deterministic unit testing.
+pub fn build_minecraft_args(
+    instance: &GameInstance,
+    username: &str,
+    asset_index_id: &str,
+    instance_dir: &Path,
+    common_dir: &Path,
+    extra_game_args: &[String],
+) -> Vec<String> {
+    let mut args = Vec::new();
+    let uuid = offline_uuid(username);
+
+    args.push("--username".to_string());
+    args.push(username.to_string());
+    args.push("--version".to_string());
+    args.push(instance.game_version.clone());
+    args.push("--gameDir".to_string());
+    args.push(instance_dir.to_string_lossy().to_string());
+    args.push("--assetsDir".to_string());
+    args.push(common_dir.join("assets").to_string_lossy().to_string());
+    args.push("--assetIndex".to_string());
+    args.push(asset_index_id.to_string());
+    args.push("--uuid".to_string());
+    args.push(uuid);
+    args.push("--accessToken".to_string());
+    args.push("0".to_string());
+    args.push("--userType".to_string());
+    args.push("mojang".to_string());
+    args.push("--versionType".to_string());
+    args.push("MCL Client".to_string());
+
+    for extra in extra_game_args {
+        args.push(extra.clone());
+    }
+
+    if instance.fullscreen.unwrap_or(false) {
+        args.push("--fullscreen".to_string());
+    } else {
+        if let Some(width) = instance.window_width {
+            if width >= 320 {
+                args.push("--width".to_string());
+                args.push(width.to_string());
+            }
+        }
+        if let Some(height) = instance.window_height {
+            if height >= 240 {
+                args.push("--height".to_string());
+                args.push(height.to_string());
+            }
+        }
+    }
+
+    if let Some(server_ip) = &instance.server_ip {
+        if !server_ip.is_empty() {
+            let port = instance.server_port.unwrap_or(25565);
+            args.push("--server".to_string());
+            args.push(server_ip.clone());
+            args.push("--port".to_string());
+            args.push(port.to_string());
+            args.push("--quickPlayMultiplayer".to_string());
+            args.push(format!("{}:{}", server_ip, port));
+        }
+    }
+
+    args
+}
+
 pub async fn prepare_and_launch(
     app_handle: &AppHandle,
     instance: &GameInstance,
@@ -261,7 +372,7 @@ pub async fn prepare_and_launch(
         main_class = meta.launcher_meta.main_class.client;
 
         let mut loader_tasks = Vec::new();
-        let mut queue_maven = |coord: &str, base: &str, tasks: &mut Vec<DownloadTask>, cp: &mut Vec<PathBuf>| {
+        let queue_maven = |coord: &str, base: &str, tasks: &mut Vec<DownloadTask>, cp: &mut Vec<PathBuf>| {
             if let Some((dest, url)) = parse_maven_coord(base, &libraries_dir, coord) {
                 cp.push(dest.clone());
                 tasks.push(DownloadTask {
@@ -465,78 +576,35 @@ pub async fn prepare_and_launch(
 
     let mut cmd = crate::hidden_process::hidden_command(&console_java_bin);
 
-    // Memory arguments
-    cmd.arg(format!("-Xms{}M", instance.min_ram));
-    cmd.arg(format!("-Xmx{}M", instance.max_ram));
+    let jvm_args = build_jvm_args(
+        instance.min_ram,
+        instance.max_ram,
+        instance.jvm_args.as_deref(),
+        &extra_jvm_args,
+        &natives_dir,
+        &instance_dir,
+        &classpath_str,
+    );
 
-    // Custom JVM Flags
-    if let Some(jvm_args) = &instance.jvm_args {
-        for flag in jvm_args.split_whitespace() {
-            cmd.arg(flag);
-        }
-    }
-
-    // Forge and NeoForge need their own module-path and --add-opens flags, taken from the
-    // version profile the installer produced
-    for arg in &extra_jvm_args {
+    for arg in jvm_args {
         cmd.arg(arg);
     }
-
-    // Standard JVM settings
-    cmd.arg("-Dfile.encoding=UTF-8");
-    cmd.arg(format!("-Djava.library.path={}", natives_dir.display()));
-    cmd.arg(format!("-Dminecraft.applet.TargetDirectory={}", instance_dir.display()));
-    cmd.arg(format!("-Dminecraft.launcher.brand=MCL Client"));
-    cmd.arg(format!("-Dminecraft.launcher.version=2.0.0"));
-
-    // Classpath
-    cmd.arg("-cp");
-    cmd.arg(&classpath_str);
 
     // Main Class
     cmd.arg(&main_class);
 
     // Minecraft Game Arguments
-    let uuid = offline_uuid(username);
-    cmd.arg("--username").arg(username);
-    cmd.arg("--version").arg(&instance.game_version);
-    cmd.arg("--gameDir").arg(instance_dir.to_string_lossy().to_string());
-    cmd.arg("--assetsDir").arg(common_dir.join("assets").to_string_lossy().to_string());
-    cmd.arg("--assetIndex").arg(&version_details.asset_index.id);
-    cmd.arg("--uuid").arg(&uuid);
-    cmd.arg("--accessToken").arg("0");
-    cmd.arg("--userType").arg("mojang");
-    cmd.arg("--versionType").arg("MCL Client");
+    let game_args = build_minecraft_args(
+        instance,
+        username,
+        &version_details.asset_index.id,
+        &instance_dir,
+        &common_dir,
+        &extra_game_args,
+    );
 
-    // Forge identifies its own launch through these (--launchTarget, --fml.* and friends)
-    for arg in &extra_game_args {
+    for arg in game_args {
         cmd.arg(arg);
-    }
-
-    // Window size, so players do not have to fix it inside the game every time
-    if instance.fullscreen.unwrap_or(false) {
-        cmd.arg("--fullscreen");
-    } else {
-        if let Some(width) = instance.window_width {
-            if width >= 320 {
-                cmd.arg("--width").arg(width.to_string());
-            }
-        }
-        if let Some(height) = instance.window_height {
-            if height >= 240 {
-                cmd.arg("--height").arg(height.to_string());
-            }
-        }
-    }
-
-    // Auto-connect to server if configured
-    if let Some(server_ip) = &instance.server_ip {
-        if !server_ip.is_empty() {
-            let port = instance.server_port.unwrap_or(25565);
-            cmd.arg("--server").arg(server_ip);
-            cmd.arg("--port").arg(port.to_string());
-            cmd.arg("--quickPlayMultiplayer").arg(format!("{}:{}", server_ip, port));
-        }
     }
 
     cmd.current_dir(&instance_dir);
@@ -1212,5 +1280,88 @@ mod offline_uuid_tests {
     fn stays_the_same_across_launches_and_differs_between_names() {
         assert_eq!(offline_uuid("Rong"), offline_uuid("Rong"));
         assert_ne!(offline_uuid("Rong"), offline_uuid("rong"), "offline servers treat case as distinct");
+    }
+}
+
+#[cfg(test)]
+mod args_builder_tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_build_jvm_args() {
+        let natives = Path::new("/game/natives");
+        let instance_dir = Path::new("/game/instance");
+        let extra = vec!["--add-opens".to_string(), "java.base/java.lang=ALL-UNNAMED".to_string()];
+        let args = build_jvm_args(
+            2048,
+            4096,
+            Some("-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions"),
+            &extra,
+            natives,
+            instance_dir,
+            "lib1.jar:lib2.jar",
+        );
+
+        assert!(args.contains(&"-Xms2048M".to_string()));
+        assert!(args.contains(&"-Xmx4096M".to_string()));
+        assert!(args.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(args.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()));
+        assert!(args.contains(&"--add-opens".to_string()));
+        assert!(args.contains(&"-cp".to_string()));
+        assert!(args.contains(&"lib1.jar:lib2.jar".to_string()));
+    }
+
+    #[test]
+    fn test_build_minecraft_args() {
+        let instance = GameInstance {
+            id: "test-inst".to_string(),
+            name: "Test Instance".to_string(),
+            game_version: "1.20.1".to_string(),
+            loader: "fabric".to_string(),
+            loader_version: Some("0.15.11".to_string()),
+            java_path: None,
+            java_version: None,
+            min_ram: 2048,
+            max_ram: 4096,
+            jvm_args: None,
+            icon: "default".to_string(),
+            server_ip: Some("mc.hypixel.net".to_string()),
+            server_port: Some(25565),
+            custom_skin_path: None,
+            skin_model: None,
+            enable_skin_in_game: false,
+            custom_dir: None,
+            window_width: Some(1280),
+            window_height: Some(720),
+            fullscreen: Some(false),
+            last_played: None,
+            total_play_time: Some(0),
+        };
+
+        let instance_dir = Path::new("/inst");
+        let common_dir = Path::new("/common");
+        let extra_game = vec!["--fabric".to_string()];
+
+        let args = build_minecraft_args(
+            &instance,
+            "Steve",
+            "1.20.1",
+            instance_dir,
+            common_dir,
+            &extra_game,
+        );
+
+        assert!(args.contains(&"--username".to_string()));
+        assert!(args.contains(&"Steve".to_string()));
+        assert!(args.contains(&"--version".to_string()));
+        assert!(args.contains(&"1.20.1".to_string()));
+        assert!(args.contains(&"--width".to_string()));
+        assert!(args.contains(&"1280".to_string()));
+        assert!(args.contains(&"--height".to_string()));
+        assert!(args.contains(&"720".to_string()));
+        assert!(args.contains(&"--server".to_string()));
+        assert!(args.contains(&"mc.hypixel.net".to_string()));
+        assert!(args.contains(&"--fabric".to_string()));
     }
 }

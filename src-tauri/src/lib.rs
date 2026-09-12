@@ -386,6 +386,18 @@ fn get_system_info() -> SystemInfo {
     }
 }
 
+/// The LAN address other devices on the same network would use to reach this computer —
+/// `localhost` only ever resolves to whichever machine typed it, so a server hosted here and
+/// joined from a different device needs this instead. `connect` on a UDP socket never actually
+/// sends a packet, it only asks the OS to pick the local interface it would use to reach that
+/// address, which is enough to read back this machine's own LAN IP without any real traffic.
+#[tauri::command]
+fn get_lan_ip() -> Option<String> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;
+    socket.connect("8.8.8.8:80").ok()?;
+    socket.local_addr().ok().map(|addr| addr.ip().to_string())
+}
+
 #[tauri::command]
 fn find_best_java(game_version: String) -> (String, u32, String) {
     java_detector::find_best_java_for_version(&game_version)
@@ -592,13 +604,23 @@ pub fn run() {
         // Needed so the launcher can restart itself once an update is installed
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Logging: In debug, log to stdout/file. In release, log to rotating files so users can report bugs.
+            let log_targets = [
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: Some("mcl-client".to_string()) }),
+                #[cfg(debug_assertions)]
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                #[cfg(debug_assertions)]
+                tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Webview),
+            ];
+
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .targets(log_targets)
+                    .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepOne)
+                    .max_file_size(5 * 1024 * 1024) // 5 MB max per log file
+                    .level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Info })
+                    .build(),
+            )?;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(false);
                 let _ = window.set_size(tauri::LogicalSize::new(1600.0, 900.0));
@@ -671,6 +693,7 @@ pub fn run() {
             detect_java,
             find_best_java,
             get_system_info,
+            get_lan_ip,
             install_local_skin,
             delete_published_skin,
             check_username_claim,

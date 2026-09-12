@@ -57,6 +57,59 @@ fn dir_key(server_dir: &Path) -> String {
     server_dir.to_string_lossy().to_string()
 }
 
+/// Where the running process's PID is mirrored to disk, so a restarted MCL app or a restarted
+/// `mcl-agent` (its own process, entirely separate from the child java process it spawned) can
+/// tell a server is still alive instead of forgetting about it the moment the in-memory map
+/// that tracked it is gone. This is the only thing that survives a restart — the actual stdin
+/// pipe to the child does not, so a reconciled server loses live console control (see
+/// `send_command`) until it is stopped and started again from the current process.
+fn pid_file_path(server_dir: &Path) -> std::path::PathBuf {
+    server_dir.join(".mcl-server.pid")
+}
+
+#[cfg(target_os = "windows")]
+fn is_process_alive(pid: u32) -> bool {
+    let output = crate::hidden_process::hidden_command("tasklist")
+        .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+        .output();
+    match output {
+        Ok(out) => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            text.contains(&pid.to_string())
+        }
+        Err(_) => false,
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn is_process_alive(pid: u32) -> bool {
+    Path::new(&format!("/proc/{}", pid)).exists()
+}
+
+/// Called when a status check finds nothing in the in-memory map, meaning either this server
+/// was never started from the current process, or it was, but the process (MCL, or the agent)
+/// has since restarted. Adopts a still-alive process back into the map so its status reports
+/// correctly, and clears a stale PID file left by one that is no longer running.
+fn reconcile_from_disk(server_dir: &Path, key: &str) -> ServerState {
+    let pid_path = pid_file_path(server_dir);
+    let Ok(contents) = std::fs::read_to_string(&pid_path) else {
+        return ServerState::Stopped;
+    };
+    let Ok(pid) = contents.trim().parse::<u32>() else {
+        let _ = std::fs::remove_file(&pid_path);
+        return ServerState::Stopped;
+    };
+    if pid != 0 && is_process_alive(pid) {
+        with_running(|m| {
+            m.insert(key.to_string(), RunningEntry { pid, state: ServerState::Running, expected_stop: false });
+        });
+        ServerState::Running
+    } else {
+        let _ = std::fs::remove_file(&pid_path);
+        ServerState::Stopped
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HostedServerStatus {
@@ -71,11 +124,15 @@ pub fn get_status(
     game_version: &str,
     loader_version: Option<&str>,
 ) -> HostedServerStatus {
-    let state = with_running(|m| m.get(&dir_key(server_dir)).map(|e| e.state)).unwrap_or(ServerState::Stopped);
+    let key = dir_key(server_dir);
+    let state = match with_running(|m| m.get(&key).map(|e| e.state)) {
+        Some(state) => state,
+        None => reconcile_from_disk(server_dir, &key),
+    };
     HostedServerStatus {
         state,
         has_jar: is_prepared(server_dir, loader, game_version, loader_version),
-        server_dir: dir_key(server_dir),
+        server_dir: key,
     }
 }
 
@@ -282,6 +339,7 @@ pub fn start_server(
     with_running(|m| {
         m.insert(key.clone(), RunningEntry { pid, state: ServerState::Starting, expected_stop: false });
     });
+    let _ = std::fs::write(pid_file_path(server_dir), pid.to_string());
 
     let on_log = std::sync::Arc::new(on_log);
     for (pipe, watch_for_ready) in [
@@ -307,8 +365,10 @@ pub fn start_server(
         });
     }
 
+    let pid_path = pid_file_path(server_dir);
     std::thread::spawn(move || {
         let exit = child.wait();
+        let _ = std::fs::remove_file(&pid_path);
         with_stdin(|m| {
             m.remove(&key);
         });
@@ -342,6 +402,18 @@ pub fn send_command(server_dir: &Path, command: &str) -> Result<(), String> {
             }
         });
     }
+    let has_stdin = with_stdin(|m| m.contains_key(&key));
+    if !has_stdin {
+        // Might still be alive, just started before the current process (MCL or the agent)
+        // last restarted — there is no OS-level way to regain a stdin pipe to a process this
+        // one did not itself spawn, so this is a real limitation, not a bug to route around.
+        let alive = with_running(|m| m.get(&key).map(|e| e.pid != 0)).unwrap_or(false);
+        return Err(if alive {
+            "This server is running, but MCL lost its console connection to it (probably restarted since starting it). Stop it and start it again to regain console control.".to_string()
+        } else {
+            "This server is not running.".to_string()
+        });
+    }
     with_stdin(|m| {
         let stdin = m.get_mut(&key).ok_or_else(|| "This server is not running.".to_string())?;
         stdin
@@ -357,7 +429,13 @@ pub fn send_command(server_dir: &Path, command: &str) -> Result<(), String> {
 /// the wait whenever the process is still responsive enough to accept the command at all.
 pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
     let key = dir_key(server_dir);
-    let pid = with_running(|m| m.get(&key).map(|e| e.pid).unwrap_or(0));
+    let mut pid = with_running(|m| m.get(&key).map(|e| e.pid).unwrap_or(0));
+    if pid == 0 {
+        // Not in memory, might still be a server this process hasn't reconciled yet (a fresh
+        // MCL or agent restart) — check disk before concluding there is nothing to stop.
+        reconcile_from_disk(server_dir, &key);
+        pid = with_running(|m| m.get(&key).map(|e| e.pid).unwrap_or(0));
+    }
     if pid == 0 {
         return Ok(false);
     }
@@ -393,6 +471,14 @@ pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
             .output();
     }
 
+    // A server adopted via `reconcile_from_disk` has no `Child` in this process, so nothing
+    // else will ever flip its state or clean up its PID file the way the wait thread in
+    // `start_server` does for one this process spawned itself — that has to happen here.
+    let _ = std::fs::remove_file(pid_file_path(server_dir));
+    with_running(|m| {
+        m.insert(key, RunningEntry { pid: 0, state: ServerState::Stopped, expected_stop: false });
+    });
+
     Ok(true)
 }
 
@@ -422,5 +508,46 @@ mod tests {
         let dir = Path::new("Z:\\never-touched-server-dir");
         let status = get_status(dir, "vanilla", "1.21.1", None);
         assert_eq!(status.state, ServerState::Stopped);
+    }
+
+    #[test]
+    fn the_current_process_is_reported_alive() {
+        assert!(is_process_alive(std::process::id()));
+    }
+
+    #[test]
+    fn a_pid_that_does_not_exist_is_reported_not_alive() {
+        // Not a guaranteed-unused PID on every possible system, but far enough into the
+        // unlikely range that a real process holding it during a test run is not realistic.
+        assert!(!is_process_alive(999_999));
+    }
+
+    fn temp_test_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("mcl-server-host-test-{}", name));
+        let _ = std::fs::create_dir_all(&dir);
+        dir
+    }
+
+    #[test]
+    fn a_stale_pid_file_is_cleared_and_reports_stopped() {
+        let dir = temp_test_dir("stale-pid");
+        std::fs::write(pid_file_path(&dir), "999999").unwrap();
+
+        let status = get_status(&dir, "vanilla", "1.21.1", None);
+
+        assert_eq!(status.state, ServerState::Stopped);
+        assert!(!pid_file_path(&dir).exists(), "a stale PID file should be cleaned up");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_pid_file_for_a_live_process_is_adopted_as_running() {
+        let dir = temp_test_dir("live-pid");
+        std::fs::write(pid_file_path(&dir), std::process::id().to_string()).unwrap();
+
+        let status = get_status(&dir, "vanilla", "1.21.1", None);
+
+        assert_eq!(status.state, ServerState::Running);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

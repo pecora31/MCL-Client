@@ -37,3 +37,8 @@ HANDOFF.md
 
 # Claude Code local tooling
 .claude/
+
+# Temporary binary artifacts
+*.zip
+nat-tester.exe
+
