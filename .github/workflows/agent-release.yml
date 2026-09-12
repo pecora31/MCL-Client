@@ -30,7 +30,14 @@ jobs:
           workspaces: src-tauri
 
       - name: Install build dependencies
-        run: sudo apt-get update && sudo apt-get install -y cmake
+        # mcl-agent links against the same app_lib crate as the desktop app, and app_lib
+        # depends on tauri unconditionally, so even a Tauri-free binary like this one still
+        # needs Tauri's own Linux system libraries (GTK/WebKit) present to compile — this
+        # binary never uses any of them at runtime, they're purely a build-time requirement
+        # inherited from the shared crate. See https://v2.tauri.app/start/prerequisites/.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libgtk-3-dev libssl-dev
 
       - name: Build mcl-agent
         working-directory: src-tauri
