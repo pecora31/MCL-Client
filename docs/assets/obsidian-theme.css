@@ -1,7 +1,8 @@
 /* ==========================================================================
    MCL Client Documentation - Clean Theme Colors & Fonts
-   Keeps standard Material layout/structure, applying Obsidian color palette
-   and modern typography (Plus Jakarta Sans + JetBrains Mono).
+   Keeps standard Material layout/structure, applying Obsidian color palette,
+   modern typography (Plus Jakarta Sans + JetBrains Mono), white header text,
+   and Journeymap-styled expandable/collapsible navigator.
    ========================================================================== */
 
 /* Dark Theme Colors */
@@ -52,4 +53,67 @@
 
   --md-code-bg-color: #f1f5f9;
   --md-code-fg-color: #0f172a;
+}
+
+/* ==========================================================================
+   White Header Text & Icons
+   ========================================================================== */
+.md-header {
+  color: #ffffff !important;
+}
+
+.md-header .md-header__title,
+.md-header .md-header__topic,
+.md-header .md-header__ellipsis,
+.md-header .md-ellipsis,
+.md-header .md-source__repository {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.md-header .md-header__button,
+.md-header .md-header__button svg,
+.md-header .md-icon svg {
+  fill: #ffffff !important;
+  color: #ffffff !important;
+}
+
+/* ==========================================================================
+   Journeymap-style Collapsible Navigator
+   Clean, sleek toggle arrows with clear active state hierarchy
+   ========================================================================== */
+.md-sidebar--primary .md-nav__item--nested > .md-nav__link {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.35rem 0.5rem;
+  font-weight: 600;
+  border-radius: 6px;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.md-sidebar--primary .md-nav__item--nested > .md-nav__link:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+[data-md-color-scheme="default"] .md-sidebar--primary .md-nav__item--nested > .md-nav__link:hover {
+  background-color: rgba(0, 0, 0, 0.03);
+}
+
+/* Arrow indicator chevron in navigator */
+.md-sidebar--primary .md-nav__icon {
+  margin-left: auto;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Indentation and subtle left guide line for nested child links */
+.md-sidebar--primary .md-nav__item--nested .md-nav {
+  padding-left: 0.75rem;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+  margin-left: 0.5rem;
+}
+
+[data-md-color-scheme="default"] .md-sidebar--primary .md-nav__item--nested .md-nav {
+  border-left: 1px solid rgba(0, 0, 0, 0.08);
 }
