@@ -16,17 +16,20 @@ theme:
   favicon: assets/logo.png
   icon:
     repo: fontawesome/brands/github
+  font:
+    text: Plus Jakarta Sans
+    code: JetBrains Mono
   palette:
     - media: "(prefers-color-scheme: dark)"
       scheme: slate
-      primary: deep purple
+      primary: black
       accent: deep purple
       toggle:
         icon: material/weather-sunny
         name: Switch to light mode
     - media: "(prefers-color-scheme: light)"
       scheme: default
-      primary: deep purple
+      primary: white
       accent: deep purple
       toggle:
         icon: material/weather-night
@@ -42,6 +45,9 @@ theme:
     - content.code.copy
     - content.action.edit
     - toc.follow
+
+extra_css:
+  - assets/obsidian-theme.css
 
 plugins:
   - i18n:
