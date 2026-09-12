@@ -1,5 +1,6 @@
 [package]
 name = "mcl-client"
+default-run = "mcl-client"
 version = "0.9.0"
 description = "Custom Minecraft Launcher with high performance optimization, direct server connection, and unified profile management."
 authors = ["pecora31"]
@@ -68,6 +69,10 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 # The agent binary is a separate, opt-in build: the desktop app never links axum, and a
 # plain `cargo build`/`cargo tauri build` for the launcher does not need it resolved.
 agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:rand", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]
+
+[[bin]]
+name = "mcl-client"
+path = "src/main.rs"
 
 [[bin]]
 name = "mcl-agent"
