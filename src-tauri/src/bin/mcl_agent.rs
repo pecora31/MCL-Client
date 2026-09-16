@@ -500,6 +500,25 @@ fn config_value(flag: &str, env_key: &str, default: &str) -> String {
     std::env::var(env_key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Backs up on a fixed 24h interval from whenever the agent started, independent of whether
+/// MCL desktop is even open — the whole point of an "emergency" backup on a VPS meant to run
+/// unattended. No cron parsing for v1: a fixed interval is enough, and much simpler.
+async fn backup_scheduler(state: Arc<AppState>) {
+    const INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+    loop {
+        tokio::time::sleep(INTERVAL).await;
+        let Some(spec) = read_spec(&state) else { continue };
+        let server_dir = state.server_dir();
+        let backups_dir = state.backups_dir();
+        let result = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir)).await;
+        if let Ok(Ok(_)) = result {
+            let backups_dir = state.backups_dir();
+            let retention = spec.backup_retention_count as usize;
+            let _ = tokio::task::spawn_blocking(move || backup::rotate_backups(&backups_dir, retention)).await;
+        }
+    }
+}
+
 /// Runs the agent until `shutdown` resolves, then lets in-flight requests finish (up to 5s)
 /// before returning. Used identically whether the caller is a plain foreground process
 /// (`shutdown` = Ctrl+C) or a Windows Service (`shutdown` = the SCM's Stop control).
@@ -520,6 +539,7 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
     let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
     let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx });
+    tokio::spawn(backup_scheduler(state.clone()));
 
     let protected = Router::new()
         .route("/v1/status", get(get_status))
