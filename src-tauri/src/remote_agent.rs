@@ -284,6 +284,148 @@ pub async fn remote_agent_restore_backup(host: RemoteHostConfig, name: String) -
     post_no_content(&host, "/v1/restore", &RestoreBody { name }).await
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFileEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+    pub modified_at: u64,
+}
+
+#[tauri::command]
+pub async fn remote_agent_list_files(host: RemoteHostConfig, path: String) -> Result<Vec<RemoteFileEntry>, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    resp.json::<Vec<RemoteFileEntry>>().await.map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MkdirBody {
+    path: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_mkdir(host: RemoteHostConfig, path: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/files/mkdir", &MkdirBody { path }).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameBody {
+    from: String,
+    to: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_rename(host: RemoteHostConfig, from: String, to: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/files/rename", &RenameBody { from, to }).await
+}
+
+#[tauri::command]
+pub async fn remote_agent_delete_file(host: RemoteHostConfig, path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .delete(format!("{}/v1/files", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// For the built-in text editor only — rejects anything that isn't valid UTF-8 here rather
+/// than in the frontend, since Tauri's IPC needs a `String` either way. The frontend already
+/// knows to fall back to download-only when this command errors.
+#[tauri::command]
+pub async fn remote_agent_read_text_file(host: RemoteHostConfig, path: String) -> Result<String, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    String::from_utf8(bytes.to_vec()).map_err(|_| "This file isn't plain text.".to_string())
+}
+
+#[tauri::command]
+pub async fn remote_agent_write_text_file(host: RemoteHostConfig, path: String, content: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .put(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .body(content)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// Reads `local_path` off disk directly and streams its raw bytes to the agent — never through
+/// a JavaScript `string`, so an arbitrary binary upload (a plugin jar, a datapack zip) can't be
+/// corrupted the way it would be if it had to survive a UTF-8 round trip.
+#[tauri::command]
+pub async fn remote_agent_upload_file(host: RemoteHostConfig, local_path: String, remote_path: String) -> Result<(), String> {
+    let bytes = tokio::fs::read(&local_path).await.map_err(|e| format!("Could not read {}: {}", local_path, e))?;
+    let client = client_for(&host)?;
+    let resp = client
+        .put(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &remote_path)])
+        .bearer_auth(&host.token)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// The download counterpart to `remote_agent_upload_file` — writes straight to
+/// `local_save_path` rather than returning bytes through Tauri's IPC, same reasoning as
+/// `remote_agent_download_backup`.
+#[tauri::command]
+pub async fn remote_agent_download_file(host: RemoteHostConfig, remote_path: String, local_save_path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &remote_path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    tokio::fs::write(&local_save_path, &bytes).await.map_err(|e| format!("Could not save the file: {}", e))
+}
+
 /// Live-tails one remote host's `/v1/logs` SSE stream, forwarding each line as a
 /// `remote-server-log` event tagged with `streamId` so the frontend can tell streams from
 /// different hosts apart. Keyed by `stream_id` (the saved host's own id) so switching hosts
