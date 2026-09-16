@@ -10,13 +10,29 @@ use std::{
         atomic::{AtomicBool, AtomicUsize, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::sync::RwLock as AsyncRwLock;
 use tokio::task::JoinHandle;
 
 pub const ALPN: &[u8] = b"mcl/p2p-tunnel/v1";
+
+/// A password guess is only counted against the peer that made it once we know their
+/// cryptographic node ID (proven by the QUIC/TLS handshake itself, not the self-reported one
+/// in the JSON payload) — a fresh Ed25519 keypair is cheap for an attacker to generate, but
+/// this still raises the bar far above an unthrottled loop, and is the correct identity to
+/// throttle on rather than one the peer could simply lie about.
+const MAX_PASSWORD_ATTEMPTS: u32 = 5;
+const PASSWORD_LOCKOUT_WINDOW: Duration = Duration::from_secs(60);
+
+/// How many times the client retries a dropped connection before giving up and surfacing an
+/// error instead of retrying forever — a doubling backoff capped at 30s between attempts, so
+/// the total window covers a laptop waking from sleep or a wifi blip without spinning
+/// indefinitely against a host that is genuinely gone for good.
+const MAX_RECONNECT_ATTEMPTS: u32 = 8;
+const MAX_RECONNECT_BACKOFF: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -47,6 +63,10 @@ pub struct P2PHostStatus {
 #[serde(rename_all = "camelCase")]
 pub struct P2PClientStatus {
     pub is_connected: bool,
+    /// True while a dropped connection is being retried in the background — `isConnected` is
+    /// false during this too, but this field is what tells the UI to say "reconnecting"
+    /// instead of "disconnected".
+    pub is_reconnecting: bool,
     pub room_name: Option<String>,
     pub local_port: Option<u16>,
     pub remote_node_id: Option<String>,
@@ -92,23 +112,39 @@ struct HostState {
     is_locked: Arc<AtomicBool>,
     members_map: Arc<Mutex<HashMap<String, HostPeerSession>>>,
     accept_task: JoinHandle<()>,
+    #[allow(dead_code)] // Kept alive by the Arc the accept task holds; never read from HostState directly.
+    failed_attempts: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
 }
 
 struct ClientState {
     endpoint: Endpoint,
-    _connection: Connection,
+    /// Swapped out in place by the reconnect watchdog when the old connection drops and a new
+    /// one is established, so the ping task and the local proxy always forward through
+    /// whichever connection is currently live without needing to be restarted themselves.
+    #[allow(dead_code)] // Kept alive as the canonical handle; ping/proxy/watchdog tasks each hold their own clone.
+    connection: Arc<AsyncRwLock<Connection>>,
     room_name: Option<String>,
     host_username: Option<String>,
     local_port: u16,
     remote_node_id: String,
     client_username: String,
     ping_ms: Arc<Mutex<Option<f64>>>,
+    is_connected: Arc<AtomicBool>,
+    /// Set before intentionally tearing this down, so the reconnect watchdog can tell "the
+    /// connection dropped because the player left" apart from "the connection dropped and
+    /// needs retrying" the moment it wakes up.
+    stopping: Arc<AtomicBool>,
     proxy_task: JoinHandle<()>,
     ping_task: JoinHandle<()>,
+    reconnect_task: JoinHandle<()>,
 }
 
 static HOST_STATE: Mutex<Option<HostState>> = Mutex::new(None);
 static CLIENT_STATE: Mutex<Option<ClientState>> = Mutex::new(None);
+/// The reconnect watchdog's parting message when it gives up, since by the time that happens
+/// `CLIENT_STATE` has already been cleared back to "not connected" and has nowhere else to
+/// carry the reason why.
+static LAST_CLIENT_ERROR: Mutex<Option<String>> = Mutex::new(None);
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -188,11 +224,13 @@ pub async fn start_p2p_host(
     let peers_count = Arc::new(AtomicUsize::new(0));
     let is_locked = Arc::new(AtomicBool::new(false));
     let members_map = Arc::new(Mutex::new(HashMap::<String, HostPeerSession>::new()));
+    let failed_attempts = Arc::new(Mutex::new(HashMap::<String, (u32, Instant)>::new()));
 
     let ep_clone = endpoint.clone();
     let peers_count_clone = Arc::clone(&peers_count);
     let is_locked_clone = Arc::clone(&is_locked);
     let members_map_clone = Arc::clone(&members_map);
+    let failed_attempts_clone = Arc::clone(&failed_attempts);
     let expected_password = clean_password.clone();
     let room_name_clone = clean_room_name.clone();
     let host_username_clone = clean_host_username.clone();
@@ -212,6 +250,7 @@ pub async fn start_p2p_host(
             let peers_counter = Arc::clone(&peers_count_clone);
             let locked_flag = Arc::clone(&is_locked_clone);
             let members_ref = Arc::clone(&members_map_clone);
+            let attempts_ref = Arc::clone(&failed_attempts_clone);
             let expected_pass = expected_password.clone();
             let r_name = room_name_clone.clone();
             let h_user = host_username_clone.clone();
@@ -226,6 +265,7 @@ pub async fn start_p2p_host(
                     peers_counter,
                     locked_flag,
                     members_ref,
+                    attempts_ref,
                 )
                 .await;
             });
@@ -268,6 +308,7 @@ pub async fn start_p2p_host(
         is_locked,
         members_map,
         accept_task,
+        failed_attempts,
     });
 
     Ok(status)
@@ -291,6 +332,36 @@ fn passwords_match(provided: &str, expected: &str) -> bool {
     difference == 0
 }
 
+/// True if this peer is still allowed to try the password, false if it has failed enough
+/// times recently that it should be turned away without even looking at what it sent this
+/// time. A window that has aged out resets on the next call rather than needing a separate
+/// sweep, since nothing else ever reads this map on a schedule.
+fn attempt_allowed(attempts: &Mutex<HashMap<String, (u32, Instant)>>, peer_key: &str) -> bool {
+    let map = attempts.lock().unwrap_or_else(|e| e.into_inner());
+    match map.get(peer_key) {
+        Some((count, first_seen)) => *count < MAX_PASSWORD_ATTEMPTS || first_seen.elapsed() > PASSWORD_LOCKOUT_WINDOW,
+        None => true,
+    }
+}
+
+fn record_failed_attempt(attempts: &Mutex<HashMap<String, (u32, Instant)>>, peer_key: &str) {
+    let mut map = attempts.lock().unwrap_or_else(|e| e.into_inner());
+    map.entry(peer_key.to_string())
+        .and_modify(|(count, first_seen)| {
+            if first_seen.elapsed() > PASSWORD_LOCKOUT_WINDOW {
+                *count = 1;
+                *first_seen = Instant::now();
+            } else {
+                *count += 1;
+            }
+        })
+        .or_insert((1, Instant::now()));
+}
+
+fn clear_failed_attempts(attempts: &Mutex<HashMap<String, (u32, Instant)>>, peer_key: &str) {
+    attempts.lock().unwrap_or_else(|e| e.into_inner()).remove(peer_key);
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn handle_incoming_peer(
     connection: Connection,
@@ -301,6 +372,7 @@ async fn handle_incoming_peer(
     peers_counter: Arc<AtomicUsize>,
     is_locked: Arc<AtomicBool>,
     members_map: Arc<Mutex<HashMap<String, HostPeerSession>>>,
+    failed_attempts: Arc<Mutex<HashMap<String, (u32, Instant)>>>,
 ) {
     // Check if room is locked
     if is_locked.load(Ordering::Relaxed) {
@@ -312,6 +384,17 @@ async fn handle_incoming_peer(
     if peers_counter.load(Ordering::Relaxed) >= 12 {
         let _ = connection.close(2u32.into(), b"Room is full");
         return;
+    }
+
+    // Proven by the QUIC/TLS handshake itself, so this is what password attempts get
+    // throttled against — the node_id inside the JSON payload below is self-reported and not
+    // to be trusted for that purpose, a peer can put anything it likes in there.
+    let auth_peer_id = connection.remote_node_id().map(|id| id.to_string()).ok();
+    if let Some(ref id) = auth_peer_id {
+        if expected_password.is_some() && !attempt_allowed(&failed_attempts, id) {
+            let _ = connection.close(7u32.into(), b"Too many incorrect password attempts, try again later");
+            return;
+        }
     }
 
     // The peer MUST open the first bi-stream for Handshake / Authentication
@@ -341,6 +424,9 @@ async fn handle_incoming_peer(
     if let Some(ref required_pwd) = expected_password {
         let provided_pwd = handshake_req.password.unwrap_or_default();
         if !passwords_match(&provided_pwd, required_pwd) {
+            if let Some(ref id) = auth_peer_id {
+                record_failed_attempt(&failed_attempts, id);
+            }
             let err_resp = HandshakeResponse {
                 success: false,
                 room_name: None,
@@ -353,6 +439,9 @@ async fn handle_incoming_peer(
             }
             let _ = connection.close(6u32.into(), b"Incorrect room password");
             return;
+        }
+        if let Some(ref id) = auth_peer_id {
+            clear_failed_attempts(&failed_attempts, id);
         }
     }
 
@@ -409,6 +498,10 @@ async fn handle_incoming_peer(
             let Ok(tcp_stream) = TcpStream::connect(&tcp_dest).await else {
                 return;
             };
+            // Minecraft's own traffic is a stream of small, latency-sensitive packets (player
+            // position, block updates); Nagle's algorithm would otherwise batch them up and
+            // add a few dozen ms of jitter on a loopback hop that should be near-instant.
+            let _ = tcp_stream.set_nodelay(true);
 
             let (mut tcp_read, mut tcp_write) = tcp_stream.into_split();
 
@@ -525,22 +618,16 @@ pub fn get_p2p_host_status() -> P2PHostStatus {
     }
 }
 
-/// Connects as a client to a remote P2P Host using Ticket + Player Username + optional Password.
-pub async fn start_p2p_client(
-    ticket: String,
-    username: String,
-    password: Option<String>,
-) -> Result<P2PClientStatus, String> {
-    stop_p2p_client().await?;
-
-    let node_addr = decode_ticket(&ticket)?;
-    let remote_node_id = node_addr.node_id.to_string();
-
-    let endpoint = Endpoint::builder()
-        .alpns(vec![ALPN.to_vec()])
-        .bind()
-        .await
-        .map_err(|e| format!("Failed to create client P2P endpoint: {}", e))?;
+/// One connect attempt plus the handshake that follows it, shared by the initial join and
+/// every reconnect retry after a drop — the only difference between them is which `Endpoint`
+/// and how many times this has already been tried.
+async fn connect_and_handshake(
+    endpoint: &Endpoint,
+    ticket: &str,
+    username: &str,
+    password: &Option<String>,
+) -> Result<(Connection, HandshakeResponse, String), String> {
+    let node_addr = decode_ticket(ticket)?;
 
     let client_node_id = endpoint
         .node_addr()
@@ -553,7 +640,6 @@ pub async fn start_p2p_client(
         .await
         .map_err(|e| format!("Failed to connect to P2P host: {}", e))?;
 
-    // Perform Handshake Stream
     let (send_stream, recv_stream) = connection
         .open_bi()
         .await
@@ -562,15 +648,9 @@ pub async fn start_p2p_client(
     let mut writer = send_stream;
     let mut reader = BufReader::new(recv_stream);
 
-    let clean_username = if username.trim().is_empty() {
-        "Player".to_string()
-    } else {
-        username.trim().to_string()
-    };
-
     let req = HandshakeRequest {
-        username: clean_username.clone(),
-        password,
+        username: username.to_string(),
+        password: password.clone(),
         node_id: client_node_id.clone(),
     };
 
@@ -591,12 +671,103 @@ pub async fn start_p2p_client(
         .map_err(|e| format!("Invalid handshake response JSON: {}", e))?;
 
     if !resp.success {
-        let err_msg = resp
-            .error
-            .unwrap_or_else(|| "Handshake rejected by host".to_string());
+        let err_msg = resp.error.clone().unwrap_or_else(|| "Handshake rejected by host".to_string());
         let _ = connection.close(10u32.into(), err_msg.as_bytes());
         return Err(err_msg);
     }
+
+    Ok((connection, resp, client_node_id))
+}
+
+/// Waits for the current connection to drop, then retries with a doubling backoff until either
+/// a new one succeeds (swapped into `connection_slot` in place, so the ping task and the local
+/// proxy pick it up without themselves being restarted) or `MAX_RECONNECT_ATTEMPTS` is used up,
+/// at which point it tears the whole client down itself and leaves a reason in
+/// `LAST_CLIENT_ERROR` for the next status check to report.
+#[allow(clippy::too_many_arguments)]
+async fn reconnect_watchdog(
+    ticket: String,
+    username: String,
+    password: Option<String>,
+    endpoint: Endpoint,
+    connection_slot: Arc<AsyncRwLock<Connection>>,
+    is_connected: Arc<AtomicBool>,
+    stopping: Arc<AtomicBool>,
+) {
+    loop {
+        let current = connection_slot.read().await.clone();
+        let _ = current.closed().await;
+        if stopping.load(Ordering::Relaxed) {
+            return;
+        }
+        is_connected.store(false, Ordering::Relaxed);
+
+        let mut attempt = 0u32;
+        let reconnected = loop {
+            if stopping.load(Ordering::Relaxed) {
+                return;
+            }
+            attempt += 1;
+            if attempt > MAX_RECONNECT_ATTEMPTS {
+                break false;
+            }
+            let backoff = Duration::from_secs(2u64.saturating_pow(attempt.min(5))).min(MAX_RECONNECT_BACKOFF);
+            tokio::time::sleep(backoff).await;
+            if stopping.load(Ordering::Relaxed) {
+                return;
+            }
+
+            match connect_and_handshake(&endpoint, &ticket, &username, &password).await {
+                Ok((new_connection, _resp, _client_node_id)) => {
+                    *connection_slot.write().await = new_connection;
+                    is_connected.store(true, Ordering::Relaxed);
+                    break true;
+                }
+                Err(_) => continue,
+            }
+        };
+
+        if !reconnected {
+            *LAST_CLIENT_ERROR.lock().unwrap_or_else(|e| e.into_inner()) =
+                Some("Lost connection to the host and could not reconnect after several attempts.".to_string());
+            let state_opt = {
+                let mut lock = CLIENT_STATE.lock().unwrap_or_else(|e| e.into_inner());
+                lock.take()
+            };
+            if let Some(state) = state_opt {
+                state.proxy_task.abort();
+                state.ping_task.abort();
+            }
+            endpoint.close().await;
+            return;
+        }
+    }
+}
+
+/// Connects as a client to a remote P2P Host using Ticket + Player Username + optional Password.
+pub async fn start_p2p_client(
+    ticket: String,
+    username: String,
+    password: Option<String>,
+) -> Result<P2PClientStatus, String> {
+    stop_p2p_client().await?;
+    *LAST_CLIENT_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = None;
+
+    let clean_username = if username.trim().is_empty() {
+        "Player".to_string()
+    } else {
+        username.trim().to_string()
+    };
+
+    let endpoint = Endpoint::builder()
+        .alpns(vec![ALPN.to_vec()])
+        .bind()
+        .await
+        .map_err(|e| format!("Failed to create client P2P endpoint: {}", e))?;
+
+    let (connection, resp, client_node_id) =
+        connect_and_handshake(&endpoint, &ticket, &clean_username, &password).await?;
+    let remote_node_id = decode_ticket(&ticket)?.node_id.to_string();
 
     // Bind local TCP listener (try 39565 first, fall back to random open port 0)
     let listener = match TcpListener::bind("127.0.0.1:39565").await {
@@ -612,43 +783,64 @@ pub async fn start_p2p_client(
     let local_port = local_addr.port();
 
     let ping_ms = Arc::new(Mutex::new(None));
-    let ping_clone = Arc::clone(&ping_ms);
-    let conn_clone = connection.clone();
+    let is_connected = Arc::new(AtomicBool::new(true));
+    let stopping = Arc::new(AtomicBool::new(false));
+    let connection_slot = Arc::new(AsyncRwLock::new(connection));
 
-    // Background task to track connection RTT
-    let ping_task = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(Duration::from_millis(1500)).await;
-            let rtt = conn_clone.rtt();
-            let mut lock = ping_clone.lock().unwrap_or_else(|e| e.into_inner());
-            *lock = Some(rtt.as_secs_f64() * 1000.0);
+    // Background task to track connection RTT, always against whatever connection is current.
+    let ping_task = tokio::spawn({
+        let ping_clone = Arc::clone(&ping_ms);
+        let slot = Arc::clone(&connection_slot);
+        async move {
+            loop {
+                tokio::time::sleep(Duration::from_millis(1500)).await;
+                let rtt = slot.read().await.rtt();
+                let mut lock = ping_clone.lock().unwrap_or_else(|e| e.into_inner());
+                *lock = Some(rtt.as_secs_f64() * 1000.0);
+            }
         }
     });
 
-    let conn_for_proxy = connection.clone();
-    let proxy_task = tokio::spawn(async move {
-        while let Ok((tcp_stream, _)) = listener.accept().await {
-            let conn = conn_for_proxy.clone();
-            tokio::spawn(async move {
-                let Ok((mut send_stream, mut recv_stream)) = conn.open_bi().await else {
-                    return;
-                };
+    let proxy_task = tokio::spawn({
+        let slot = Arc::clone(&connection_slot);
+        async move {
+            while let Ok((tcp_stream, _)) = listener.accept().await {
+                // Same reasoning as the host side: this is a loopback hop to the Minecraft
+                // client, and Nagle's algorithm only adds latency to it for no benefit.
+                let _ = tcp_stream.set_nodelay(true);
+                let slot = Arc::clone(&slot);
+                tokio::spawn(async move {
+                    let conn = slot.read().await.clone();
+                    let Ok((mut send_stream, mut recv_stream)) = conn.open_bi().await else {
+                        return;
+                    };
 
-                let (mut tcp_read, mut tcp_write) = tcp_stream.into_split();
+                    let (mut tcp_read, mut tcp_write) = tcp_stream.into_split();
 
-                let upload = async move {
-                    let _ = tokio::io::copy(&mut tcp_read, &mut send_stream).await;
-                    let _ = send_stream.finish();
-                };
+                    let upload = async move {
+                        let _ = tokio::io::copy(&mut tcp_read, &mut send_stream).await;
+                        let _ = send_stream.finish();
+                    };
 
-                let download = async move {
-                    let _ = tokio::io::copy(&mut recv_stream, &mut tcp_write).await;
-                };
+                    let download = async move {
+                        let _ = tokio::io::copy(&mut recv_stream, &mut tcp_write).await;
+                    };
 
-                let _ = tokio::join!(upload, download);
-            });
+                    let _ = tokio::join!(upload, download);
+                });
+            }
         }
     });
+
+    let reconnect_task = tokio::spawn(reconnect_watchdog(
+        ticket,
+        clean_username.clone(),
+        password,
+        endpoint.clone(),
+        Arc::clone(&connection_slot),
+        Arc::clone(&is_connected),
+        Arc::clone(&stopping),
+    ));
 
     let members = vec![
         P2PMemberInfo {
@@ -669,6 +861,7 @@ pub async fn start_p2p_client(
 
     let status = P2PClientStatus {
         is_connected: true,
+        is_reconnecting: false,
         room_name: resp.room_name.clone(),
         local_port: Some(local_port),
         remote_node_id: Some(remote_node_id.clone()),
@@ -681,15 +874,18 @@ pub async fn start_p2p_client(
     let mut lock = CLIENT_STATE.lock().unwrap_or_else(|e| e.into_inner());
     *lock = Some(ClientState {
         endpoint,
-        _connection: connection,
+        connection: connection_slot,
         room_name: resp.room_name,
         host_username: resp.host_username,
         local_port,
         remote_node_id,
         client_username: clean_username,
         ping_ms,
+        is_connected,
+        stopping,
         proxy_task,
         ping_task,
+        reconnect_task,
     });
 
     Ok(status)
@@ -701,6 +897,8 @@ pub async fn stop_p2p_client() -> Result<bool, String> {
         lock.take()
     };
     if let Some(state) = state_opt {
+        state.stopping.store(true, Ordering::Relaxed);
+        state.reconnect_task.abort();
         state.proxy_task.abort();
         state.ping_task.abort();
         state.endpoint.close().await;
@@ -714,6 +912,7 @@ pub fn get_p2p_client_status() -> P2PClientStatus {
     let lock = CLIENT_STATE.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(ref state) = *lock {
         let ping = *state.ping_ms.lock().unwrap_or_else(|e| e.into_inner());
+        let connected = state.is_connected.load(Ordering::Relaxed);
         let members = vec![
             P2PMemberInfo {
                 username: state
@@ -735,7 +934,8 @@ pub fn get_p2p_client_status() -> P2PClientStatus {
         ];
 
         P2PClientStatus {
-            is_connected: true,
+            is_connected: connected,
+            is_reconnecting: !connected,
             room_name: state.room_name.clone(),
             local_port: Some(state.local_port),
             remote_node_id: Some(state.remote_node_id.clone()),
@@ -745,15 +945,19 @@ pub fn get_p2p_client_status() -> P2PClientStatus {
             error: None,
         }
     } else {
+        // One-shot: the watchdog's failure reason is reported once to whoever checks status
+        // next, then cleared so it doesn't keep resurfacing after the player has seen it.
+        let last_error = LAST_CLIENT_ERROR.lock().unwrap_or_else(|e| e.into_inner()).take();
         P2PClientStatus {
             is_connected: false,
+            is_reconnecting: false,
             room_name: None,
             local_port: None,
             remote_node_id: None,
             host_username: None,
             ping_ms: None,
             members: Vec::new(),
-            error: None,
+            error: last_error,
         }
     }
 }
@@ -773,6 +977,31 @@ mod tests {
         assert!(!passwords_match("hunter", "hunter2"), "a prefix must not pass");
         assert!(!passwords_match("hunter2", "hunter"), "nor an overlong guess");
         assert!(!passwords_match("", "hunter2"));
+    }
+
+    #[test]
+    fn a_peer_is_locked_out_after_too_many_failed_passwords_and_clears_on_success() {
+        let attempts: Mutex<HashMap<String, (u32, Instant)>> = Mutex::new(HashMap::new());
+        let peer = "peer-node-id";
+
+        assert!(attempt_allowed(&attempts, peer), "a peer with no history must be allowed");
+
+        for _ in 0..MAX_PASSWORD_ATTEMPTS {
+            assert!(attempt_allowed(&attempts, peer), "must stay allowed while under the threshold");
+            record_failed_attempt(&attempts, peer);
+        }
+        assert!(
+            !attempt_allowed(&attempts, peer),
+            "must be blocked once the attempt count reaches the threshold"
+        );
+
+        // A different peer's failures must not affect this one.
+        assert!(attempt_allowed(&attempts, "some-other-peer"));
+
+        // A successful password (host side calls this after the check, not instead of it)
+        // resets the peer back to allowed.
+        clear_failed_attempts(&attempts, peer);
+        assert!(attempt_allowed(&attempts, peer), "must be allowed again after a successful login");
     }
 
     #[test]

@@ -344,6 +344,7 @@ export interface P2PHostStatus {
 
 export interface P2PClientStatus {
   isConnected: boolean;
+  isReconnecting: boolean;
   roomName?: string | null;
   localPort?: number | null;
   remoteNodeId?: string | null;

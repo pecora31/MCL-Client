@@ -41,6 +41,7 @@ pub struct P2PHostStatus {
 #[serde(rename_all = "camelCase")]
 pub struct P2PClientStatus {
     pub is_connected: bool,
+    pub is_reconnecting: bool,
     pub room_name: Option<String>,
     pub local_port: Option<u16>,
     pub remote_node_id: Option<String>,
@@ -101,6 +102,7 @@ pub async fn stop_p2p_client() -> Result<bool, String> {
 pub fn get_p2p_client_status() -> P2PClientStatus {
     P2PClientStatus {
         is_connected: false,
+        is_reconnecting: false,
         room_name: None,
         local_port: None,
         remote_node_id: None,

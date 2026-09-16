@@ -101,18 +101,21 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
     setHostPort(serverPort);
   }, [serverPort, hostStatus?.isRunning]);
 
-  // Polling when active to refresh member list & ping
+  // Polling when active to refresh member list & ping. Keeps polling through a reconnect too,
+  // not just while fully connected, otherwise the UI would never learn whether the reconnect
+  // watchdog succeeded or gave up.
   useEffect(() => {
-    const isP2PActive = hostStatus?.isRunning || clientStatus?.isConnected;
+    const isClientActive = clientStatus?.isConnected || clientStatus?.isReconnecting;
+    const isP2PActive = hostStatus?.isRunning || isClientActive;
     if (!isP2PActive) return;
 
     const interval = setInterval(() => {
       if (hostStatus?.isRunning) refreshHostStatus();
-      if (clientStatus?.isConnected) refreshClientStatus();
+      if (isClientActive) refreshClientStatus();
     }, 2500);
 
     return () => clearInterval(interval);
-  }, [hostStatus?.isRunning, clientStatus?.isConnected]);
+  }, [hostStatus?.isRunning, clientStatus?.isConnected, clientStatus?.isReconnecting]);
 
   const refreshHostStatus = async () => {
     try {
@@ -126,6 +129,12 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
   const refreshClientStatus = async () => {
     try {
       const status = await p2pGetClientStatus();
+      // A reconnect that ultimately gave up reports itself this way: not connected, not
+      // reconnecting anymore, with a one-shot error explaining why. Surface it once here since
+      // by this point the card has already switched back to the join form.
+      if (!status.isConnected && !status.isReconnecting && status.error) {
+        setJoinError(status.error);
+      }
       setClientStatus(status);
     } catch {
       // Browser preview fallback
@@ -710,10 +719,22 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
             </div>
           ) : (
             /* Active Connected Client Hub */
-            <div className="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/25 space-y-4">
+            <div
+              className={`p-5 rounded-2xl border space-y-4 ${
+                clientStatus.isReconnecting
+                  ? 'bg-amber-500/10 border-amber-500/25'
+                  : 'bg-emerald-500/10 border-emerald-500/25'
+              }`}
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-3">
-                  <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] animate-pulse" />
+                  <span
+                    className={`w-3 h-3 rounded-full animate-pulse ${
+                      clientStatus.isReconnecting
+                        ? 'bg-amber-400 shadow-[0_0_12px_rgba(251,191,36,0.8)]'
+                        : 'bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)]'
+                    }`}
+                  />
                   <div>
                     <div className="text-sm font-bold text-white flex items-center gap-2">
                       <span>{clientStatus.roomName || 'MCL Room'}</span>
@@ -722,13 +743,20 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                       </span>
                     </div>
                     <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
-                      <span>{isVi ? 'Đã kết nối trực tiếp P2P' : 'Direct P2P connected'}</span>
+                      {clientStatus.isReconnecting ? (
+                        <span className="text-amber-300 flex items-center gap-1.5">
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          {isVi ? 'Mất kết nối, đang tự động nối lại...' : 'Connection lost, reconnecting...'}
+                        </span>
+                      ) : (
+                        <span>{isVi ? 'Đã kết nối trực tiếp P2P' : 'Direct P2P connected'}</span>
+                      )}
                     </div>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  {renderPingBadge(clientStatus.pingMs)}
+                  {!clientStatus.isReconnecting && renderPingBadge(clientStatus.pingMs)}
 
                   <button
                     type="button"
