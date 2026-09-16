@@ -44,6 +44,9 @@ struct AppState {
     /// prior sample to diff against — `sysinfo` reports 0% CPU usage on a brand-new `System`'s
     /// very first refresh, since there is nothing yet to compare it to.
     system: Arc<std::sync::Mutex<sysinfo::System>>,
+    /// Held for a whole backup (save-off through save-on), so a manual and a scheduled backup
+    /// can never overlap and turn saving back on while the other is still zipping.
+    backup_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -382,7 +385,20 @@ fn effective_retention(spec: Option<&ServerSpec>) -> usize {
 /// If the server is running, world saving is paused first (`save-off`, then `save-all flush`
 /// so everything in memory is on disk) and the zip is taken from a quiescent world, then
 /// `save-on` is always sent afterwards, whether the backup succeeded or not.
+///
+/// The work runs in its own spawned task: if the caller's future is dropped (the HTTP client
+/// disconnects, or the agent shuts down a request), dropping the `JoinHandle` does not cancel
+/// the task, so `save-on` is still sent and autosave is never left off. Manual and scheduled
+/// backups both come through here, so both take `backup_lock`.
 async fn run_backup(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
+    let state = state.clone();
+    tokio::spawn(async move { run_backup_serialized(&state).await })
+        .await
+        .map_err(|e| format!("Backup task failed: {}", e))?
+}
+
+async fn run_backup_serialized(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
+    let _guard = state.backup_lock.lock().await;
     let spec = read_spec(state);
     let server_dir = state.server_dir();
     let running = spec.as_ref().is_some_and(|s| {
@@ -694,7 +710,13 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
     let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
     let system = Arc::new(std::sync::Mutex::new(sysinfo::System::new()));
-    let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx, system });
+    let state = Arc::new(AppState {
+        data_dir,
+        token: token.clone(),
+        log_tx,
+        system,
+        backup_lock: Arc::new(tokio::sync::Mutex::new(())),
+    });
     tokio::spawn(backup_scheduler(state.clone()));
 
     let protected = Router::new()
