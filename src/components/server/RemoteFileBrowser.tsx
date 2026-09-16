@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ChevronRight,
   ChevronDown,
@@ -101,23 +101,35 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
   const [childrenByPath, setChildrenByPath] = useState<Record<string, RemoteFileEntry[]>>({});
   const [selectedFolder, setSelectedFolder] = useState('');
   const [error, setError] = useState('');
-  const [editing, setEditing] = useState<{ path: string; content: string } | null>(null);
+  const [editing, setEditing] = useState<{ path: string; content: string; original: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // Bumped on every host switch so a listFiles response for a host the user has since
+  // switched away from can be recognized and dropped instead of landing on the wrong host.
+  const requestGenRef = useRef(0);
 
   const loadFolder = async (path: string) => {
+    const gen = requestGenRef.current;
     try {
       const entries = await remoteAgent.listFiles(host, path);
+      if (gen !== requestGenRef.current) return;
       setChildrenByPath((prev) => ({ ...prev, [path]: entries }));
     } catch (err) {
+      if (gen !== requestGenRef.current) return;
       setError(String(err));
     }
   };
 
   useEffect(() => {
+    requestGenRef.current += 1;
     setExpanded(new Set(['']));
     setChildrenByPath({});
     setSelectedFolder('');
+    // Host switch is an explicit navigation the user just made; there's no sensible way to
+    // block it on a confirm from inside this effect, so just close the editor rather than
+    // risk it silently saving host A's content onto host B at the same path.
+    setEditing(null);
+    setError('');
     loadFolder('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [host.id]);
@@ -139,6 +151,32 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
   };
 
   const refreshCurrent = () => loadFolder(selectedFolder);
+
+  // Drops a folder's cached listing and every descendant's, so a rename/delete can't leave
+  // stale entries behind (a deleted folder's old children reappearing under its new name, etc).
+  const forgetPathAndDescendants = (path: string) => {
+    setChildrenByPath((prev) => {
+      const next = { ...prev };
+      delete next[path];
+      for (const key of Object.keys(next)) {
+        if (key.startsWith(`${path}/`)) delete next[key];
+      }
+      return next;
+    });
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      next.delete(path);
+      for (const key of next) {
+        if (key.startsWith(`${path}/`)) next.delete(key);
+      }
+      return next;
+    });
+  };
+
+  const confirmDiscardChanges = (): boolean => {
+    if (!editing || editing.content === editing.original) return true;
+    return window.confirm(t.hostServerDiscardChangesConfirm || 'Discard unsaved changes?');
+  };
 
   const handleNewFolder = async () => {
     const name = window.prompt(t.hostServerNewFolderPrompt || 'New folder name:');
@@ -169,8 +207,10 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
   const handleRename = async (entry: RemoteFileEntry) => {
     const newName = window.prompt(t.hostServerRenamePrompt || 'New name:', entry.name);
     if (!newName || !newName.trim() || newName.trim() === entry.name) return;
+    const oldPath = joinPath(selectedFolder, entry.name);
     try {
-      await remoteAgent.renameFile(host, joinPath(selectedFolder, entry.name), joinPath(selectedFolder, newName.trim()));
+      await remoteAgent.renameFile(host, oldPath, joinPath(selectedFolder, newName.trim()));
+      forgetPathAndDescendants(oldPath);
       await refreshCurrent();
     } catch (err) {
       setError(String(err));
@@ -182,8 +222,10 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
       ? t.hostServerDeleteFolderConfirm || 'Delete "{name}" and everything inside it? This cannot be undone.'
       : t.hostServerDeleteFileConfirm || 'Delete "{name}"? This cannot be undone.';
     if (!window.confirm(template.replace('{name}', entry.name))) return;
+    const path = joinPath(selectedFolder, entry.name);
     try {
-      await remoteAgent.deleteFile(host, joinPath(selectedFolder, entry.name));
+      await remoteAgent.deleteFile(host, path);
+      forgetPathAndDescendants(path);
       await refreshCurrent();
     } catch (err) {
       setError(String(err));
@@ -205,6 +247,7 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
       await selectFolder(joinPath(selectedFolder, entry.name));
       return;
     }
+    if (!confirmDiscardChanges()) return;
     if (entry.sizeBytes > TEXT_EDIT_SIZE_CAP) {
       await handleDownload(entry);
       return;
@@ -212,7 +255,7 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
     const path = joinPath(selectedFolder, entry.name);
     try {
       const content = await remoteAgent.readTextFile(host, path);
-      setEditing({ path, content });
+      setEditing({ path, content, original: content });
     } catch {
       // Not valid UTF-8, or some other read failure — offer a download instead of erroring.
       await handleDownload(entry);
@@ -361,7 +404,10 @@ export const RemoteFileBrowser: React.FC<RemoteFileBrowserProps> = ({ host, lang
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditing(null)}
+                  onClick={() => {
+                    if (!confirmDiscardChanges()) return;
+                    setEditing(null);
+                  }}
                   className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
