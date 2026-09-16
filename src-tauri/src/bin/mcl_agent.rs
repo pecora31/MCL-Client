@@ -461,7 +461,10 @@ struct MkdirRequest {
 
 async fn mkdir(State(state): State<Arc<AppState>>, Json(body): Json<MkdirRequest>) -> Result<StatusCode, ApiError> {
     let target = remote_files::resolve_for_write(&state.server_dir(), &body.path).map_err(bad_request)?;
-    std::fs::create_dir_all(&target).map_err(|e| server_error(e.to_string()))?;
+    tokio::task::spawn_blocking(move || std::fs::create_dir_all(&target))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(|e| server_error(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -472,9 +475,21 @@ struct RenameRequest {
 }
 
 async fn rename_file(State(state): State<Arc<AppState>>, Json(body): Json<RenameRequest>) -> Result<StatusCode, ApiError> {
+    if body.from.trim().is_empty() {
+        return Err(bad_request("Cannot move the server's root folder."));
+    }
+    // A destination equal to (or nested inside) the source would ask the filesystem to move a
+    // folder into itself, which fails in confusing ways (or silently corrupts the tree
+    // depending on platform) rather than with a clear error — reject it up front instead.
+    if body.to == body.from || body.to.starts_with(&format!("{}/", body.from)) {
+        return Err(bad_request("Cannot move a folder into itself."));
+    }
     let from = remote_files::resolve_existing(&state.server_dir(), &body.from).map_err(bad_request)?;
     let to = remote_files::resolve_for_write(&state.server_dir(), &body.to).map_err(bad_request)?;
-    std::fs::rename(&from, &to).map_err(|e| server_error(e.to_string()))?;
+    tokio::task::spawn_blocking(move || std::fs::rename(&from, &to))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(|e| server_error(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -484,11 +499,16 @@ async fn delete_file(State(state): State<Arc<AppState>>, Query(q): Query<FilePat
     if target == canonical_root {
         return Err(bad_request("Cannot delete the server's root folder."));
     }
-    if target.is_dir() {
-        std::fs::remove_dir_all(&target).map_err(|e| server_error(e.to_string()))?;
-    } else {
-        std::fs::remove_file(&target).map_err(|e| server_error(e.to_string()))?;
-    }
+    tokio::task::spawn_blocking(move || {
+        if target.is_dir() {
+            std::fs::remove_dir_all(&target)
+        } else {
+            std::fs::remove_file(&target)
+        }
+    })
+    .await
+    .map_err(|e| server_error(e.to_string()))?
+    .map_err(|e| server_error(e.to_string()))?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -640,7 +660,10 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .route("/v1/files/content", get(read_file_content).put(write_file_content))
         .route("/v1/logs", get(logs))
         .route("/v1/health", get(health))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_token))
+        // Covers mod uploads and file-browser writes: axum's default `Bytes`-extractor body
+        // limit is 2 MB, which a modpack jar or a world file blows past immediately.
+        .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024));
 
     // Permissive because auth is the token, not the origin — the desktop app calls this from
     // a `tauri://` webview origin, which a stricter allow-list would have to special-case anyway.
