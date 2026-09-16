@@ -14,6 +14,10 @@ interface VmBootstrapWizardProps {
 
 type WizardPhase = 'form' | 'running' | 'error' | 'done';
 
+const MAX_LOG_LINES = 500;
+
+const isValidPort = (value: number): boolean => Number.isInteger(value) && value >= 1 && value <= 65535;
+
 export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, onInstalled, onClose }) => {
   const t = getTranslation(language);
   const [host, setHost] = useState('');
@@ -31,15 +35,27 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   const credentialsRef = useRef<BootstrapOutcome | null>(null);
   const streamIdRef = useRef('');
   const logEndRef = useRef<HTMLDivElement>(null);
+  const isMountedRef = useRef(true);
+  const runningRef = useRef(false);
 
   useEffect(() => {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [log]);
 
   useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const unlistenProgress = listen<BootstrapProgressEvent>('vm-bootstrap-progress', (event) => {
       if (event.payload.streamId !== streamIdRef.current) return;
-      setLog((prev) => [...prev, event.payload.line]);
+      setLog((prev) => {
+        const next = [...prev, event.payload.line];
+        return next.length > MAX_LOG_LINES ? next.slice(next.length - MAX_LOG_LINES) : next;
+      });
     });
     const unlistenCredentials = listen<BootstrapCredentialsEvent>('vm-bootstrap-credentials', (event) => {
       if (event.payload.streamId !== streamIdRef.current) return;
@@ -57,6 +73,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   };
 
   const finish = (outcome: BootstrapOutcome) => {
+    if (!isMountedRef.current) return;
     const newHost: RemoteHost = {
       id: Date.now().toString(),
       name: displayName.trim() || host,
@@ -69,7 +86,9 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   };
 
   const handleStart = async () => {
-    if (!host.trim() || !privateKeyPath) return;
+    if (runningRef.current) return;
+    if (!host.trim() || !privateKeyPath || !isValidPort(port) || !isValidPort(agentPort)) return;
+    runningRef.current = true;
     setPhase('running');
     setLog([]);
     setError('');
@@ -86,27 +105,48 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
 
     try {
       const outcome = await invokeCommand<BootstrapOutcome>('vm_bootstrap_start', { streamId: streamIdRef.current, req });
+      if (!isMountedRef.current) return;
       finish(outcome);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(String(err));
       setPhase('error');
+    } finally {
+      runningRef.current = false;
     }
   };
 
   const handleRetryVerify = async () => {
+    if (runningRef.current) return;
     const creds = credentialsRef.current;
     if (!creds) return;
+    runningRef.current = true;
     setIsRetrying(true);
     try {
       await invokeCommand<void>('vm_bootstrap_retry_verify', {
         host: { url: creds.url, token: creds.token, certPem: creds.certPem },
       });
+      if (!isMountedRef.current) return;
       finish(creds);
     } catch (err) {
+      if (!isMountedRef.current) return;
       setError(String(err));
     } finally {
-      setIsRetrying(false);
+      runningRef.current = false;
+      if (isMountedRef.current) setIsRetrying(false);
     }
+  };
+
+  const handleStartOver = () => {
+    setError('');
+    setLog([]);
+    credentialsRef.current = null;
+    setPhase('form');
+  };
+
+  const handleClose = () => {
+    if (phase === 'running') return;
+    onClose();
   };
 
   return (
@@ -117,7 +157,12 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
             <Server className="w-4 h-4 text-[var(--accent-color)]" />
             <span className="text-sm font-bold text-white">{t.hostServerBootstrapTitle || 'Set Up a New VM Automatically'}</span>
           </div>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer">
+          <button
+            type="button"
+            onClick={handleClose}
+            disabled={phase === 'running'}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-slate-400"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -143,8 +188,10 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                 <input
                   type="number"
                   placeholder="22"
+                  min={1}
+                  max={65535}
                   value={port}
-                  onChange={(e) => setPort(Number(e.target.value) || 22)}
+                  onChange={(e) => setPort(Number(e.target.value))}
                   className="px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                 />
               </div>
@@ -182,8 +229,10 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                   </label>
                   <input
                     type="number"
+                    min={1}
+                    max={65535}
                     value={agentPort}
-                    onChange={(e) => setAgentPort(Number(e.target.value) || 8642)}
+                    onChange={(e) => setAgentPort(Number(e.target.value))}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                   />
                 </div>
@@ -192,7 +241,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
               <button
                 type="button"
                 onClick={handleStart}
-                disabled={!host.trim() || !privateKeyPath}
+                disabled={!host.trim() || !privateKeyPath || !isValidPort(port) || !isValidPort(agentPort)}
                 className="w-full btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
               >
                 {t.hostServerBootstrapConnect || 'Connect & Install'}
@@ -215,6 +264,12 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                 <div ref={logEndRef} />
               </div>
 
+              {phase === 'running' && (
+                <p className="text-xs text-slate-500">
+                  {t.hostServerBootstrapCannotClose || 'Setup is running on the VM. Wait for it to finish.'}
+                </p>
+              )}
+
               {phase === 'error' && (
                 <>
                   <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs">{error}</div>
@@ -232,7 +287,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                     )}
                     <button
                       type="button"
-                      onClick={() => setPhase('form')}
+                      onClick={handleStartOver}
                       className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer active:scale-95 transition"
                     >
                       {t.hostServerBootstrapStartOver || 'Start Over'}
