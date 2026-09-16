@@ -32,7 +32,7 @@ import {
   p2pGetClientStatus,
 } from '../../services/api';
 import type { GameInstance, P2PHostStatus, P2PClientStatus, P2PMemberInfo } from '../../types';
-import type { Language } from '../../locales/i18n';
+import { getTranslation, type Language } from '../../locales/i18n';
 
 interface P2PDirectConnectCardProps {
   language: Language;
@@ -47,7 +47,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
   serverPort = 25565,
   onLaunchGame,
 }) => {
-  const isVi = language === 'vi';
+  const t = getTranslation(language);
   const [activeTab, setActiveTab] = useState<'host' | 'join'>('host');
 
   // Active user name from account storage
@@ -183,9 +183,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
   };
 
   const handleKickPeer = async (nodeId: string, memberName: string) => {
-    const confirmMsg = isVi
-      ? `Bạn có chắc muốn kích người chơi "${memberName}" ra khỏi phòng?`
-      : `Are you sure you want to kick "${memberName}" from the room?`;
+    const confirmMsg = t.p2pKickConfirm.replace('{name}', memberName);
     if (!window.confirm(confirmMsg)) return;
 
     setKickingNodeId(nodeId);
@@ -294,18 +292,16 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/25 text-[var(--accent-color)] text-xs font-semibold mb-1.5 tracking-wide">
             <Zap className="w-3.5 h-3.5 fill-current" />
-            <span>{isVi ? 'Chơi Chung Trực Tiếp' : 'Play Together Directly'}</span>
+            <span>{t.p2pHeaderBadge}</span>
           </div>
           <h3 className="text-lg font-bold text-white tracking-normal flex items-center gap-2">
-            <span>{isVi ? 'Phòng Chơi Chung' : 'Shared Room'}</span>
+            <span>{t.p2pHeaderTitle}</span>
             <span className="text-xs px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-normal">
-              {isVi ? 'Không cần mở port' : 'No port forwarding'}
+              {t.p2pNoPortForwardingTag}
             </span>
           </h3>
           <p className="text-xs text-slate-400 mt-0.5 max-w-xl leading-relaxed">
-            {isVi
-              ? 'Kết nối trực tiếp giữa các máy tính không cần mở port modem, không cần cài Radmin/Hamachi, độ trễ cực thấp chuẩn LAN.'
-              : 'Direct peer-to-peer connection without port forwarding or VPNs. Near-LAN low latency gaming.'}
+            {t.p2pHeaderDesc}
           </p>
         </div>
       </div>
@@ -322,7 +318,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
           }`}
         >
           <Globe className="w-3.5 h-3.5" />
-          <span>{isVi ? 'Tạo Phòng (Host)' : 'Create Room (Host)'}</span>
+          <span>{t.p2pTabHost}</span>
         </button>
         <button
           type="button"
@@ -334,7 +330,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
           }`}
         >
           <Users className="w-3.5 h-3.5" />
-          <span>{isVi ? 'Vào Phòng (Join)' : 'Join Room'}</span>
+          <span>{t.p2pTabJoin}</span>
         </button>
       </div>
 
@@ -348,20 +344,20 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
             <div className="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-4">
               <div className="flex items-center gap-2 text-sm font-bold text-white border-b border-white/5 pb-3">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>{isVi ? 'Cấu Hình Phòng Chơi' : 'Room Configuration'}</span>
+                <span>{t.p2pRoomConfigTitle}</span>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Room Name */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    {isVi ? 'Tên phòng hiển thị' : 'Room Name'}
+                    {t.p2pRoomNameLabel}
                   </label>
                   <input
                     type="text"
                     value={hostRoomName}
                     onChange={(e) => setHostRoomName(e.target.value)}
-                    placeholder={isVi ? 'Ví dụ: Survival SMP 1.21' : 'e.g. Survival SMP 1.21'}
+                    placeholder={t.p2pRoomNamePlaceholder}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-[var(--accent-color)]"
                   />
                 </div>
@@ -371,10 +367,10 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{isVi ? 'Mật khẩu phòng' : 'Room Password'}</span>
+                      <span>{t.p2pRoomPasswordLabel}</span>
                     </label>
                     <span className="text-[10px] text-slate-400">
-                      {isVi ? 'Không bắt buộc' : 'Optional'}
+                      {t.p2pOptionalTag}
                     </span>
                   </div>
                   <div className="relative">
@@ -382,11 +378,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                       type={showHostPassword ? 'text' : 'password'}
                       value={hostPassword}
                       onChange={(e) => setHostPassword(e.target.value)}
-                      placeholder={
-                        isVi
-                          ? 'Bất kỳ ký tự nào trên bàn phím...'
-                          : 'Any keyboard characters or leave empty...'
-                      }
+                      placeholder={t.p2pHostPasswordPlaceholder}
                       className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-[var(--accent-color)]"
                     />
                     <button
@@ -407,7 +399,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
               {/* Server Target Port */}
               <div className="pt-2 flex items-center justify-between">
                 <div className="text-xs text-slate-400">
-                  <span>{isVi ? 'Cổng server Minecraft:' : 'Minecraft server port:'} </span>
+                  <span>{t.p2pServerPortLabel} </span>
                   <span className="font-mono text-white font-bold">{hostPort}</span>
                 </div>
 
@@ -422,7 +414,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   ) : (
                     <Radio className="w-4 h-4" />
                   )}
-                  <span>{isStartingHost ? (isVi ? 'Đang tạo phòng...' : 'Starting...') : (isVi ? 'Khởi Tạo Phòng' : 'Create Room')}</span>
+                  <span>{isStartingHost ? t.p2pStartingLabel : t.p2pCreateRoomBtn}</span>
                 </button>
               </div>
             </div>
@@ -442,27 +434,27 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                         {hostStatus.isLocked ? (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 flex items-center gap-1">
                             <Lock className="w-3 h-3" />
-                            <span>{isVi ? 'Đã Khóa' : 'Locked'}</span>
+                            <span>{t.p2pLockedBadge}</span>
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
                             <Unlock className="w-3 h-3" />
-                            <span>{isVi ? 'Đang Mở' : 'Open'}</span>
+                            <span>{t.p2pOpenBadge}</span>
                           </span>
                         )}
                         {hostStatus.hasPassword ? (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 flex items-center gap-1">
                             <Lock className="w-3 h-3" />
-                            <span>{isVi ? 'Có Mật Khẩu' : 'Password Protected'}</span>
+                            <span>{t.p2pPasswordProtectedBadge}</span>
                           </span>
                         ) : (
                           <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/10 text-slate-300 border border-white/15">
-                            {isVi ? 'Không Mật Khẩu' : 'No Password'}
+                            {t.p2pNoPasswordBadge}
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-slate-400 mt-0.5">
-                        {isVi ? 'Đang chuyển tiếp cổng' : 'Forwarding port'}:{' '}
+                        {t.p2pForwardingPortLabel}:{' '}
                         <span className="font-mono text-emerald-300">{hostStatus.targetPort}</span>
                       </div>
                     </div>
@@ -478,12 +470,12 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                       {hostStatus.isLocked ? (
                         <>
                           <Unlock className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>{isVi ? 'Mở Khóa Phòng' : 'Unlock Room'}</span>
+                          <span>{t.p2pUnlockRoomBtn}</span>
                         </>
                       ) : (
                         <>
                           <Lock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>{isVi ? 'Khóa Phòng' : 'Lock Room'}</span>
+                          <span>{t.p2pLockRoomBtn}</span>
                         </>
                       )}
                     </button>
@@ -495,7 +487,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                       className="px-3 py-1.5 rounded-xl text-xs font-bold bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
                     >
                       <Power className="w-3.5 h-3.5" />
-                      <span>{isVi ? 'Đóng Phòng' : 'Close Room'}</span>
+                      <span>{t.p2pCloseRoomBtn}</span>
                     </button>
                   </div>
                 </div>
@@ -504,7 +496,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                 <div className="pt-2">
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-[var(--accent-color)]" />
-                    <span>{isVi ? 'MÃ PHÒNG (GỬI CHO BẠN BÈ)' : 'ROOM CODE (SHARE WITH FRIENDS)'}</span>
+                    <span>{t.p2pRoomCodeShareLabel}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -523,15 +515,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                       ) : (
                         <Copy className="w-3.5 h-3.5" />
                       )}
-                      <span>
-                        {ticketCopied
-                          ? isVi
-                            ? 'Đã Chép!'
-                            : 'Copied!'
-                          : isVi
-                          ? 'Sao Chép'
-                          : 'Copy Ticket'}
-                      </span>
+                      <span>{ticketCopied ? t.p2pTicketCopiedBtn : t.p2pCopyTicketBtn}</span>
                     </button>
                   </div>
                 </div>
@@ -543,12 +527,12 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   <div className="flex items-center gap-2">
                     <Users className="w-4 h-4 text-[var(--accent-color)]" />
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      {isVi ? 'Danh Sách Người Chơi' : 'Connected Players'} (
+                      {t.p2pConnectedPlayersLabel} (
                       {hostStatus.members?.length || 1})
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400">
-                    {isVi ? 'Cập nhật ping trực tiếp' : 'Real-time ping updates'}
+                    {t.p2pRealtimePingLabel}
                   </span>
                 </div>
 
@@ -577,11 +561,11 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                             </span>
                             {member.isHost ? (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--accent-color)]/20 text-[var(--accent-color)] border border-[var(--accent-color)]/30">
-                                {isVi ? 'Chủ phòng' : 'Host'}
+                                {t.p2pHostBadge}
                               </span>
                             ) : (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-white/10 text-slate-300">
-                                {isVi ? 'Người chơi' : 'Member'}
+                                {t.p2pMemberBadge}
                               </span>
                             )}
                           </div>
@@ -600,7 +584,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                             onClick={() => handleKickPeer(member.nodeId, member.username)}
                             disabled={kickingNodeId === member.nodeId}
                             className="opacity-60 group-hover:opacity-100 p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
-                            title={isVi ? 'Kích người chơi này' : 'Kick player'}
+                            title={t.p2pKickTooltip}
                           >
                             {kickingNodeId === member.nodeId ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -628,21 +612,17 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
             /* Join Form */
             <div className="p-5 rounded-2xl bg-black/40 border border-white/5 space-y-4">
               <div className="text-xs text-slate-300 font-semibold">
-                {isVi
-                  ? 'Dán mã phòng và nhập mật khẩu (nếu phòng có mật khẩu) để kết nối trực tiếp.'
-                  : 'Paste the room ticket and enter the password (if required) to connect.'}
+                {t.p2pJoinIntro}
               </div>
 
               {/* Room Ticket Input */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {isVi ? 'Mã phòng' : 'Room code'}
+                  {t.p2pRoomCodeInputLabel}
                 </label>
                 <input
                   type="text"
-                  placeholder={
-                    isVi ? 'Dán mã phòng bạn bè gửi vào đây...' : 'Paste room ticket here...'
-                  }
+                  placeholder={t.p2pRoomCodePlaceholder}
                   value={inputTicket}
                   onChange={(e) => setInputTicket(e.target.value)}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[var(--accent-color)]"
@@ -654,10 +634,10 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                     <Lock className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{isVi ? 'Mật khẩu phòng' : 'Room Password'}</span>
+                    <span>{t.p2pRoomPasswordLabel}</span>
                   </label>
                   <span className="text-[10px] text-slate-400">
-                    {isVi ? 'Để trống nếu phòng mở' : 'Leave empty if open'}
+                    {t.p2pLeaveEmptyIfOpen}
                   </span>
                 </div>
                 <div className="relative">
@@ -665,11 +645,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                     type={showJoinPassword ? 'text' : 'password'}
                     value={inputPassword}
                     onChange={(e) => setInputPassword(e.target.value)}
-                    placeholder={
-                      isVi
-                        ? 'Nhập mật khẩu do chủ phòng đặt (nếu có)...'
-                        : 'Enter room password (if protected)...'
-                    }
+                    placeholder={t.p2pJoinPasswordPlaceholder}
                     className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none focus:border-[var(--accent-color)]"
                   />
                   <button
@@ -705,15 +681,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   ) : (
                     <Wifi className="w-4 h-4" />
                   )}
-                  <span>
-                    {isJoining
-                      ? isVi
-                        ? 'Đang xác thực & kết nối...'
-                        : 'Connecting...'
-                      : isVi
-                      ? 'Tham Gia Phòng'
-                      : 'Join Room'}
-                  </span>
+                  <span>{isJoining ? t.p2pConnectingLabel : t.p2pJoinRoomBtn}</span>
                 </button>
               </div>
             </div>
@@ -739,17 +707,17 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                     <div className="text-sm font-bold text-white flex items-center gap-2">
                       <span>{clientStatus.roomName || 'MCL Room'}</span>
                       <span className="text-xs font-normal text-emerald-300">
-                        ({isVi ? 'Chủ phòng' : 'Host'}: {clientStatus.hostUsername || 'Host'})
+                        ({t.p2pHostBadge}: {clientStatus.hostUsername || 'Host'})
                       </span>
                     </div>
                     <div className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
                       {clientStatus.isReconnecting ? (
                         <span className="text-amber-300 flex items-center gap-1.5">
                           <Loader2 className="w-3 h-3 animate-spin" />
-                          {isVi ? 'Mất kết nối, đang tự động nối lại...' : 'Connection lost, reconnecting...'}
+                          {t.p2pReconnectingLabel}
                         </span>
                       ) : (
-                        <span>{isVi ? 'Đã kết nối trực tiếp P2P' : 'Direct P2P connected'}</span>
+                        <span>{t.p2pDirectConnectedLabel}</span>
                       )}
                     </div>
                   </div>
@@ -765,7 +733,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                     className="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-300 hover:bg-rose-500/15 border border-rose-500/20 transition cursor-pointer flex items-center gap-1.5"
                   >
                     <Power className="w-3.5 h-3.5" />
-                    <span>{isVi ? 'Rời Phòng' : 'Leave Room'}</span>
+                    <span>{t.p2pLeaveRoomBtn}</span>
                   </button>
                 </div>
               </div>
@@ -774,7 +742,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
               <div className="flex flex-wrap items-center justify-between p-3.5 rounded-xl bg-black/50 border border-white/5 gap-3">
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
-                    {isVi ? 'Địa chỉ để vào game' : 'Address to join in Minecraft'}
+                    {t.p2pAddressLabel}
                   </div>
                   <div className="text-xs font-mono font-bold text-emerald-300">
                     127.0.0.1:{clientStatus.localPort}
@@ -796,9 +764,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                     ) : (
                       <Copy className="w-3.5 h-3.5" />
                     )}
-                    <span>
-                      {ticketCopied ? (isVi ? 'Đã Chép' : 'Copied') : isVi ? 'Sao Chép' : 'Copy'}
-                    </span>
+                    <span>{ticketCopied ? t.p2pAddressCopiedBtn : t.p2pCopyAddressBtn}</span>
                   </button>
 
                   <button
@@ -807,7 +773,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                     className="btn-primary px-4 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer active:scale-95 transition shadow-md shadow-[var(--accent-glow)]"
                   >
                     <Play className="w-3.5 h-3.5 fill-current" />
-                    <span>{isVi ? 'Vào Game Ngay' : 'Play Now'}</span>
+                    <span>{t.p2pPlayNowBtn}</span>
                   </button>
                 </div>
               </div>
@@ -818,7 +784,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   <div className="flex items-center gap-2">
                     <Users className="w-3.5 h-3.5 text-[var(--accent-color)]" />
                     <span className="text-xs font-bold text-white uppercase tracking-wider">
-                      {isVi ? 'Người chơi cùng phòng' : 'Players in Room'} (
+                      {t.p2pPlayersInRoomLabel} (
                       {clientStatus.members?.length || 1})
                     </span>
                   </div>
@@ -848,7 +814,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                             </span>
                             {member.isHost && (
                               <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-[var(--accent-color)]/20 text-[var(--accent-color)] border border-[var(--accent-color)]/30">
-                                {isVi ? 'Chủ phòng' : 'Host'}
+                                {t.p2pHostBadge}
                               </span>
                             )}
                           </div>
