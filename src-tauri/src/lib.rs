@@ -11,6 +11,7 @@ mod modpack_installer;
 mod mod_conflicts;
 pub mod models;
 mod remote_agent;
+pub mod remote_files;
 pub mod server_config;
 pub mod server_host;
 mod server_ping;
