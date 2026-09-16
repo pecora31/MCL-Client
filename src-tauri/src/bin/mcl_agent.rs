@@ -225,7 +225,9 @@ async fn prepare(State(state): State<Arc<AppState>>, Json(body): Json<PrepareReq
         loader: body.loader,
         game_version: body.game_version,
         loader_version: body.loader_version,
-        backup_retention_count: default_retention(),
+        // Re-preparing (e.g. a loader or version change) must not reset a retention the
+        // operator already configured.
+        backup_retention_count: read_spec(&state).map(|s| s.backup_retention_count).unwrap_or_else(default_retention),
     };
     let server_dir = state.server_dir();
 
@@ -369,21 +371,54 @@ async fn upload_mod(
     Ok(StatusCode::NO_CONTENT)
 }
 
-async fn create_backup_now(State(state): State<Arc<AppState>>) -> ApiResult<backup::BackupInfo> {
-    let server_dir = state.server_dir();
-    let backups_dir = state.backups_dir();
-    let info = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir))
-        .await
-        .map_err(|e| server_error(e.to_string()))?
-        .map_err(server_error)?;
+/// How many backups to keep. Never below 1: a retention of 0 would delete the backup that was
+/// just made.
+fn effective_retention(spec: Option<&ServerSpec>) -> usize {
+    spec.map(|s| s.backup_retention_count).unwrap_or_else(default_retention).max(1) as usize
+}
 
-    let retention = read_spec(&state).map(|s| s.backup_retention_count).unwrap_or_else(default_retention) as usize;
+/// Takes one backup and rotates old ones. Shared by the HTTP handler and the scheduler.
+///
+/// If the server is running, world saving is paused first (`save-off`, then `save-all flush`
+/// so everything in memory is on disk) and the zip is taken from a quiescent world, then
+/// `save-on` is always sent afterwards, whether the backup succeeded or not.
+async fn run_backup(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
+    let spec = read_spec(state);
+    let server_dir = state.server_dir();
+    let running = spec.as_ref().is_some_and(|s| {
+        server_host::get_status(&server_dir, &s.loader, &s.game_version, s.loader_version.as_deref()).state
+            == server_host::ServerState::Running
+    });
+
+    if running {
+        // Best effort: a server adopted after an agent restart has no stdin pipe, and a backup
+        // of a live world is still better than no backup at all.
+        let _ = server_host::send_command(&server_dir, "save-off");
+        let _ = server_host::send_command(&server_dir, "save-all flush");
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+
+    let backups_dir = state.backups_dir();
+    let result = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+
+    if running {
+        let _ = server_host::send_command(&state.server_dir(), "save-on");
+    }
+
+    let info = result?;
+    let retention = effective_retention(spec.as_ref());
     let backups_dir = state.backups_dir();
     tokio::task::spawn_blocking(move || backup::rotate_backups(&backups_dir, retention))
         .await
-        .map_err(|e| server_error(e.to_string()))?;
+        .map_err(|e| e.to_string())?;
+    Ok(info)
+}
 
-    Ok(Json(info))
+async fn create_backup_now(State(state): State<Arc<AppState>>) -> ApiResult<backup::BackupInfo> {
+    run_backup(&state).await.map(Json).map_err(server_error)
 }
 
 async fn list_backups_handler(State(state): State<Arc<AppState>>) -> ApiResult<Vec<backup::BackupInfo>> {
@@ -603,18 +638,38 @@ fn config_value(flag: &str, env_key: &str, default: &str) -> String {
 /// Backs up on a fixed 24h interval from whenever the agent started, independent of whether
 /// MCL desktop is even open — the whole point of an "emergency" backup on a VPS meant to run
 /// unattended. No cron parsing for v1: a fixed interval is enough, and much simpler.
+///
+/// An agent that restarts often (reboots, updates) would otherwise never reach its first 24h
+/// tick, so on startup a prepared server whose newest backup is over 24h old (or that has none)
+/// gets one backup shortly after start.
 async fn backup_scheduler(state: Arc<AppState>) {
     const INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+    const STARTUP_DELAY: Duration = Duration::from_secs(5 * 60);
+
+    if read_spec(&state).is_some() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let newest = backup::list_backups(&state.backups_dir()).first().map(|b| b.created_at);
+        let stale = newest.map_or(true, |created_at| now.saturating_sub(created_at) >= INTERVAL.as_secs());
+        if stale {
+            tokio::time::sleep(STARTUP_DELAY).await;
+            if read_spec(&state).is_some() {
+                if let Err(e) = run_backup(&state).await {
+                    eprintln!("Startup backup failed: {}", e);
+                }
+            }
+        }
+    }
+
     loop {
         tokio::time::sleep(INTERVAL).await;
-        let Some(spec) = read_spec(&state) else { continue };
-        let server_dir = state.server_dir();
-        let backups_dir = state.backups_dir();
-        let result = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir)).await;
-        if let Ok(Ok(_)) = result {
-            let backups_dir = state.backups_dir();
-            let retention = spec.backup_retention_count as usize;
-            let _ = tokio::task::spawn_blocking(move || backup::rotate_backups(&backups_dir, retention)).await;
+        if read_spec(&state).is_none() {
+            continue;
+        }
+        if let Err(e) = run_backup(&state).await {
+            eprintln!("Scheduled backup failed: {}", e);
         }
     }
 }
