@@ -25,6 +25,15 @@ pub mod p2p_tunnel;
 #[path = "p2p_tunnel_stub.rs"]
 pub mod p2p_tunnel;
 
+// The VM bootstrap wizard's SSH client (russh) is desktop-only — mcl-agent never SSHes
+// anywhere, so the agent binary builds with the `remote-setup` feature off and gets a
+// matching stub instead, same reasoning and same pattern as p2p_tunnel above.
+#[cfg(feature = "remote-setup")]
+pub mod vm_bootstrap;
+#[cfg(not(feature = "remote-setup"))]
+#[path = "vm_bootstrap_stub.rs"]
+pub mod vm_bootstrap;
+
 use models::{
     GameInstance, JavaInstallation, LocalMod, ServerPropertiesSummary, ServerStatus,
     StorageCleanupReport, StorageCleanupScanResult, SystemInfo,
