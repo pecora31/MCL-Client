@@ -337,6 +337,13 @@ export interface SystemStats {
   diskTotalMb: number;
 }
 
+export interface RemoteFileEntry {
+  name: string;
+  isDir: boolean;
+  sizeBytes: number;
+  modifiedAt: number;
+}
+
 export interface P2PMemberInfo {
   username: string;
   nodeId: string;
