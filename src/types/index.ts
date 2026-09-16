@@ -323,6 +323,32 @@ export interface HostedServerStatus {
   system?: SystemStats;
 }
 
+export interface BootstrapRequest {
+  host: string;
+  port: number;
+  username: string;
+  privateKeyPath: string;
+  agentPort: number;
+}
+
+export interface BootstrapOutcome {
+  url: string;
+  token: string;
+  certPem: string;
+}
+
+export interface BootstrapProgressEvent {
+  streamId: string;
+  line: string;
+}
+
+export interface BootstrapCredentialsEvent {
+  streamId: string;
+  url: string;
+  token: string;
+  certPem: string;
+}
+
 export interface BackupInfo {
   name: string;
   sizeBytes: number;
