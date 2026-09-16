@@ -8,7 +8,7 @@ use crate::server_config;
 use serde::Serialize;
 use std::fs::{self, File};
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Debug, Clone, Serialize)]
@@ -19,10 +19,25 @@ pub struct BackupInfo {
     pub created_at: u64,
 }
 
+/// `level-name` from `server.properties`, but only if it is exactly one plain path segment.
+/// The agent runs as root, so a value like `/root` or `../../etc` would otherwise make a backup
+/// read (and a restore write) outside `server_dir`; anything like that falls back to `world`.
+fn safe_level_name(server_dir: &Path) -> String {
+    let name = server_config::read_level_name(server_dir);
+    if name.contains('/') || name.contains('\\') {
+        return "world".to_string();
+    }
+    let mut components = Path::new(&name).components();
+    match (components.next(), components.next()) {
+        (Some(Component::Normal(_)), None) => name,
+        _ => "world".to_string(),
+    }
+}
+
 /// The files and folders, relative to `server_dir`, that make up one backup — irreplaceable
 /// player data only, never anything `/v1/prepare` can redownload or regenerate.
 pub fn backup_source_paths(server_dir: &Path) -> Vec<PathBuf> {
-    let level_name = server_config::read_level_name(server_dir);
+    let level_name = safe_level_name(server_dir);
     let mut paths = Vec::new();
     for suffix in ["", "_nether", "_the_end"] {
         let world_dir = server_dir.join(format!("{}{}", level_name, suffix));
@@ -84,12 +99,33 @@ fn add_dir_to_zip(
 /// current unix timestamp so `list_backups` can sort/parse without extra metadata. Creates
 /// `backups_dir` if it doesn't exist yet.
 pub fn create_backup(server_dir: &Path, backups_dir: &Path) -> Result<BackupInfo, String> {
-    fs::create_dir_all(backups_dir).map_err(|e| e.to_string())?;
     let created_at = SystemTime::now().duration_since(UNIX_EPOCH).map_err(|e| e.to_string())?.as_secs();
+    create_backup_at(server_dir, backups_dir, created_at)
+}
+
+/// `create_backup` with the timestamp supplied, so tests can force a name collision. The
+/// archive is written to `<ts>.zip.tmp` and only renamed to `<ts>.zip` once complete, so a
+/// failure never leaves a truncated backup that gets listed or counts toward retention.
+fn create_backup_at(server_dir: &Path, backups_dir: &Path, created_at: u64) -> Result<BackupInfo, String> {
+    fs::create_dir_all(backups_dir).map_err(|e| e.to_string())?;
     let name = format!("{}.zip", created_at);
     let path = backups_dir.join(&name);
+    if path.exists() {
+        return Err(format!("A backup named {} already exists; try again in a moment.", name));
+    }
+    let tmp_path = backups_dir.join(format!("{}.tmp", name));
 
-    let file = File::create(&path).map_err(|e| e.to_string())?;
+    let result = write_backup_archive(server_dir, &tmp_path).and_then(|_| fs::rename(&tmp_path, &path).map_err(|e| e.to_string()));
+    if let Err(e) = result {
+        let _ = fs::remove_file(&tmp_path);
+        return Err(e);
+    }
+    let size_bytes = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+    Ok(BackupInfo { name, size_bytes, created_at })
+}
+
+fn write_backup_archive(server_dir: &Path, out_path: &Path) -> Result<(), String> {
+    let file = File::create(out_path).map_err(|e| e.to_string())?;
     let mut writer = zip::ZipWriter::new(file);
     let options = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
@@ -103,11 +139,11 @@ pub fn create_backup(server_dir: &Path, backups_dir: &Path) -> Result<BackupInfo
     }
 
     writer.finish().map_err(|e| e.to_string())?;
-    let size_bytes = fs::metadata(&path).map_err(|e| e.to_string())?.len();
-    Ok(BackupInfo { name, size_bytes, created_at })
+    Ok(())
 }
 
-/// Lists `backups_dir`'s `.zip` files, newest first.
+/// Lists `backups_dir`'s `.zip` files, newest first. In-progress `<ts>.zip.tmp` files have
+/// extension `tmp`, so they are skipped.
 pub fn list_backups(backups_dir: &Path) -> Vec<BackupInfo> {
     let Ok(entries) = fs::read_dir(backups_dir) else { return Vec::new() };
     let mut backups: Vec<BackupInfo> = entries
@@ -136,20 +172,95 @@ pub fn rotate_backups(backups_dir: &Path, retention_count: usize) -> usize {
         .count()
 }
 
-/// Extracts `backup_name` back over `server_dir`, overwriting whatever's already there.
-/// `enclosed_name()` is the `zip` crate's own zip-slip defense — an entry whose path would
-/// resolve outside the extraction root comes back `None` and aborts the restore instead of
-/// being written somewhere unintended.
+/// Removes a file or a whole directory tree, treating "already gone" as success.
+fn remove_path(path: &Path) -> Result<(), String> {
+    match fs::symlink_metadata(path) {
+        Ok(meta) if meta.is_dir() => fs::remove_dir_all(path).map_err(|e| e.to_string()),
+        Ok(_) => fs::remove_file(path).map_err(|e| e.to_string()),
+        Err(_) => Ok(()),
+    }
+}
+
+fn pre_restore_path(server_dir: &Path, top_name: &str) -> PathBuf {
+    server_dir.join(format!("{}.pre-restore", top_name))
+}
+
+/// Replaces the world and player-list files in `server_dir` with `backup_name`'s contents.
+///
+/// All-or-nothing: every entry's path is validated before anything on disk changes
+/// (`enclosed_name()` is the `zip` crate's zip-slip defense), then each top-level name the
+/// archive contains is moved aside to `<name>.pre-restore` so the restored world never mixes
+/// with files newer than the backup. If extraction fails part way, the partial output is
+/// removed and the moved-aside copies are put back; on success they are deleted.
 pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) -> Result<(), String> {
     let backup_path = backups_dir.join(backup_name);
     let file = File::open(&backup_path).map_err(|e| format!("Could not open backup {}: {}", backup_name, e))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("Backup {} is not a valid archive: {}", backup_name, e))?;
 
+    // (a) Validate every entry and collect the top-level names this restore will replace.
+    let mut top_names: Vec<String> = Vec::new();
+    for i in 0..archive.len() {
+        let entry = archive.by_index(i).map_err(|e| e.to_string())?;
+        let unsafe_path = || format!("Backup {} contains an unsafe path.", backup_name);
+        let enclosed = entry.enclosed_name().ok_or_else(unsafe_path)?;
+        let top = match enclosed.components().next() {
+            Some(Component::Normal(part)) => part.to_str().ok_or_else(unsafe_path)?.to_string(),
+            _ => return Err(unsafe_path()),
+        };
+        if !top_names.contains(&top) {
+            top_names.push(top);
+        }
+    }
+
+    // (b) Move the current copies aside.
+    let mut moved_aside: Vec<String> = Vec::new();
+    let mut result: Result<(), String> = Ok(());
+    for top in &top_names {
+        let current = server_dir.join(top);
+        let aside = pre_restore_path(server_dir, top);
+        if let Err(e) = remove_path(&aside) {
+            result = Err(e);
+            break;
+        }
+        if fs::symlink_metadata(&current).is_ok() {
+            if let Err(e) = fs::rename(&current, &aside) {
+                result = Err(format!("Could not move {} aside before restoring: {}", top, e));
+                break;
+            }
+            moved_aside.push(top.clone());
+        }
+    }
+
+    // (c) Extract.
+    if result.is_ok() {
+        result = extract_archive(&mut archive, server_dir);
+    }
+
+    match result {
+        Ok(()) => {
+            // (d) Success: the moved-aside copies are no longer needed.
+            for top in &moved_aside {
+                let _ = remove_path(&pre_restore_path(server_dir, top));
+            }
+            Ok(())
+        }
+        Err(e) => {
+            // (d) Failure: drop partial output and put the original files back.
+            for top in &top_names {
+                let _ = remove_path(&server_dir.join(top));
+            }
+            for top in &moved_aside {
+                let _ = fs::rename(pre_restore_path(server_dir, top), server_dir.join(top));
+            }
+            Err(e)
+        }
+    }
+}
+
+fn extract_archive(archive: &mut zip::ZipArchive<File>, server_dir: &Path) -> Result<(), String> {
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|e| e.to_string())?;
-        let Some(enclosed) = entry.enclosed_name() else {
-            return Err(format!("Backup {} contains an unsafe path.", backup_name));
-        };
+        let enclosed = entry.enclosed_name().ok_or_else(|| "Backup contains an unsafe path.".to_string())?;
         let out_path = server_dir.join(enclosed);
         if entry.is_dir() {
             fs::create_dir_all(&out_path).map_err(|e| e.to_string())?;
@@ -221,11 +332,114 @@ mod tests {
 
         // Prove restore actually overwrites: mutate the source, then restore from the backup.
         fs::write(server_dir.join("world/level.dat"), "corrupted!!").unwrap();
+        // A file that did not exist when the backup was taken must not survive the restore.
+        fs::write(server_dir.join("world/newer_region.mca"), "created after backup").unwrap();
         restore_backup(&server_dir, &backups_dir, &info.name).unwrap();
         let restored = fs::read_to_string(server_dir.join("world/level.dat")).unwrap();
         assert_eq!(restored, "fake level data");
+        assert!(!server_dir.join("world/newer_region.mca").exists(), "restore must not leave a mixed-state world");
+        assert!(!server_dir.join("world.pre-restore").exists(), "pre-restore copies must be cleaned up on success");
+        assert!(!server_dir.join("server.properties.pre-restore").exists());
 
         let _ = fs::remove_dir_all(&server_dir);
+        let _ = fs::remove_dir_all(&backups_dir);
+    }
+
+    #[test]
+    fn an_unsafe_level_name_falls_back_to_world_and_never_escapes_server_dir() {
+        for (case, level_name) in [("abs", "/root"), ("dotdot", "../../etc"), ("nested", "a/b"), ("dot", ".")] {
+            let base = temp_test_dir(&format!("level-name-{}", case));
+            let server_dir = base.join("server");
+            fs::create_dir_all(server_dir.join("world")).unwrap();
+            fs::write(server_dir.join("server.properties"), format!("level-name={}\n", level_name)).unwrap();
+            // Something an escaping level-name could otherwise reach.
+            fs::create_dir_all(base.join("etc")).unwrap();
+
+            let sources = backup_source_paths(&server_dir);
+            for source in &sources {
+                assert!(source.starts_with(&server_dir), "{:?} escaped server_dir for level-name {}", source, level_name);
+            }
+            assert!(sources.contains(&server_dir.join("world")), "level-name {} must fall back to world", level_name);
+
+            let _ = fs::remove_dir_all(&base);
+        }
+    }
+
+    #[test]
+    fn a_corrupt_archive_leaves_the_current_world_untouched() {
+        let server_dir = temp_test_dir("corrupt-server");
+        let backups_dir = temp_test_dir("corrupt-backups");
+        fs::write(server_dir.join("server.properties"), "level-name=world\n").unwrap();
+        fs::create_dir_all(server_dir.join("world")).unwrap();
+        fs::write(server_dir.join("world/level.dat"), "current world").unwrap();
+        fs::write(backups_dir.join("1000.zip"), "this is not a zip archive").unwrap();
+
+        assert!(restore_backup(&server_dir, &backups_dir, "1000.zip").is_err());
+        assert_eq!(fs::read_to_string(server_dir.join("world/level.dat")).unwrap(), "current world");
+        assert_eq!(fs::read_to_string(server_dir.join("server.properties")).unwrap(), "level-name=world\n");
+        assert!(!server_dir.join("world.pre-restore").exists());
+
+        // A structurally valid archive whose second entry fails its CRC check part way through
+        // extraction: the first entry has already been written by then, so this exercises the
+        // rollback path rather than the up-front open failure above.
+        {
+            let file = File::create(backups_dir.join("2000.zip")).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let stored = zip::write::SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
+            writer.start_file("server.properties", stored).unwrap();
+            writer.write_all(b"level-name=from_backup\n").unwrap();
+            writer.start_file("world/level.dat", stored).unwrap();
+            writer.write_all(b"BACKUP_PAYLOAD_BACKUP_PAYLOAD").unwrap();
+            writer.finish().unwrap();
+        }
+        let mut bytes = fs::read(backups_dir.join("2000.zip")).unwrap();
+        let needle = b"BACKUP_PAYLOAD_BACKUP_PAYLOAD";
+        let at = bytes.windows(needle.len()).position(|w| w == needle).unwrap();
+        bytes[at] = b'X';
+        fs::write(backups_dir.join("2000.zip"), bytes).unwrap();
+        fs::write(server_dir.join("world/extra.dat"), "current extra").unwrap();
+
+        assert!(restore_backup(&server_dir, &backups_dir, "2000.zip").is_err());
+        assert_eq!(fs::read_to_string(server_dir.join("world/level.dat")).unwrap(), "current world");
+        assert_eq!(fs::read_to_string(server_dir.join("world/extra.dat")).unwrap(), "current extra");
+        assert_eq!(fs::read_to_string(server_dir.join("server.properties")).unwrap(), "level-name=world\n");
+        assert!(!server_dir.join("world.pre-restore").exists());
+        assert!(!server_dir.join("server.properties.pre-restore").exists());
+
+        let _ = fs::remove_dir_all(&server_dir);
+        let _ = fs::remove_dir_all(&backups_dir);
+    }
+
+    #[test]
+    fn a_same_second_backup_collision_errors_instead_of_overwriting() {
+        let server_dir = temp_test_dir("collision-server");
+        let backups_dir = temp_test_dir("collision-backups");
+        fs::create_dir_all(server_dir.join("world")).unwrap();
+        fs::write(server_dir.join("world/level.dat"), "data").unwrap();
+        fs::write(backups_dir.join("5000.zip"), "existing backup").unwrap();
+
+        assert!(create_backup_at(&server_dir, &backups_dir, 5000).is_err());
+        assert_eq!(fs::read_to_string(backups_dir.join("5000.zip")).unwrap(), "existing backup");
+        assert!(!backups_dir.join("5000.zip.tmp").exists(), "no temp file may be left behind");
+
+        let info = create_backup_at(&server_dir, &backups_dir, 6000).unwrap();
+        assert_eq!(info.name, "6000.zip");
+        assert!(backups_dir.join("6000.zip").is_file());
+        assert!(!backups_dir.join("6000.zip.tmp").exists(), "the temp file must be renamed into place");
+
+        let _ = fs::remove_dir_all(&server_dir);
+        let _ = fs::remove_dir_all(&backups_dir);
+    }
+
+    #[test]
+    fn listing_ignores_in_progress_temp_files() {
+        let backups_dir = temp_test_dir("list-tmp");
+        fs::write(backups_dir.join("1000.zip"), "done").unwrap();
+        fs::write(backups_dir.join("2000.zip.tmp"), "half written").unwrap();
+
+        let names: Vec<String> = list_backups(&backups_dir).into_iter().map(|b| b.name).collect();
+        assert_eq!(names, vec!["1000.zip".to_string()]);
+
         let _ = fs::remove_dir_all(&backups_dir);
     }
 
