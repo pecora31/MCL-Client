@@ -39,6 +39,10 @@ struct AppState {
     data_dir: PathBuf,
     token: String,
     log_tx: broadcast::Sender<String>,
+    /// Kept across calls (rather than built fresh per request) so `refresh_cpu_usage` has a
+    /// prior sample to diff against — `sysinfo` reports 0% CPU usage on a brand-new `System`'s
+    /// very first refresh, since there is nothing yet to compare it to.
+    system: Arc<std::sync::Mutex<sysinfo::System>>,
 }
 
 impl AppState {
@@ -74,8 +78,8 @@ struct SystemStats {
 /// mounted disk's mount point is exactly `/` — the only one that matters on the single-purpose
 /// Linux VPS this agent runs on — falling back to the first disk `sysinfo` reports if none
 /// matches (e.g. an unusual partition layout), so this never silently reports all zeroes.
-fn collect_system_stats() -> SystemStats {
-    let mut sys = sysinfo::System::new();
+fn collect_system_stats(system: &Arc<std::sync::Mutex<sysinfo::System>>) -> SystemStats {
+    let mut sys = system.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     sys.refresh_cpu_usage();
     sys.refresh_memory();
     let cpu_percent = if sys.cpus().is_empty() {
@@ -181,7 +185,7 @@ struct AgentStatusResponse {
 }
 
 async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<AgentStatusResponse> {
-    let system = collect_system_stats();
+    let system = collect_system_stats(&state.system);
     let Some(spec) = read_spec(&state) else {
         return Ok(Json(AgentStatusResponse {
             status: HostedServerStatus {
@@ -417,9 +421,13 @@ struct RestoreRequest {
 async fn restore(State(state): State<Arc<AppState>>, Json(body): Json<RestoreRequest>) -> Result<StatusCode, ApiError> {
     safe_backup_name(&body.name)?;
     // Stop first if running — restoring over a live world's files while the server process
-    // still has them open is how you end up with a corrupted world, not a restored one.
+    // still has them open is how you end up with a corrupted world, not a restored one. If it
+    // fails to stop, refuse to proceed rather than overwrite files a live process still holds.
     let dir = state.server_dir();
-    let _ = tokio::task::spawn_blocking(move || server_host::stop_server(&dir)).await;
+    tokio::task::spawn_blocking(move || server_host::stop_server(&dir))
+        .await
+        .map_err(|e| server_error(format!("Could not stop the server before restoring: {}", e)))?
+        .map_err(|e| server_error(format!("Could not stop the server before restoring: {}", e)))?;
 
     let server_dir = state.server_dir();
     let backups_dir = state.backups_dir();
@@ -538,7 +546,8 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         load_or_create_cert(&data_dir).expect("could not read or create the agent's TLS certificate");
     let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
-    let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx });
+    let system = Arc::new(std::sync::Mutex::new(sysinfo::System::new()));
+    let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx, system });
     tokio::spawn(backup_scheduler(state.clone()));
 
     let protected = Router::new()
