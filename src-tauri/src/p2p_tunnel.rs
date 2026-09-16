@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         Arc, Mutex,
     },
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -97,6 +97,11 @@ struct HostPeerSession {
     pub joined_at: u64,
     pub ping_ms: Arc<Mutex<Option<f64>>>,
     pub connection: Connection,
+    /// Tags which `handle_incoming_peer` task registered this entry, so that task's own cleanup
+    /// only ever removes it if it is still the current occupant of `peer_node_id` — otherwise a
+    /// reconnect's new session (which reuses the same self-reported node ID) could get deleted
+    /// out from under it by the old session's cleanup running after the new one registered.
+    pub session_id: u64,
 }
 
 struct HostState {
@@ -145,6 +150,8 @@ static CLIENT_STATE: Mutex<Option<ClientState>> = Mutex::new(None);
 /// `CLIENT_STATE` has already been cleared back to "not connected" and has nowhere else to
 /// carry the reason why.
 static LAST_CLIENT_ERROR: Mutex<Option<String>> = Mutex::new(None);
+/// Hands out the `session_id` each `handle_incoming_peer` task tags its `HostPeerSession` with.
+static NEXT_SESSION_ID: AtomicU64 = AtomicU64::new(0);
 
 fn now_secs() -> u64 {
     SystemTime::now()
@@ -463,13 +470,14 @@ async fn handle_incoming_peer(
 
     // Register member
     peers_counter.fetch_add(1, Ordering::Relaxed);
+    let session_id = NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed);
     let ping_val = Arc::new(Mutex::new(Some(connection.rtt().as_secs_f64() * 1000.0)));
     let ping_clone = Arc::clone(&ping_val);
     let conn_for_ping = connection.clone();
 
     {
         let mut m = members_map.lock().unwrap_or_else(|e| e.into_inner());
-        m.insert(
+        let previous = m.insert(
             peer_node_id.clone(),
             HostPeerSession {
                 username: peer_username.clone(),
@@ -477,8 +485,19 @@ async fn handle_incoming_peer(
                 joined_at: now_secs(),
                 ping_ms: ping_val,
                 connection: connection.clone(),
+                session_id,
             },
         );
+        // Same self-reported node ID rejoining while its old session is still registered — most
+        // likely a reconnect racing ahead of the host noticing the old connection dropped, or a
+        // second device claiming the same identity. Either way close the old connection now
+        // instead of waiting for its own idle timeout, so it can't linger as a duplicate and its
+        // own cleanup can't remove the entry this one just registered (see `session_id` above).
+        if let Some(previous) = previous {
+            let _ = previous
+                .connection
+                .close(11u32.into(), b"Replaced by a new connection from the same peer");
+        }
     }
 
     // Ping tracking task for this peer
@@ -523,7 +542,11 @@ async fn handle_incoming_peer(
     peers_counter.fetch_sub(1, Ordering::Relaxed);
     {
         let mut m = members_map.lock().unwrap_or_else(|e| e.into_inner());
-        m.remove(&peer_node_id);
+        // Only remove the entry if it's still this task's own session — a reconnect may already
+        // have registered a newer one under the same key, and that one must survive this cleanup.
+        if m.get(&peer_node_id).map(|s| s.session_id) == Some(session_id) {
+            m.remove(&peer_node_id);
+        }
     }
 }
 
