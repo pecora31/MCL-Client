@@ -472,6 +472,16 @@ struct RestoreRequest {
 
 async fn restore(State(state): State<Arc<AppState>>, Json(body): Json<RestoreRequest>) -> Result<StatusCode, ApiError> {
     safe_backup_name(&body.name)?;
+    // Same pattern as `run_backup`: the work runs in a spawned task so a dropped request can't
+    // release `backup_lock` while the stop or the restore is still running on a blocking thread.
+    tokio::spawn(async move { restore_serialized(&state, body).await })
+        .await
+        .map_err(|e| server_error(format!("Restore task failed: {}", e)))?
+}
+
+/// Holds `backup_lock` for the whole stop+restore span, so a restore never overlaps a backup.
+async fn restore_serialized(state: &Arc<AppState>, body: RestoreRequest) -> Result<StatusCode, ApiError> {
+    let _guard = state.backup_lock.lock().await;
     // Stop first if running — restoring over a live world's files while the server process
     // still has them open is how you end up with a corrupted world, not a restored one. If it
     // fails to stop, refuse to proceed rather than overwrite files a live process still holds.
