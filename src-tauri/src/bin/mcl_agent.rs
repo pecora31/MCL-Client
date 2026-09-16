@@ -14,9 +14,10 @@
 
 use app_lib::backup;
 use app_lib::models::ServerPropertiesSummary;
+use app_lib::remote_files;
 use app_lib::server_config;
 use app_lib::server_host::{self, HostedServerStatus};
-use axum::extract::{Path as AxumPath, Request, State};
+use axum::extract::{Path as AxumPath, Query, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, Sse};
@@ -439,6 +440,77 @@ async fn restore(State(state): State<Arc<AppState>>, Json(body): Json<RestoreReq
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+struct FilePathQuery {
+    #[serde(default)]
+    path: String,
+}
+
+async fn list_files(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> ApiResult<Vec<remote_files::RemoteFileEntry>> {
+    let dir = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    if !dir.is_dir() {
+        return Err(bad_request("Not a folder."));
+    }
+    remote_files::list_dir(&dir).map(Json).map_err(server_error)
+}
+
+#[derive(Deserialize)]
+struct MkdirRequest {
+    path: String,
+}
+
+async fn mkdir(State(state): State<Arc<AppState>>, Json(body): Json<MkdirRequest>) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_for_write(&state.server_dir(), &body.path).map_err(bad_request)?;
+    std::fs::create_dir_all(&target).map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct RenameRequest {
+    from: String,
+    to: String,
+}
+
+async fn rename_file(State(state): State<Arc<AppState>>, Json(body): Json<RenameRequest>) -> Result<StatusCode, ApiError> {
+    let from = remote_files::resolve_existing(&state.server_dir(), &body.from).map_err(bad_request)?;
+    let to = remote_files::resolve_for_write(&state.server_dir(), &body.to).map_err(bad_request)?;
+    std::fs::rename(&from, &to).map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_file(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    let canonical_root = std::fs::canonicalize(state.server_dir()).map_err(|e| server_error(e.to_string()))?;
+    if target == canonical_root {
+        return Err(bad_request("Cannot delete the server's root folder."));
+    }
+    if target.is_dir() {
+        std::fs::remove_dir_all(&target).map_err(|e| server_error(e.to_string()))?;
+    } else {
+        std::fs::remove_file(&target).map_err(|e| server_error(e.to_string()))?;
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn read_file_content(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> Result<Response, ApiError> {
+    let target = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    if !target.is_file() {
+        return Err(bad_request("Not a file."));
+    }
+    let bytes = tokio::fs::read(&target).await.map_err(|e| server_error(e.to_string()))?;
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
+}
+
+async fn write_file_content(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<FilePathQuery>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_for_write(&state.server_dir(), &q.path).map_err(bad_request)?;
+    tokio::fs::write(&target, &body).await.map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.log_tx.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
@@ -562,6 +634,10 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .route("/v1/backups", get(list_backups_handler).post(create_backup_now))
         .route("/v1/backups/:name", get(download_backup).delete(delete_backup))
         .route("/v1/restore", post(restore))
+        .route("/v1/files", get(list_files).delete(delete_file))
+        .route("/v1/files/mkdir", post(mkdir))
+        .route("/v1/files/rename", post(rename_file))
+        .route("/v1/files/content", get(read_file_content).put(write_file_content))
         .route("/v1/logs", get(logs))
         .route("/v1/health", get(health))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
