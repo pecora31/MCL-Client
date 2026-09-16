@@ -1035,6 +1035,7 @@ git commit -m "feat(desktop): add BackupInfo/SystemStats types and remoteAgent b
 
 **Files:**
 - Modify: `src/components/server/HostServerView.tsx`
+- Modify: `src/locales/i18n.ts`
 
 **Interfaces:**
 - Consumes: `remoteAgent.{listBackups,backupNow,downloadBackup,deleteBackup,restoreBackup}`
@@ -1115,7 +1116,8 @@ Call it once whenever `selectedHost` changes — add to the existing effect that
 
   const handleDeleteBackup = async (name: string) => {
     if (!selectedHost) return;
-    if (!window.confirm(t.hostServerDeleteBackupConfirm || `Delete backup "${name}"? This cannot be undone.`)) return;
+    const confirmMsg = (t.hostServerDeleteBackupConfirm || 'Delete "{name}"? This cannot be undone.').replace('{name}', name);
+    if (!window.confirm(confirmMsg)) return;
     try {
       await remoteAgent.deleteBackup(selectedHost, name);
       await refreshBackups();
@@ -1126,13 +1128,11 @@ Call it once whenever `selectedHost` changes — add to the existing effect that
 
   const handleRestoreBackup = async (name: string) => {
     if (!selectedHost) return;
-    if (
-      !window.confirm(
-        t.hostServerRestoreBackupConfirm ||
-          `Restore "${name}"? This overwrites the current world and stops the server if it's running.`
-      )
-    )
-      return;
+    const confirmMsg = (
+      t.hostServerRestoreBackupConfirm ||
+      "Restore \"{name}\"? This overwrites the current world and stops the server if it's running."
+    ).replace('{name}', name);
+    if (!window.confirm(confirmMsg)) return;
     setRestoringName(name);
     try {
       await remoteAgent.restoreBackup(selectedHost, name);
@@ -1251,12 +1251,57 @@ Somewhere in the existing status card that already shows `status.state` for the 
               )}
 ```
 
-- [ ] **Step 5: Verify it builds and type-checks**
+- [ ] **Step 5: Add the new i18n keys**
+
+Every `t.hostServerXxx` reference above must exist as a key in `translations.en` in
+`src/locales/i18n.ts` — the `t` object is typed as `typeof translations['en']`, so a key that
+isn't there at all is a TypeScript compile error, not just a missing translation (a key present
+in `en` but absent from another language falls back to the `|| '...'` default at runtime
+instead, which is fine and matches this file's existing pattern for partial translation
+coverage). Add these nine keys to both the `en` and `vi` blocks of
+`src/locales/i18n.ts`, near the other `hostServer*` keys (exact position doesn't matter, this
+file isn't strictly alphabetical — see e.g. how the `p2p*` keys were grouped in an earlier
+pass):
+
+English (`en` block):
+
+```typescript
+    hostServerBackupsTitle: 'Backups',
+    hostServerBackupNow: 'Backup now',
+    hostServerBackingUp: 'Backing up...',
+    hostServerNoBackupsYet: 'No backups yet.',
+    hostServerDownloadBackup: 'Download',
+    hostServerRestoreBackup: 'Restore',
+    hostServerDeleteBackup: 'Delete',
+    hostServerDeleteBackupConfirm: 'Delete "{name}"? This cannot be undone.',
+    hostServerRestoreBackupConfirm: "Restore \"{name}\"? This overwrites the current world and stops the server if it's running.",
+```
+
+Vietnamese (`vi` block):
+
+```typescript
+    hostServerBackupsTitle: 'Sao lưu',
+    hostServerBackupNow: 'Sao lưu ngay',
+    hostServerBackingUp: 'Đang sao lưu...',
+    hostServerNoBackupsYet: 'Chưa có bản sao lưu nào.',
+    hostServerDownloadBackup: 'Tải xuống',
+    hostServerRestoreBackup: 'Khôi phục',
+    hostServerDeleteBackup: 'Xoá',
+    hostServerDeleteBackupConfirm: 'Xoá bản sao lưu "{name}"? Không thể hoàn tác.',
+    hostServerRestoreBackupConfirm: 'Khôi phục bản sao lưu "{name}"? Thao tác này sẽ ghi đè thế giới hiện tại và dừng server nếu đang chạy.',
+```
+
+These two keys carry a `{name}` placeholder — `handleDeleteBackup`/`handleRestoreBackup` in
+Step 2 above already call `.replace('{name}', name)` on them, matching this codebase's
+established placeholder convention (see `src/components/instances/ShareProfileModal.tsx:169`
+for the same pattern elsewhere).
+
+- [ ] **Step 6: Verify it builds and type-checks**
 
 Run: `npx tsc -b && npm run build`
 Expected: no errors.
 
-- [ ] **Step 6: Manual browser-preview check**
+- [ ] **Step 7: Manual browser-preview check**
 
 Start the dev server (`preview_start` with the `mcl-dev` launch config, per this project's
 established workflow), navigate to Host Server, select a remote host if one is configured, and
@@ -1264,10 +1309,10 @@ confirm the Backups section and resource strip render without console errors. A 
 round-trip against a live agent isn't reachable from browser preview (no Tauri backend there);
 that's covered by Task 9's manual pass against the real VM.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/components/server/HostServerView.tsx
+git add src/components/server/HostServerView.tsx src/locales/i18n.ts
 git commit -m "feat(desktop): add Backups section and resource strip to Host Server view"
 ```
 
