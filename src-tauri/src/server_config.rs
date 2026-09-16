@@ -19,6 +19,7 @@ fn defaults() -> ServerPropertiesSummary {
         difficulty: "easy".to_string(),
         max_players: 20,
         motd: "A Minecraft Server".to_string(),
+        server_port: 25565,
     }
 }
 
@@ -47,6 +48,11 @@ pub fn read_server_properties(dir: &str) -> Result<ServerPropertiesSummary, Stri
     if let Some(v) = map.get("motd") {
         summary.motd = v.clone();
     }
+    if let Some(v) = map.get("server-port") {
+        if let Ok(n) = v.parse() {
+            summary.server_port = n;
+        }
+    }
     Ok(summary)
 }
 
@@ -62,6 +68,7 @@ pub fn write_server_properties(dir: &str, summary: &ServerPropertiesSummary) -> 
     updates.insert("difficulty".to_string(), summary.difficulty.clone());
     updates.insert("max-players".to_string(), summary.max_players.to_string());
     updates.insert("motd".to_string(), summary.motd.clone());
+    updates.insert("server-port".to_string(), summary.server_port.to_string());
 
     fs::write(&path, apply_updates(&raw, &updates)).map_err(|e| e.to_string())
 }

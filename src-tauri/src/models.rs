@@ -144,5 +144,7 @@ pub struct ServerPropertiesSummary {
     pub difficulty: String,
     pub max_players: u32,
     pub motd: String,
+    /// What players actually connect to, and what P2P Direct Connect tunnels through.
+    pub server_port: u16,
 }
 

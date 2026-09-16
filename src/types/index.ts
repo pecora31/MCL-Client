@@ -306,6 +306,8 @@ export interface ServerPropertiesSummary {
   difficulty: 'peaceful' | 'easy' | 'normal' | 'hard';
   maxPlayers: number;
   motd: string;
+  /** What players actually connect to, and what P2P Direct Connect tunnels through. */
+  serverPort: number;
 }
 
 /** "starting" covers everything from process launch until the world finishes loading;

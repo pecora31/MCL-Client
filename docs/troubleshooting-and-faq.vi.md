@@ -22,7 +22,7 @@ Vanilla, Fabric, Quilt, Forge và NeoForge, cả khi [host tại chỗ](hosting-
 
 ## MCL Agent không khởi động được, báo lỗi về crypto provider
 
-Nghĩa là bản build đang thiếu phần TLS backend. Build lại bằng `cargo build --release --bin mcl-agent --features agent`, feature `agent` sẽ kéo theo mọi thứ mà phần chứng chỉ và TLS cần.
+Nghĩa là bản build đang thiếu phần TLS backend. Build lại bằng `cargo build --release --bin mcl-agent --no-default-features --features agent`, feature `agent` sẽ kéo theo mọi thứ mà phần chứng chỉ và TLS cần.
 
 ## Tôi làm mất chứng chỉ hoặc token của một host từ xa
 

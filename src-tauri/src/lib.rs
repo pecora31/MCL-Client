@@ -13,6 +13,14 @@ mod remote_agent;
 pub mod server_config;
 pub mod server_host;
 mod server_ping;
+
+// Peer-to-peer rooms pull in iroh and its ~190 transitive crates, which only the desktop app
+// ever uses — the agent binary builds with the feature off and gets a matching stub instead,
+// so lib.rs below is written against one API either way.
+#[cfg(feature = "p2p")]
+pub mod p2p_tunnel;
+#[cfg(not(feature = "p2p"))]
+#[path = "p2p_tunnel_stub.rs"]
 pub mod p2p_tunnel;
 
 use models::{

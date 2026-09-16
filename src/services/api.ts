@@ -1083,6 +1083,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         difficulty: 'easy',
         maxPlayers: 20,
         motd: 'A Minecraft Server',
+        serverPort: 25565,
       } as unknown as T;
 
     case 'write_server_properties':
@@ -1123,6 +1124,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
         difficulty: 'easy',
         maxPlayers: 20,
         motd: 'A Minecraft Server',
+        serverPort: 25565,
       } as unknown as T;
 
     case 'remote_agent_sync_mods':

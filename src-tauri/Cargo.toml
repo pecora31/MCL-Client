@@ -42,7 +42,7 @@ discord-rich-presence = "1.1.0"
 tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
 toml = "1.0.7"
-iroh = "0.33"
+iroh = { version = "0.33", optional = true }
 axum = { version = "0.7", optional = true }
 axum-server = { version = "0.7", optional = true, features = ["tls-rustls"] }
 rcgen = { version = "0.13", optional = true }
@@ -66,6 +66,12 @@ rcgen = "0.13"
 rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] }
 
 [features]
+# On for every desktop build; the agent turns it off (--no-default-features) because it never
+# hosts peer-to-peer rooms and iroh alone accounts for roughly 190 transitive crates in the
+# one binary that actually runs exposed on a VPS.
+default = ["p2p"]
+p2p = ["dep:iroh"]
+
 # The agent binary is a separate, opt-in build: the desktop app never links axum, and a
 # plain `cargo build`/`cargo tauri build` for the launcher does not need it resolved.
 agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:rand", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]

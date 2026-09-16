@@ -1,5 +1,18 @@
 # MCL Cloudflare Backend Architecture (Scenario B: D1 + R2)
 
+> **TRẠNG THÁI: ĐỀ XUẤT, CHƯA ĐƯỢC DUYỆT VÀ CHƯA TRIỂN KHAI.**
+>
+> Không có dòng code nào trong launcher hay agent đang dùng schema này. Đây mới chỉ là bản
+> thiết kế trên giấy.
+>
+> Cần cân nhắc trước khi quyết định làm: MCL hiện quảng cáo rõ trong
+> [README](../../README.md) và [PRIVACY.md](../../PRIVACY.md) là **không có tài khoản, không
+> thu thập dữ liệu**. Schema dưới đây thêm bảng `users` chứa email và hash mật khẩu, tức là
+> đảo ngược định vị đó và kéo theo nghĩa vụ xử lý dữ liệu cá nhân (lưu trữ, xoá theo yêu cầu,
+> rò rỉ dữ liệu). Nếu triển khai, PRIVACY.md và README phải được viết lại cho khớp.
+>
+> Chủ dự án quyết định có đi hướng này hay không.
+
 Hướng dẫn thiết lập và tài liệu kỹ thuật cho hệ thống tài khoản định danh, đồng bộ skin và danh bạ phòng P2P của **MCL Client** sử dụng Cloudflare Serverless stack:
 - **Cloudflare D1**: Cơ sở dữ liệu SQLite phân tán tại Edge (quản lý người dùng, mật khẩu đã mã hóa, quan hệ thiết bị, phiên đăng nhập).
 - **Cloudflare R2**: Lưu trữ Object Storage tương thích S3 (lưu trữ file PNG Skin, không mất phí băng thông tải về - $0 Egress Fees).

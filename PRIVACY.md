@@ -30,8 +30,27 @@ Mojang or Microsoft.
 | Google Fonts | Only when the language is Chinese, Japanese or Korean | Nothing but the font request |
 | Minecraft servers you add | Showing their status in the server list | A standard server ping, the same one the game sends |
 | Discord (the app on your computer, not the internet) | Only with "Discord status" turned on | The game and version you are playing |
+| iroh relay servers (run by [n0](https://n0.computer)) | Only while a P2P Direct Connect room is open or joined | See below |
+| The other players in a P2P room | Only while a P2P Direct Connect room is open or joined | See below |
+| Minotar (`minotar.net`) | Showing player heads in a P2P room's player list | The player names in that room |
 
 Like any website, each of these can see your IP address when the launcher connects to it.
+
+## P2P Direct Connect
+
+This is the only feature that connects your computer straight to another player's, so it is
+also the only one where someone other than a service operator can see your IP address. Nothing
+here runs unless you open a room or join one, and closing it stops every connection it made.
+
+| What | Detail |
+|---|---|
+| Who sees your IP address | Everyone in the room, whenever the connection goes direct. This is how playing without port forwarding or a VPN works at all, and it is the same exposure Radmin VPN or Hamachi give you |
+| Relay servers | iroh's default public relays, operated by n0, help two computers find each other. If a direct connection cannot be made, your game traffic passes through them instead of going direct |
+| The room password | Sent to the room's host to be checked, inside the encrypted connection. The host sees it as you typed it, so do not reuse a password that matters elsewhere |
+| What is stored | Nothing, anywhere. Rooms exist only while the host keeps them open |
+
+MCL has no server of its own in this path: the room ticket you share is how others reach you,
+so treat it like an address, not a secret.
 
 ## The MCL skin service
 

@@ -1,6 +1,11 @@
 -- ==============================================================================
 -- MCL Minecraft Launcher - Cloudflare D1 Database Schema
 -- Hybrid Account System (Scenario B: D1 Database + R2 Object Storage)
+--
+-- STATUS: UNAPPROVED PROPOSAL, NOT DEPLOYED, NOT REFERENCED BY ANY CODE.
+-- Adding accounts with emails and password hashes reverses the "no accounts, no
+-- analytics" promise in README.md and PRIVACY.md. See README.md in this folder
+-- before running any of this against a real Cloudflare account.
 -- ==============================================================================
 
 -- 1. Users Table (Core Identity & Password Authentication)

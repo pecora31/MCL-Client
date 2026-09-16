@@ -41,8 +41,8 @@ Tài liệu này ghi lại chi tiết quá trình bàn giao từ **Claude (Sessi
 - **Mục tiêu**: Giải quyết vấn đề lớn nhất được nêu trong `backend-review.md`: hàm launch ~1200 dòng gộp chung I/O và quyết định, không thể viết unit test cho các lỗi như classpath trùng lặp hay tham số JVM.
 - **Tập tin tác động**: [src-tauri/src/minecraft_core/launcher.rs](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/minecraft_core/launcher.rs).
 - **Chi tiết giải pháp**:
-  - Tách hàm thuần `build_game_args(instance, version_details, username, instance_dir, common_dir, extra_game_args) -> Vec<String>` độc lập hoàn toàn với việc spawn tiến trình.
-  - Tách hàm thuần `build_jvm_args(min_ram, max_ram, custom_args, game_client_jar, classpath_entries, extra_jvm_args) -> Vec<String>`.
+  - Tách hàm thuần `build_minecraft_args(instance, username, asset_index_id, instance_dir, common_dir, extra_game_args) -> Vec<String>` độc lập hoàn toàn với việc spawn tiến trình.
+  - Tách hàm thuần `build_jvm_args(min_ram, max_ram, custom_jvm_args, extra_jvm_args, natives_dir, instance_dir, classpath_str) -> Vec<String>`.
   - Viết bộ unit test mới bao phủ:
     1. Kiểm tra tham số Game Args cơ bản (username, gameDir, assetIndex, versionType).
     2. Kiểm tra cờ Fullscreen và kích thước cửa sổ (`--width`, `--height`).
@@ -54,7 +54,7 @@ Tài liệu này ghi lại chi tiết quá trình bàn giao từ **Claude (Sessi
 ## 3. Hướng Dẫn Cho Phiên Tiếp Quản Kế Tiếp (Claude)
 1. **Kiến trúc Host Server**: Module `server_host.rs` vẫn giữ nguyên interface nhận giá trị thô (`loader`, `game_version`, `server_dir`), không phụ thuộc vào `GameInstance`.
 2. **Log File**: File log của ứng dụng desktop hiện được lưu tại `C:\Users\<User>\AppData\Roaming\<AppIdentifier>\logs\app.log` (Windows) hoặc tương đương trên Linux/macOS.
-3. **Launch Engine**: Các hàm xây dựng tham số trong `launcher.rs` đã có unit test bảo vệ tại phần cuối file `#[cfg(test)] mod game_args_tests`. Chạy `cargo test` để xác minh khi thay đổi flag.
+3. **Launch Engine**: Các hàm xây dựng tham số trong `launcher.rs` đã có unit test bảo vệ tại phần cuối file `#[cfg(test)] mod args_builder_tests`. Chạy `cargo test` để xác minh khi thay đổi flag.
 4. **Deploy Cloudflare D1 & R2**: Toàn bộ file schema D1 (`tools/worker-schemas/d1-schema.sql`) và tài liệu kiến trúc (`tools/worker-schemas/README.md`) đã sẵn sàng. Khi người dùng muốn kích hoạt trên Cloudflare thật, Claude có thể hướng dẫn người dùng chạy `npx wrangler login` hoặc tạo D1 `mcl-auth-db` & R2 bucket `mcl-skins` trực tiếp trên web Dashboard.
 5. **Multi-binary Cargo Run**: Đã cấu hình `default-run = "mcl-client"` và `[[bin]]` trong `Cargo.toml` để lệnh `npx tauri dev` luôn chạy binary launcher mà không bị xung đột với `mcl-agent`.
 
@@ -70,7 +70,8 @@ Tài liệu này ghi lại chi tiết quá trình bàn giao từ **Claude (Sessi
 - **Cơ chế**: Chủ phòng có thể đặt mật khẩu với bất kỳ ký tự nào trên bàn phím chuẩn (chữ, số, ký tự đặc biệt, khoảng trắng) hoặc để trống cho phòng mở.
 - **Bảo mật Handshake 2 chiều**:
   - Khi client kết nối tới host qua NodeTicket iroh, kết nối QUIC stream #0 đầu tiên được dùng riêng cho giao thức **Handshake** (`HandshakeRequest` / `HandshakeResponse`).
-  - Host kiểm tra băm mật khẩu (SHA-256 HMAC), kiểm tra trạng thái phòng bị khóa (`is_locked`) và kiểm tra số lượng người chơi tối đa (`max_players`).
+  - Host so sánh mật khẩu bằng hàm `passwords_match` (so sánh constant-time, không băm), kiểm tra trạng thái phòng bị khóa (`is_locked`) và kiểm tra số lượng người chơi tối đa (12 peer).
+  - Mật khẩu được gửi nguyên văn tới host bên trong kết nối QUIC đã mã hoá, nên host nhìn thấy đúng chuỗi người chơi gõ. Đừng dùng lại mật khẩu quan trọng ở nơi khác.
   - Nếu handshake thất bại (sai mật khẩu, phòng khóa), stream bị đóng lập tức. Client hoàn toàn không thể chạm tới socket TCP của máy chủ Minecraft.
 
 ### 4.3. Giao Diện Trung Tâm Phòng (Radmin / Hamachi Hub UI)
@@ -92,7 +93,7 @@ Tài liệu này ghi lại chi tiết quá trình bàn giao từ **Claude (Sessi
      - Nút **"Sao chép"** và nút **"Vào Game Ngay"** (tự động khởi động profile và kết nối thẳng vào thế giới bạn bè).
 
 ### 4.4. Các Tập Tin Backend & Xử Lý Sự Cố Dependency
-- [src-tauri/Cargo.toml](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/Cargo.toml): Thêm `iroh = "0.33"` và ghim `precis-profiles = "=0.1.13"` để tránh lỗi compile của thư viện `stun-rs`.
+- [src-tauri/Cargo.toml](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/Cargo.toml): Thêm `iroh = "0.33"`, nay là dependency tuỳ chọn sau feature `p2p` (bật mặc định cho app desktop, tắt khi build `mcl-agent`).
 - [src-tauri/src/p2p_tunnel.rs](file:///c:/Users/Tran%20Bao%20Long/Desktop/MCL/src-tauri/src/p2p_tunnel.rs):
   - Struct `P2PMemberInfo`, `P2PHostStatus`, `P2PClientStatus`.
   - Cơ chế cập nhật ping liên tục trong background task.

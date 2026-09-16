@@ -485,7 +485,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
         <P2PDirectConnectCard
           language={language}
           activeInstance={instance}
-          serverPort={25565}
+          serverPort={summary?.serverPort ?? 25565}
         />
       </div>
 
@@ -751,6 +751,21 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                         min={1}
                         value={summary.maxPlayers}
                         onChange={(e) => updateSummary({ maxPlayers: Math.max(1, Number(e.target.value) || 1) })}
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                        {t.serverConfigPort || 'Port'}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={summary.serverPort}
+                        onChange={(e) =>
+                          updateSummary({ serverPort: Math.min(65535, Math.max(1, Number(e.target.value) || 25565)) })
+                        }
                         className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                       />
                     </div>

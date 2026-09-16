@@ -37,7 +37,7 @@ curl https://sh.rustup.rs -sSf | sh
 sudo apt install -y build-essential cmake
 git clone https://github.com/pecora31/MCL-Client.git
 cd MCL-Client/src-tauri
-cargo build --release --bin mcl-agent --features agent
+cargo build --release --bin mcl-agent --no-default-features --features agent
 ./target/release/mcl-agent
 ```
 

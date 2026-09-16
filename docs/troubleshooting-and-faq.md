@@ -22,7 +22,7 @@ Vanilla, Fabric, Quilt, Forge, and NeoForge, both [locally](hosting-a-server-loc
 
 ## The MCL Agent will not start, something about a crypto provider
 
-This means the build is missing its TLS backend. Rebuild with `cargo build --release --bin mcl-agent --features agent`, the `agent` feature pulls in everything the certificate and TLS handling needs.
+This means the build is missing its TLS backend. Rebuild with `cargo build --release --bin mcl-agent --no-default-features --features agent`, the `agent` feature pulls in everything the certificate and TLS handling needs.
 
 ## I lost the certificate or token for a remote host
 

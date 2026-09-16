@@ -93,6 +93,14 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
     refreshClientStatus();
   }, []);
 
+  // server.properties is read after this card first mounts, so the server's real port arrives
+  // a moment later than the default this started with. Left alone once a room is open, so it
+  // never moves the port out from under a tunnel that is already forwarding.
+  useEffect(() => {
+    if (hostStatus?.isRunning) return;
+    setHostPort(serverPort);
+  }, [serverPort, hostStatus?.isRunning]);
+
   // Polling when active to refresh member list & ping
   useEffect(() => {
     const isP2PActive = hostStatus?.isRunning || clientStatus?.isConnected;
@@ -277,12 +285,12 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/25 text-[var(--accent-color)] text-xs font-semibold mb-1.5 tracking-wide">
             <Zap className="w-3.5 h-3.5 fill-current" />
-            <span>{isVi ? 'Mạng Ngang Hàng P2P (iroh)' : 'P2P Direct Connect (iroh)'}</span>
+            <span>{isVi ? 'Chơi Chung Trực Tiếp' : 'Play Together Directly'}</span>
           </div>
           <h3 className="text-lg font-bold text-white tracking-normal flex items-center gap-2">
-            <span>{isVi ? 'Phòng Chơi Trực Tiếp P2P' : 'P2P Direct Room Hub'}</span>
+            <span>{isVi ? 'Phòng Chơi Chung' : 'Shared Room'}</span>
             <span className="text-xs px-2 py-0.5 rounded-md bg-white/10 text-slate-300 font-normal">
-              NAT Traversal
+              {isVi ? 'Không cần mở port' : 'No port forwarding'}
             </span>
           </h3>
           <p className="text-xs text-slate-400 mt-0.5 max-w-xl leading-relaxed">
@@ -354,7 +362,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{isVi ? 'Mật khẩu phòng (Freestyle)' : 'Room Password'}</span>
+                      <span>{isVi ? 'Mật khẩu phòng' : 'Room Password'}</span>
                     </label>
                     <span className="text-[10px] text-slate-400">
                       {isVi ? 'Không bắt buộc' : 'Optional'}
@@ -390,7 +398,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
               {/* Server Target Port */}
               <div className="pt-2 flex items-center justify-between">
                 <div className="text-xs text-slate-400">
-                  <span>{isVi ? 'Cổng Minecraft nội bộ:' : 'Local Minecraft Port:'} </span>
+                  <span>{isVi ? 'Cổng server Minecraft:' : 'Minecraft server port:'} </span>
                   <span className="font-mono text-white font-bold">{hostPort}</span>
                 </div>
 
@@ -487,7 +495,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
                 <div className="pt-2">
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 flex items-center gap-1.5">
                     <Sparkles className="w-3 h-3 text-[var(--accent-color)]" />
-                    <span>{isVi ? 'MÃ PHÒNG (GỬI CHO BẠN BÈ)' : 'ROOM TICKET (SHARE TO FRIENDS)'}</span>
+                    <span>{isVi ? 'MÃ PHÒNG (GỬI CHO BẠN BÈ)' : 'ROOM CODE (SHARE WITH FRIENDS)'}</span>
                   </div>
                   <div className="flex items-center gap-2">
                     <input
@@ -619,7 +627,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
               {/* Room Ticket Input */}
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  {isVi ? 'Mã phòng (Room Ticket)' : 'Room Ticket'}
+                  {isVi ? 'Mã phòng' : 'Room code'}
                 </label>
                 <input
                   type="text"
@@ -738,7 +746,7 @@ export const P2PDirectConnectCard: React.FC<P2PDirectConnectCardProps> = ({
               <div className="flex flex-wrap items-center justify-between p-3.5 rounded-xl bg-black/50 border border-white/5 gap-3">
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-0.5">
-                    {isVi ? 'Địa chỉ kết nối trong game (Proxy LAN)' : 'Minecraft Server Address'}
+                    {isVi ? 'Địa chỉ để vào game' : 'Address to join in Minecraft'}
                   </div>
                   <div className="text-xs font-mono font-bold text-emerald-300">
                     127.0.0.1:{clientStatus.localPort}

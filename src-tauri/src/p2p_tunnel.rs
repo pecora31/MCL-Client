@@ -273,6 +273,24 @@ pub async fn start_p2p_host(
     Ok(status)
 }
 
+/// Compares a room password without giving away how much of it was right through how long the
+/// comparison took. A plain `==` returns the moment two bytes differ, so a patient attacker can
+/// recover a password one character at a time; this always looks at every byte instead.
+fn passwords_match(provided: &str, expected: &str) -> bool {
+    let provided = provided.as_bytes();
+    let expected = expected.as_bytes();
+    // Length alone still leaks, and hiding that would mean hashing both sides first — not worth
+    // it for a room password the host hands out anyway. Timing within a length is what matters.
+    if provided.len() != expected.len() {
+        return false;
+    }
+    let mut difference = 0u8;
+    for (a, b) in provided.iter().zip(expected.iter()) {
+        difference |= a ^ b;
+    }
+    difference == 0
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn handle_incoming_peer(
     connection: Connection,
@@ -322,7 +340,7 @@ async fn handle_incoming_peer(
     // Verify password if required
     if let Some(ref required_pwd) = expected_password {
         let provided_pwd = handshake_req.password.unwrap_or_default();
-        if provided_pwd != *required_pwd {
+        if !passwords_match(&provided_pwd, required_pwd) {
             let err_resp = HandshakeResponse {
                 success: false,
                 room_name: None,
@@ -743,6 +761,19 @@ pub fn get_p2p_client_status() -> P2PClientStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_matching_password_is_accepted_and_anything_else_is_not() {
+        assert!(passwords_match("hunter2", "hunter2"));
+        assert!(passwords_match("", ""));
+        // Unicode and spaces are allowed in a room password, so they must compare correctly too.
+        assert!(passwords_match("mật khẩu của tôi", "mật khẩu của tôi"));
+
+        assert!(!passwords_match("hunter2", "hunter3"));
+        assert!(!passwords_match("hunter", "hunter2"), "a prefix must not pass");
+        assert!(!passwords_match("hunter2", "hunter"), "nor an overlong guess");
+        assert!(!passwords_match("", "hunter2"));
+    }
 
     #[test]
     fn test_encode_and_decode_ticket() {
