@@ -81,6 +81,8 @@ const SHORT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
 const LONG_COMMAND_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Longest single output line forwarded to the wizard as a progress event.
 const MAX_PROGRESS_LINE_CHARS: usize = 500;
+/// Longest unterminated line buffered before it is flushed as a (truncated) line anyway.
+const MAX_PENDING_LINE_BYTES: usize = 8 * 1024;
 /// How much of a command's output is kept for the caller to inspect.
 const MAX_CAPTURED_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -142,6 +144,9 @@ impl LineSplitter {
                 self.emit_pending(on_line);
             } else {
                 self.pending.push(byte);
+                if self.pending.len() >= MAX_PENDING_LINE_BYTES {
+                    self.emit_pending(on_line);
+                }
             }
         }
     }
@@ -165,6 +170,35 @@ impl LineSplitter {
             }
         }
         self.pending.clear();
+    }
+}
+
+/// Keeps agent credentials out of the installer's streamed log. `install-agent.sh` ends by
+/// printing the token and certificate under a "Paste these into MCL" header; MCL reads those
+/// files directly instead, so nothing from that header on is forwarded, and any line that looks
+/// like a credential is dropped wherever it appears.
+#[derive(Default)]
+struct CredentialLineFilter {
+    past_credentials_header: bool,
+}
+
+const CREDENTIALS_NOTICE: &str = "Agent credentials were generated; MCL will read them directly.";
+
+impl CredentialLineFilter {
+    /// Returns the line to show in the UI, or `None` to drop it.
+    fn filter<'a>(&mut self, line: &'a str) -> Option<&'a str> {
+        if self.past_credentials_header {
+            return None;
+        }
+        let trimmed = line.trim();
+        if trimmed.starts_with("Paste these into MCL") {
+            self.past_credentials_header = true;
+            return Some(CREDENTIALS_NOTICE);
+        }
+        if trimmed.starts_with("Token:") || line.contains("BEGIN CERTIFICATE") || line.contains("PRIVATE KEY") {
+            return None;
+        }
+        Some(line)
     }
 }
 
@@ -252,7 +286,7 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
         emit_progress(&app, &stream_id, "Java not found, installing OpenJDK 21 (this can take a minute)...");
         let (_, install_code) = run_remote_command(
             &mut session,
-            "sudo apt-get update && sudo apt-get install -y openjdk-21-jre-headless",
+            "sudo apt-get -o DPkg::Lock::Timeout=300 update && sudo apt-get -o DPkg::Lock::Timeout=300 install -y openjdk-21-jre-headless",
             "installing Java",
             LONG_COMMAND_TIMEOUT,
             &mut |line| emit_progress(&app, &stream_id, line),
@@ -304,6 +338,7 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
     }
 
     emit_progress(&app, &stream_id, "Installing mcl-agent...");
+    let mut credential_filter = CredentialLineFilter::default();
     let install_agent_cmd = format!(
         "curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh | sudo MCL_AGENT_PORT={} bash",
         agent_port
@@ -313,7 +348,11 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
         &install_agent_cmd,
         "installing mcl-agent",
         LONG_COMMAND_TIMEOUT,
-        &mut |line| emit_progress(&app, &stream_id, line),
+        &mut |line| {
+            if let Some(shown) = credential_filter.filter(line) {
+                emit_progress(&app, &stream_id, shown);
+            }
+        },
     )
     .await?;
     if agent_install_code != 0 {
@@ -415,6 +454,28 @@ mod tests {
         append_bounded(&mut buffer, b"tail");
         assert_eq!(buffer.len(), MAX_CAPTURED_OUTPUT_BYTES);
         assert!(buffer.ends_with(b"tail"));
+    }
+
+    #[test]
+    fn flushes_overlong_unterminated_lines() {
+        let long = vec![b'y'; MAX_PENDING_LINE_BYTES + 10];
+        let lines = split_all(&[&long]);
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].chars().count(), MAX_PROGRESS_LINE_CHARS + 3);
+        assert_eq!(lines[1], "y".repeat(10));
+    }
+
+    #[test]
+    fn credential_filter_hides_token_and_everything_after_header() {
+        let mut filter = CredentialLineFilter::default();
+        assert_eq!(filter.filter("Setting up mcl-agent..."), Some("Setting up mcl-agent..."));
+        assert_eq!(filter.filter("Token: abc"), None);
+        assert_eq!(filter.filter("-----BEGIN CERTIFICATE-----"), None);
+        assert_eq!(filter.filter("still running"), Some("still running"));
+        assert_eq!(filter.filter("  Paste these into MCL when adding this host:"), Some(CREDENTIALS_NOTICE));
+        assert_eq!(filter.filter("URL:   https://1.2.3.4:8642"), None);
+        assert_eq!(filter.filter("MIIBszCCAVmgAwIBAgIU"), None);
+        assert_eq!(filter.filter("Open port 8642 in this server's firewall"), None);
     }
 
     #[test]
