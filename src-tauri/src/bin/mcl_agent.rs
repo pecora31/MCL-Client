@@ -54,6 +54,54 @@ impl AppState {
     }
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemStats {
+    cpu_percent: f32,
+    mem_used_mb: u64,
+    mem_total_mb: u64,
+    disk_used_mb: u64,
+    disk_total_mb: u64,
+}
+
+/// Averaged across every core rather than a single global-aggregate call, since that's the one
+/// reading guaranteed to exist across `sysinfo` releases. Disk figures come from whichever
+/// mounted disk's mount point is exactly `/` — the only one that matters on the single-purpose
+/// Linux VPS this agent runs on — falling back to the first disk `sysinfo` reports if none
+/// matches (e.g. an unusual partition layout), so this never silently reports all zeroes.
+fn collect_system_stats() -> SystemStats {
+    let mut sys = sysinfo::System::new();
+    sys.refresh_cpu_usage();
+    sys.refresh_memory();
+    let cpu_percent = if sys.cpus().is_empty() {
+        0.0
+    } else {
+        sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32
+    };
+
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let root_disk = disks
+        .iter()
+        .find(|d| d.mount_point() == std::path::Path::new("/"))
+        .or_else(|| disks.iter().next());
+    let (disk_used_mb, disk_total_mb) = match root_disk {
+        Some(d) => {
+            let total = d.total_space() / 1024 / 1024;
+            let available = d.available_space() / 1024 / 1024;
+            (total.saturating_sub(available), total)
+        }
+        None => (0, 0),
+    };
+
+    SystemStats {
+        cpu_percent,
+        mem_used_mb: sys.used_memory() / 1024 / 1024,
+        mem_total_mb: sys.total_memory() / 1024 / 1024,
+        disk_used_mb,
+        disk_total_mb,
+    }
+}
+
 /// What loader/version the one server this agent manages currently is — set by `/v1/prepare`
 /// and read back by every other endpoint, so callers don't need to keep repeating it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -114,20 +162,34 @@ async fn require_token(State(state): State<Arc<AppState>>, req: Request, next: N
     Ok(next.run(req).await)
 }
 
-async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<HostedServerStatus> {
+#[derive(Serialize)]
+struct AgentStatusResponse {
+    #[serde(flatten)]
+    status: HostedServerStatus,
+    system: SystemStats,
+}
+
+async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<AgentStatusResponse> {
+    let system = collect_system_stats();
     let Some(spec) = read_spec(&state) else {
-        return Ok(Json(HostedServerStatus {
-            state: server_host::ServerState::Stopped,
-            has_jar: false,
-            server_dir: state.server_dir().to_string_lossy().to_string(),
+        return Ok(Json(AgentStatusResponse {
+            status: HostedServerStatus {
+                state: server_host::ServerState::Stopped,
+                has_jar: false,
+                server_dir: state.server_dir().to_string_lossy().to_string(),
+            },
+            system,
         }));
     };
-    Ok(Json(server_host::get_status(
-        &state.server_dir(),
-        &spec.loader,
-        &spec.game_version,
-        spec.loader_version.as_deref(),
-    )))
+    Ok(Json(AgentStatusResponse {
+        status: server_host::get_status(
+            &state.server_dir(),
+            &spec.loader,
+            &spec.game_version,
+            spec.loader_version.as_deref(),
+        ),
+        system,
+    }))
 }
 
 #[derive(Deserialize)]
