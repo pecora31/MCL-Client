@@ -59,10 +59,21 @@ fn walk_checked(canonical_root: &Path, relative: &str) -> Result<PathBuf, String
     Ok(current)
 }
 
+pub const NOT_PREPARED: &str = "The server hasn't been prepared yet.";
+
+/// Canonicalizes the server root. Before `/v1/prepare` has run the folder doesn't exist, and
+/// the raw OS error from `canonicalize` means nothing to the user, so say what's actually wrong.
+fn canonical_root(root: &Path) -> Result<PathBuf, String> {
+    if !root.is_dir() {
+        return Err(NOT_PREPARED.to_string());
+    }
+    fs::canonicalize(root).map_err(|e| e.to_string())
+}
+
 /// Resolves `relative` (or the root itself, for an empty `relative`) to a path that must
 /// already exist — used for listing, downloading, and deleting.
 pub fn resolve_existing(root: &Path, relative: &str) -> Result<PathBuf, String> {
-    let canonical_root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let canonical_root = canonical_root(root)?;
     if relative.trim().is_empty() {
         return Ok(canonical_root);
     }
@@ -80,7 +91,7 @@ pub fn resolve_for_write(root: &Path, relative: &str) -> Result<PathBuf, String>
     if relative.trim().is_empty() {
         return Err("Invalid path.".to_string());
     }
-    let canonical_root = fs::canonicalize(root).map_err(|e| e.to_string())?;
+    let canonical_root = canonical_root(root)?;
     let path = walk_checked(&canonical_root, relative)?;
     let parent = path.parent().ok_or_else(|| "Invalid path.".to_string())?;
     fs::create_dir_all(parent).map_err(|e| e.to_string())?;
@@ -144,6 +155,17 @@ mod tests {
         assert_eq!(root_resolved, canonical_root);
 
         let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn an_unprepared_server_dir_gives_a_clear_message() {
+        let base = temp_test_dir("unprepared");
+        let missing = base.join("server");
+        assert_eq!(resolve_existing(&missing, "").unwrap_err(), NOT_PREPARED);
+        assert_eq!(resolve_existing(&missing, "world").unwrap_err(), NOT_PREPARED);
+        assert_eq!(resolve_for_write(&missing, "a.txt").unwrap_err(), NOT_PREPARED);
+        assert!(!missing.exists(), "a rejected write must not create the server dir");
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]
