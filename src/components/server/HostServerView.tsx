@@ -14,10 +14,12 @@ import {
   Monitor,
   Plus,
   Trash2,
+  RotateCcw,
+  Loader2,
 } from 'lucide-react';
 import { invokeCommand, isTauri } from '../../services/api';
 import { loadRemoteHosts, saveRemoteHosts, remoteAgent, type RemoteHost } from '../../services/remoteAgent';
-import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus } from '../../types';
+import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus, BackupInfo } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { RamAllocationField } from '../common/RamAllocationField';
@@ -50,6 +52,9 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const [newHostToken, setNewHostToken] = useState('');
   const [newHostCertPem, setNewHostCertPem] = useState('');
   const [isSyncingMods, setIsSyncingMods] = useState(false);
+  const [backups, setBackups] = useState<BackupInfo[]>([]);
+  const [isBackingUp, setIsBackingUp] = useState(false);
+  const [restoringName, setRestoringName] = useState<string | null>(null);
 
   const [status, setStatus] = useState<HostedServerStatus | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -123,6 +128,24 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     refreshStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selectedHostId]);
+
+  const refreshBackups = async () => {
+    if (!selectedHost) {
+      setBackups([]);
+      return;
+    }
+    try {
+      setBackups(await remoteAgent.listBackups(selectedHost));
+    } catch {
+      // Same pattern as refreshStatus elsewhere in this component: a transient agent error
+      // here shouldn't blank out state the last successful poll already populated.
+    }
+  };
+
+  useEffect(() => {
+    refreshBackups();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedHost?.id]);
 
   // Local console output arrives as a Tauri event straight from the game process; a remote
   // agent's is tailed by the Rust backend (its certificate-pinned HTTPS client) and re-emitted
@@ -346,6 +369,60 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
       setError(String(err));
     } finally {
       setIsSyncingMods(false);
+    }
+  };
+
+  const handleBackupNow = async () => {
+    if (!selectedHost) return;
+    setIsBackingUp(true);
+    try {
+      await remoteAgent.backupNow(selectedHost);
+      await refreshBackups();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsBackingUp(false);
+    }
+  };
+
+  const handleDownloadBackup = async (name: string) => {
+    if (!selectedHost) return;
+    const savePath = await invokeCommand<string | null>('select_save_path', { defaultName: name });
+    if (!savePath) return;
+    try {
+      await remoteAgent.downloadBackup(selectedHost, name, savePath);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleDeleteBackup = async (name: string) => {
+    if (!selectedHost) return;
+    const confirmMsg = (t.hostServerDeleteBackupConfirm || 'Delete "{name}"? This cannot be undone.').replace('{name}', name);
+    if (!window.confirm(confirmMsg)) return;
+    try {
+      await remoteAgent.deleteBackup(selectedHost, name);
+      await refreshBackups();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
+  const handleRestoreBackup = async (name: string) => {
+    if (!selectedHost) return;
+    const confirmMsg = (
+      t.hostServerRestoreBackupConfirm ||
+      "Restore \"{name}\"? This overwrites the current world and stops the server if it's running."
+    ).replace('{name}', name);
+    if (!window.confirm(confirmMsg)) return;
+    setRestoringName(name);
+    try {
+      await remoteAgent.restoreBackup(selectedHost, name);
+      await refreshStatus();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRestoringName(null);
     }
   };
 
@@ -576,6 +653,27 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   )}
                 </div>
 
+                {status?.system && (
+                  <div className="grid grid-cols-3 gap-3 text-xs">
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                      <div className="text-slate-500 uppercase tracking-wider text-[10px] mb-1">CPU</div>
+                      <div className="font-mono text-white font-bold">{status.system.cpuPercent.toFixed(0)}%</div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                      <div className="text-slate-500 uppercase tracking-wider text-[10px] mb-1">RAM</div>
+                      <div className="font-mono text-white font-bold">
+                        {(status.system.memUsedMb / 1024).toFixed(1)} / {(status.system.memTotalMb / 1024).toFixed(1)} GB
+                      </div>
+                    </div>
+                    <div className="p-3 rounded-xl bg-white/[0.02] border border-white/[0.06]">
+                      <div className="text-slate-500 uppercase tracking-wider text-[10px] mb-1">Disk</div>
+                      <div className="font-mono text-white font-bold">
+                        {(status.system.diskUsedMb / 1024).toFixed(1)} / {(status.system.diskTotalMb / 1024).toFixed(1)} GB
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {status.state === 'crashed' && (
                   <p className="text-xs text-rose-300/90 leading-relaxed">
                     {t.hostServerCrashedHint || 'The server exited on its own — check the console below for what happened, then press Start to try again.'}
@@ -652,6 +750,70 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMods ? 'animate-spin' : ''}`} />
                   <span>{isSyncingMods ? t.hostServerSyncingMods || 'Syncing mods...' : t.hostServerSyncMods || 'Sync Mods to This Host'}</span>
                 </button>
+              )}
+
+              {selectedHost && (
+                <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                  <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                      {t.hostServerBackupsTitle || 'Backups'} ({backups.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleBackupNow}
+                      disabled={isBackingUp}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isBackingUp ? 'animate-spin' : ''}`} />
+                      <span>{isBackingUp ? t.hostServerBackingUp || 'Backing up...' : t.hostServerBackupNow || 'Backup now'}</span>
+                    </button>
+                  </div>
+                  <div className="divide-y divide-white/5 max-h-56 overflow-y-auto custom-scrollbar">
+                    {backups.length === 0 ? (
+                      <p className="px-4 py-3 text-xs text-slate-500">{t.hostServerNoBackupsYet || 'No backups yet.'}</p>
+                    ) : (
+                      backups.map((b) => (
+                        <div key={b.name} className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+                          <div className="min-w-0">
+                            <div className="font-mono text-slate-200 truncate">{new Date(b.createdAt * 1000).toLocaleString()}</div>
+                            <div className="text-slate-500">{(b.sizeBytes / 1024 / 1024).toFixed(1)} MB</div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadBackup(b.name)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                              title={t.hostServerDownloadBackup || 'Download'}
+                            >
+                              <Download className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleRestoreBackup(b.name)}
+                              disabled={restoringName === b.name}
+                              className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition cursor-pointer disabled:opacity-40"
+                              title={t.hostServerRestoreBackup || 'Restore'}
+                            >
+                              {restoringName === b.name ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              )}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteBackup(b.name)}
+                              className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
+                              title={t.hostServerDeleteBackup || 'Delete'}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
               )}
 
               {/* Live console */}
