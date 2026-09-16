@@ -22,8 +22,12 @@ Two things are genuinely missing:
 - **Backup/restore and resource visibility** don't exist anywhere in the agent's API yet
   (`GET /v1/status`, `/v1/prepare`, `/v1/start`, `/v1/stop`, `/v1/console`, `/v1/properties`,
   `/v1/mods`, `/v1/logs`, `/v1/health` — no backup endpoints, no CPU/RAM/disk fields).
+- **There's no way to browse or manage files/folders on the server directory** beyond the
+  specific things the existing API already models (mods, `server.properties`). Anything else —
+  organizing a plugins folder, dropping in a datapack, editing a plugin's own config file,
+  clearing out an old world backup by hand — currently has no path in the UI at all.
 
-This spec covers both, as two independent pieces of work.
+This spec covers all three, as independent pieces of work.
 
 ## 2. Scope
 
@@ -34,6 +38,10 @@ This spec covers both, as two independent pieces of work.
 - Part B: backup/restore endpoints added to `mcl-agent`, a self-scheduled daily backup inside
   the agent (independent of whether the desktop app is open), and CPU/RAM/disk fields added to
   its status response, all surfaced in `HostServerView`'s remote-host UI.
+- Part C: a Windows-Explorer-style folder tree in the remote-host UI, scoped to the server
+  directory the agent already manages, for browsing, creating/renaming/deleting folders,
+  uploading/downloading files, and editing small text files (configs, datapacks' `pack.mcmeta`,
+  etc.) in place.
 
 **Out of scope (noted, not built here):**
 - Multi-server-per-VM support (the user chose a single server for v1; the agent already only
@@ -47,6 +55,8 @@ This spec covers both, as two independent pieces of work.
   surfaces a clear, persistent reminder instead of silently assuming it's open.
 - Off-VM backup destinations other than the operator's own machine (e.g. S3/Object Storage) —
   the user picked "download to my machine via MCL" for v1.
+- Browsing anywhere on the VM outside the server directory (see §7.1 for why) — this is a file
+  manager for the Minecraft server's own data, not a general remote file manager for the VM.
 
 ## 3. Architecture Overview
 
@@ -58,16 +68,17 @@ This spec covers both, as two independent pieces of work.
 │                  │   (every request after that)   │  mcl-agent (daemon)  │
 │                  │ ◀────────────────────────────▶│  ├─ server_host.rs    │
 └─────────────────┘                                │  ├─ backup scheduler │
-                                                     │  └─ sysinfo stats    │
+                                                     │  ├─ sysinfo stats    │
+                                                     │  └─ file browser API │
                                                      └──────────────────────┘
 ```
 
 Part A adds one new Rust module (`vm_bootstrap.rs`) to the **desktop** binary only — it is never
-linked into `mcl-agent` (the agent has no reason to SSH anywhere). Part B extends the **agent**
-binary's existing HTTP API and adds a background task; the desktop-side changes for Part B are
-just new thin wrapper functions next to the ones already in `remote_agent.rs` /
-`remoteAgent.ts`, following the exact pattern `remote_agent_start_log_stream` already
-establishes for streaming.
+linked into `mcl-agent` (the agent has no reason to SSH anywhere). Parts B and C both extend the
+**agent** binary's existing HTTP API (backup/monitoring endpoints and file endpoints
+respectively) and add no new transport of their own; the desktop-side changes for both are just
+new thin wrapper functions next to the ones already in `remote_agent.rs` / `remoteAgent.ts`,
+following the exact pattern `remote_agent_start_log_stream` already establishes for streaming.
 
 ## 4. Part A — SSH Bootstrap Wizard
 
@@ -286,7 +297,68 @@ pattern for destructive actions, e.g. the kick-confirm in `P2PDirectConnectCard.
 resource strip (CPU/RAM/disk bars) sits in the existing remote-host status card, fed by the
 extended `/v1/status` response.
 
-## 6. Data Model Changes
+## 6. Part C — Remote File Browser
+
+### 6.1 Scope and root
+
+Rooted at `server_dir()` — the same directory the agent already manages for everything else
+(where `world/`, `plugins/`, `mods/`, `server.properties` already live). Not the VM's
+filesystem at large: giving a bearer token read/write/delete access to arbitrary paths on the
+box is a materially larger attack surface than anything else in this spec, for a feature whose
+actual job (organizing plugins, datapacks, and configs) never needs to leave that directory.
+Every request's `path` parameter is resolved relative to `server_dir()`, canonicalized, and
+rejected with `400` if the canonical result doesn't start with the canonical `server_dir()` —
+the same defense `upload_mod` already applies informally (rejecting `..`/`/`/`\` in a bare
+filename) generalized to handle real nested paths.
+
+### 6.2 New agent endpoints
+
+Same bearer-token middleware, same raw-`Bytes`-body style `upload_mod` already established
+(§ above) rather than introducing multipart form parsing for the first time in this codebase:
+
+```
+GET    /v1/files?path=<relative>            → one directory level: [{ name, isDir, sizeBytes, modifiedAt }]
+POST   /v1/files/mkdir      { path }        → create an empty folder (parents created as needed)
+POST   /v1/files/rename     { from, to }    → rename/move within server_dir()
+DELETE /v1/files?path=<relative>            → delete a file, or a folder and everything in it
+GET    /v1/files/content?path=<relative>    → raw file bytes (download, and read-for-edit)
+PUT    /v1/files/content?path=<relative>    → raw file bytes as the body (upload, and save-after-edit)
+```
+
+`GET /v1/files` lists **one level only**, not a recursive tree — a world folder's region files
+alone can number in the thousands, so the frontend tree lazy-loads a directory's children only
+when it's expanded, the same lazy-expand behavior Windows Explorer itself has. This keeps both
+the agent's response size and the UI's render cost proportional to what's actually on screen,
+which matters here specifically because "performance" was part of the original ask.
+
+### 6.3 Text editing
+
+The frontend, not the agent, decides whether a file is editable: on open, it fetches the bytes
+via `GET /v1/files/content`, and shows the built-in text editor only if the content is valid
+UTF-8 and under a size cap (1 MB — generous for any config/datapack metadata file, small enough
+to never stall the UI). Anything past that cap, or that isn't valid UTF-8, is download-only. The
+editor's **Save** button `PUT`s the edited content back to the same path — no separate "save"
+endpoint needed.
+
+### 6.4 Frontend
+
+New component `src/components/server/RemoteFileBrowser.tsx`, a third section in the remote-host
+panel next to Backups and the existing console/mods sections. Left pane: a lazy-expanding folder
+tree (chevron-driven, Explorer-style) rooted at the server directory. Right pane: the selected
+folder's contents as a list (name, type, size, modified), with a toolbar for **New Folder**,
+**Upload** (native file picker via `rfd`, same pattern as Parts A/B), **Rename**, **Delete**
+(confirm dialog for non-empty folders, matching this app's existing destructive-action pattern),
+and double-click opening either the text editor (small text files) or triggering a **Download**
+(native save dialog, everything else).
+
+### 6.5 Desktop-side additions
+
+`remote_agent.rs` gains `remote_agent_list_files`, `remote_agent_mkdir`, `remote_agent_rename`,
+`remote_agent_delete_file`, `remote_agent_read_file`, `remote_agent_write_file` — same thin
+cert-pinned-`reqwest::Client` wrapper shape every command in that file already follows.
+`remoteAgent.ts` gains matching functions.
+
+## 7. Data Model Changes
 
 - `mcl-agent`: `spec.json` gains `backupRetentionCount: u32` (default 7). New `backups/`
   subdirectory under the agent's data dir.
@@ -294,9 +366,10 @@ extended `/v1/status` response.
   *produces* a `RemoteHost`, it doesn't need a new shape of its own.
 - `src/types/index.ts`: new `BackupInfo { name: string; sizeBytes: number; createdAt: string }`
   and `SystemStats` (camelCase mirror of the Rust structs above, same convention every other
-  type in that file already follows).
+  type in that file already follows), plus `RemoteFileEntry { name: string; isDir: boolean;
+  sizeBytes: number; modifiedAt: string }` for Part C.
 
-## 7. Security Considerations
+## 8. Security Considerations
 
 - The private key file is read from disk for the duration of one SSH session and never copied
   into MCL's own storage or logs — matches the user's explicit choice in this conversation.
@@ -309,8 +382,15 @@ extended `/v1/status` response.
 - `POST /v1/restore` is destructive by design (that's its job); it is not reachable without the
   same bearer token every other mutating endpoint already requires, and the frontend gates it
   behind an explicit confirmation like every other destructive action in this app.
+- Part C's path-confinement check (§6.1) is the one genuinely new attack surface in this spec —
+  a bearer token now implies read/write/delete over a directory tree, where before it only ever
+  implied a fixed set of specific operations (start/stop/edit-properties/upload-a-named-mod).
+  Canonicalizing every incoming path and rejecting anything that resolves outside `server_dir()`
+  is the entire mitigation, and it needs a real test (see below), not just a code-review glance,
+  since path-traversal bugs are exactly the kind of thing that looks fine until someone tries
+  `..%2f..%2f` or a symlink.
 
-## 8. Testing Strategy
+## 9. Testing Strategy
 
 - Rust unit tests for the backup archive scope logic (given a `server.properties` with a
   non-default `level-name`, confirm the right folder names are selected; confirm excluded paths
@@ -323,12 +403,16 @@ extended `/v1/status` response.
   reachable via `ssh mcl` in this conversation) — run the wizard end-to-end once implemented,
   the same way P2P reconnect behavior in this codebase has been manually verified rather than
   mocked.
+- Rust unit tests for Part C's path-confinement helper: a plain nested path resolves and stays
+  inside `server_dir()`; `../../etc/passwd`-style traversal is rejected; a path that resolves
+  through a symlink pointing outside `server_dir()` is rejected. This is the single
+  highest-value test in the whole spec given §8's note above.
 - `cargo build`/`cargo test --offline` for both the default desktop feature set and
   `--no-default-features --features agent` (confirming `russh` never ends up in the agent
-  binary), `npx tsc -b`, `npm run build`, and a browser-preview pass of the new wizard and
-  Backups UI, per this project's established verification routine.
+  binary), `npx tsc -b`, `npm run build`, and a browser-preview pass of the new wizard, Backups,
+  and file browser UI, per this project's established verification routine.
 
-## 9. Out of Scope / Future Work
+## 10. Out of Scope / Future Work
 
 - Multiple servers per VM.
 - Non-apt distros for the bootstrap wizard.
@@ -336,3 +420,5 @@ extended `/v1/status` response.
   credentials — a materially different, much larger scope than anything else here).
 - Off-VM backup destinations beyond "download to the operator's own machine."
 - Cron-style configurable backup schedule (v1 ships a fixed 24h interval).
+- Browsing outside the server directory, and any in-app preview beyond plain text (images,
+  binary formats) — download covers those for v1.
