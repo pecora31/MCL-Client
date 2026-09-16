@@ -1,6 +1,6 @@
 use base64::prelude::*;
 use iroh::{
-    endpoint::{Connection, Endpoint},
+    endpoint::{Connection, ConnectionError, Endpoint},
     NodeAddr,
 };
 use serde::{Deserialize, Serialize};
@@ -618,6 +618,35 @@ pub fn get_p2p_host_status() -> P2PHostStatus {
     }
 }
 
+/// Whether a connection attempt is worth retrying (a transport-level hiccup — timeout, NAT/relay
+/// failure) or the host explicitly told us why it won't let us in (room locked, room full,
+/// wrong password, too many failed attempts). Retrying the latter with the same ticket/password
+/// only wastes the reconnect backoff schedule on a rejection that will not change.
+enum ConnectAttemptError {
+    Network(String),
+    Rejected(String),
+}
+
+impl ConnectAttemptError {
+    fn into_message(self) -> String {
+        match self {
+            ConnectAttemptError::Network(m) | ConnectAttemptError::Rejected(m) => m,
+        }
+    }
+}
+
+/// If a connection was closed by the host's own application logic (as opposed to a network-level
+/// failure), the close reason set via `Connection::close` in `handle_incoming_peer` is the exact
+/// human-readable explanation to surface — that's what this looks for.
+fn rejection_reason(connection: &Connection) -> Option<String> {
+    match connection.close_reason() {
+        Some(ConnectionError::ApplicationClosed(app_close)) => {
+            Some(String::from_utf8_lossy(&app_close.reason).into_owned())
+        }
+        _ => None,
+    }
+}
+
 /// One connect attempt plus the handshake that follows it, shared by the initial join and
 /// every reconnect retry after a drop — the only difference between them is which `Endpoint`
 /// and how many times this has already been tried.
@@ -626,8 +655,8 @@ async fn connect_and_handshake(
     ticket: &str,
     username: &str,
     password: &Option<String>,
-) -> Result<(Connection, HandshakeResponse, String), String> {
-    let node_addr = decode_ticket(ticket)?;
+) -> Result<(Connection, HandshakeResponse, String), ConnectAttemptError> {
+    let node_addr = decode_ticket(ticket).map_err(ConnectAttemptError::Rejected)?;
 
     let client_node_id = endpoint
         .node_addr()
@@ -635,15 +664,15 @@ async fn connect_and_handshake(
         .map(|a| a.node_id.to_string())
         .unwrap_or_else(|_| "client".to_string());
 
-    let connection = endpoint
-        .connect(node_addr, ALPN)
-        .await
-        .map_err(|e| format!("Failed to connect to P2P host: {}", e))?;
+    let connection = endpoint.connect(node_addr, ALPN).await.map_err(|e| {
+        ConnectAttemptError::Network(format!("Failed to connect to P2P host: {}", e))
+    })?;
 
-    let (send_stream, recv_stream) = connection
-        .open_bi()
-        .await
-        .map_err(|e| format!("Failed to open handshake stream to host: {}", e))?;
+    let (send_stream, recv_stream) = connection.open_bi().await.map_err(|e| {
+        rejection_reason(&connection).map(ConnectAttemptError::Rejected).unwrap_or_else(|| {
+            ConnectAttemptError::Network(format!("Failed to open handshake stream to host: {}", e))
+        })
+    })?;
 
     let mut writer = send_stream;
     let mut reader = BufReader::new(recv_stream);
@@ -654,36 +683,58 @@ async fn connect_and_handshake(
         node_id: client_node_id.clone(),
     };
 
-    let req_json = serde_json::to_string(&req).map_err(|e| e.to_string())?;
+    let req_json = serde_json::to_string(&req).map_err(|e| ConnectAttemptError::Rejected(e.to_string()))?;
     writer
         .write_all(format!("{}\n", req_json).as_bytes())
         .await
-        .map_err(|e| format!("Failed to send handshake: {}", e))?;
+        .map_err(|e| {
+            rejection_reason(&connection).map(ConnectAttemptError::Rejected).unwrap_or_else(|| {
+                ConnectAttemptError::Network(format!("Failed to send handshake: {}", e))
+            })
+        })?;
     let _ = writer.flush().await;
 
     let mut resp_line = String::new();
-    reader
-        .read_line(&mut resp_line)
-        .await
-        .map_err(|e| format!("Failed to read handshake response from host: {}", e))?;
+    reader.read_line(&mut resp_line).await.map_err(|e| {
+        rejection_reason(&connection).map(ConnectAttemptError::Rejected).unwrap_or_else(|| {
+            ConnectAttemptError::Network(format!("Failed to read handshake response from host: {}", e))
+        })
+    })?;
 
     let resp: HandshakeResponse = serde_json::from_str(resp_line.trim())
-        .map_err(|e| format!("Invalid handshake response JSON: {}", e))?;
+        .map_err(|e| ConnectAttemptError::Rejected(format!("Invalid handshake response JSON: {}", e)))?;
 
     if !resp.success {
         let err_msg = resp.error.clone().unwrap_or_else(|| "Handshake rejected by host".to_string());
         let _ = connection.close(10u32.into(), err_msg.as_bytes());
-        return Err(err_msg);
+        return Err(ConnectAttemptError::Rejected(err_msg));
     }
 
     Ok((connection, resp, client_node_id))
 }
 
+/// Tears the client down from inside the watchdog itself: leaves `reason` in
+/// `LAST_CLIENT_ERROR` for the next status check to report, stops the tasks that were still
+/// forwarding traffic through the now-dead connection, and closes the endpoint.
+async fn give_up(endpoint: &Endpoint, reason: String) {
+    *LAST_CLIENT_ERROR.lock().unwrap_or_else(|e| e.into_inner()) = Some(reason);
+    let state_opt = {
+        let mut lock = CLIENT_STATE.lock().unwrap_or_else(|e| e.into_inner());
+        lock.take()
+    };
+    if let Some(state) = state_opt {
+        state.proxy_task.abort();
+        state.ping_task.abort();
+    }
+    endpoint.close().await;
+}
+
 /// Waits for the current connection to drop, then retries with a doubling backoff until either
 /// a new one succeeds (swapped into `connection_slot` in place, so the ping task and the local
-/// proxy pick it up without themselves being restarted) or `MAX_RECONNECT_ATTEMPTS` is used up,
-/// at which point it tears the whole client down itself and leaves a reason in
-/// `LAST_CLIENT_ERROR` for the next status check to report.
+/// proxy pick it up without themselves being restarted) or it gives up — either because
+/// `MAX_RECONNECT_ATTEMPTS` ran out on genuine network failures, or because the host explicitly
+/// rejected the retry (room locked/full/wrong password/lockout) or explicitly closed the
+/// original connection on purpose (e.g. kicked), neither of which a retry can fix.
 #[allow(clippy::too_many_arguments)]
 async fn reconnect_watchdog(
     ticket: String,
@@ -696,20 +747,28 @@ async fn reconnect_watchdog(
 ) {
     loop {
         let current = connection_slot.read().await.clone();
-        let _ = current.closed().await;
+        let close_err = current.closed().await;
         if stopping.load(Ordering::Relaxed) {
             return;
         }
         is_connected.store(false, Ordering::Relaxed);
 
+        if let ConnectionError::ApplicationClosed(app_close) = &close_err {
+            let reason = String::from_utf8_lossy(&app_close.reason).into_owned();
+            give_up(&endpoint, reason).await;
+            return;
+        }
+
         let mut attempt = 0u32;
-        let reconnected = loop {
+        let give_up_reason = loop {
             if stopping.load(Ordering::Relaxed) {
                 return;
             }
             attempt += 1;
             if attempt > MAX_RECONNECT_ATTEMPTS {
-                break false;
+                break Some(
+                    "Lost connection to the host and could not reconnect after several attempts.".to_string(),
+                );
             }
             let backoff = Duration::from_secs(2u64.saturating_pow(attempt.min(5))).min(MAX_RECONNECT_BACKOFF);
             tokio::time::sleep(backoff).await;
@@ -721,24 +780,15 @@ async fn reconnect_watchdog(
                 Ok((new_connection, _resp, _client_node_id)) => {
                     *connection_slot.write().await = new_connection;
                     is_connected.store(true, Ordering::Relaxed);
-                    break true;
+                    break None;
                 }
-                Err(_) => continue,
+                Err(ConnectAttemptError::Rejected(reason)) => break Some(reason),
+                Err(ConnectAttemptError::Network(_)) => continue,
             }
         };
 
-        if !reconnected {
-            *LAST_CLIENT_ERROR.lock().unwrap_or_else(|e| e.into_inner()) =
-                Some("Lost connection to the host and could not reconnect after several attempts.".to_string());
-            let state_opt = {
-                let mut lock = CLIENT_STATE.lock().unwrap_or_else(|e| e.into_inner());
-                lock.take()
-            };
-            if let Some(state) = state_opt {
-                state.proxy_task.abort();
-                state.ping_task.abort();
-            }
-            endpoint.close().await;
+        if let Some(reason) = give_up_reason {
+            give_up(&endpoint, reason).await;
             return;
         }
     }
@@ -766,7 +816,9 @@ pub async fn start_p2p_client(
         .map_err(|e| format!("Failed to create client P2P endpoint: {}", e))?;
 
     let (connection, resp, client_node_id) =
-        connect_and_handshake(&endpoint, &ticket, &clean_username, &password).await?;
+        connect_and_handshake(&endpoint, &ticket, &clean_username, &password)
+            .await
+            .map_err(ConnectAttemptError::into_message)?;
     let remote_node_id = decode_ticket(&ticket)?.node_id.to_string();
 
     // Bind local TCP listener (try 39565 first, fall back to random open port 0)
