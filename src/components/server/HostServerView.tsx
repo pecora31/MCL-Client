@@ -132,13 +132,23 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId, selectedHostId]);
 
+  // Always the host currently on screen, so an async response can tell whether the user
+  // switched hosts while it was in flight.
+  const currentHostIdRef = useRef(selectedHostId);
+  currentHostIdRef.current = selectedHostId;
+
   const refreshBackups = async () => {
     if (!selectedHost) {
       setBackups([]);
       return;
     }
+    const requestedHostId = selectedHost.id;
     try {
-      setBackups(await remoteAgent.listBackups(selectedHost));
+      const list = await remoteAgent.listBackups(selectedHost);
+      // A slow reply for a host the user has since switched away from must not render
+      // under the newly selected one.
+      if (currentHostIdRef.current !== requestedHostId) return;
+      setBackups(list);
     } catch {
       // Same pattern as refreshStatus elsewhere in this component: a transient agent error
       // here shouldn't blank out state the last successful poll already populated.
@@ -146,6 +156,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   };
 
   useEffect(() => {
+    setBackups([]);
     refreshBackups();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedHost?.id]);
