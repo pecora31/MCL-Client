@@ -12,6 +12,7 @@
 //! channel the operator already trusts (the same one used to hand over the token), and it
 //! needs no domain name, no ACME setup and no reverse proxy in front of it.
 
+use app_lib::backup;
 use app_lib::models::ServerPropertiesSummary;
 use app_lib::server_config;
 use app_lib::server_host::{self, HostedServerStatus};
@@ -47,6 +48,10 @@ impl AppState {
 
     fn server_dir(&self) -> PathBuf {
         self.data_dir.join("server")
+    }
+
+    fn backups_dir(&self) -> PathBuf {
+        self.data_dir.join("backups")
     }
 
     fn spec_path(&self) -> PathBuf {
@@ -110,6 +115,12 @@ struct ServerSpec {
     loader: String,
     game_version: String,
     loader_version: Option<String>,
+    #[serde(default = "default_retention")]
+    backup_retention_count: u32,
+}
+
+fn default_retention() -> u32 {
+    7
 }
 
 fn read_spec(state: &AppState) -> Option<ServerSpec> {
@@ -209,6 +220,7 @@ async fn prepare(State(state): State<Arc<AppState>>, Json(body): Json<PrepareReq
         loader: body.loader,
         game_version: body.game_version,
         loader_version: body.loader_version,
+        backup_retention_count: default_retention(),
     };
     let server_dir = state.server_dir();
 
@@ -352,6 +364,73 @@ async fn upload_mod(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn create_backup_now(State(state): State<Arc<AppState>>) -> ApiResult<backup::BackupInfo> {
+    let server_dir = state.server_dir();
+    let backups_dir = state.backups_dir();
+    let info = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(server_error)?;
+
+    let retention = read_spec(&state).map(|s| s.backup_retention_count).unwrap_or_else(default_retention) as usize;
+    let backups_dir = state.backups_dir();
+    tokio::task::spawn_blocking(move || backup::rotate_backups(&backups_dir, retention))
+        .await
+        .map_err(|e| server_error(e.to_string()))?;
+
+    Ok(Json(info))
+}
+
+async fn list_backups_handler(State(state): State<Arc<AppState>>) -> ApiResult<Vec<backup::BackupInfo>> {
+    Ok(Json(backup::list_backups(&state.backups_dir())))
+}
+
+fn safe_backup_name(name: &str) -> Result<(), ApiError> {
+    if name.contains('/') || name.contains('\\') || name.contains("..") || !name.ends_with(".zip") {
+        return Err(bad_request("Invalid backup name."));
+    }
+    Ok(())
+}
+
+async fn download_backup(State(state): State<Arc<AppState>>, AxumPath(name): AxumPath<String>) -> Result<Response, ApiError> {
+    safe_backup_name(&name)?;
+    let path = state.backups_dir().join(&name);
+    let bytes = tokio::fs::read(&path).await.map_err(|_| bad_request(format!("No backup named {}.", name)))?;
+    let headers = [
+        (header::CONTENT_TYPE, "application/zip".to_string()),
+        (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", name)),
+    ];
+    Ok((headers, bytes).into_response())
+}
+
+async fn delete_backup(State(state): State<Arc<AppState>>, AxumPath(name): AxumPath<String>) -> Result<StatusCode, ApiError> {
+    safe_backup_name(&name)?;
+    std::fs::remove_file(state.backups_dir().join(&name)).map_err(|_| bad_request(format!("No backup named {}.", name)))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct RestoreRequest {
+    name: String,
+}
+
+async fn restore(State(state): State<Arc<AppState>>, Json(body): Json<RestoreRequest>) -> Result<StatusCode, ApiError> {
+    safe_backup_name(&body.name)?;
+    // Stop first if running — restoring over a live world's files while the server process
+    // still has them open is how you end up with a corrupted world, not a restored one.
+    let dir = state.server_dir();
+    let _ = tokio::task::spawn_blocking(move || server_host::stop_server(&dir)).await;
+
+    let server_dir = state.server_dir();
+    let backups_dir = state.backups_dir();
+    let name = body.name.clone();
+    tokio::task::spawn_blocking(move || backup::restore_backup(&server_dir, &backups_dir, &name))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(server_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.log_tx.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
@@ -451,6 +530,9 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .route("/v1/properties", get(get_properties).post(set_properties))
         .route("/v1/mods", get(list_mods))
         .route("/v1/mods/:filename", post(upload_mod))
+        .route("/v1/backups", get(list_backups_handler).post(create_backup_now))
+        .route("/v1/backups/:name", get(download_backup).delete(delete_backup))
+        .route("/v1/restore", post(restore))
         .route("/v1/logs", get(logs))
         .route("/v1/health", get(health))
         .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
