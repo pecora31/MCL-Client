@@ -1,0 +1,249 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { Loader2, X, KeyRound, Server } from 'lucide-react';
+import { invokeCommand } from '../../services/api';
+import { type RemoteHost } from '../../services/remoteAgent';
+import type { BootstrapRequest, BootstrapOutcome, BootstrapProgressEvent, BootstrapCredentialsEvent } from '../../types';
+import { getTranslation, type Language } from '../../locales/i18n';
+
+interface VmBootstrapWizardProps {
+  language: Language;
+  onInstalled: (host: RemoteHost) => void;
+  onClose: () => void;
+}
+
+type WizardPhase = 'form' | 'running' | 'error' | 'done';
+
+export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, onInstalled, onClose }) => {
+  const t = getTranslation(language);
+  const [host, setHost] = useState('');
+  const [port, setPort] = useState(22);
+  const [username, setUsername] = useState('ubuntu');
+  const [privateKeyPath, setPrivateKeyPath] = useState('');
+  const [agentPort, setAgentPort] = useState(8642);
+  const [displayName, setDisplayName] = useState('');
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const [phase, setPhase] = useState<WizardPhase>('form');
+  const [log, setLog] = useState<string[]>([]);
+  const [error, setError] = useState('');
+  const [isRetrying, setIsRetrying] = useState(false);
+  const credentialsRef = useRef<BootstrapOutcome | null>(null);
+  const streamIdRef = useRef('');
+  const logEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [log]);
+
+  useEffect(() => {
+    const unlistenProgress = listen<BootstrapProgressEvent>('vm-bootstrap-progress', (event) => {
+      if (event.payload.streamId !== streamIdRef.current) return;
+      setLog((prev) => [...prev, event.payload.line]);
+    });
+    const unlistenCredentials = listen<BootstrapCredentialsEvent>('vm-bootstrap-credentials', (event) => {
+      if (event.payload.streamId !== streamIdRef.current) return;
+      credentialsRef.current = { url: event.payload.url, token: event.payload.token, certPem: event.payload.certPem };
+    });
+    return () => {
+      unlistenProgress.then((f) => f());
+      unlistenCredentials.then((f) => f());
+    };
+  }, []);
+
+  const pickPrivateKey = async () => {
+    const path = await invokeCommand<string | null>('select_file', { filterName: null, filterExtensions: null });
+    if (path) setPrivateKeyPath(path);
+  };
+
+  const finish = (outcome: BootstrapOutcome) => {
+    const newHost: RemoteHost = {
+      id: Date.now().toString(),
+      name: displayName.trim() || host,
+      url: outcome.url,
+      token: outcome.token,
+      certPem: outcome.certPem,
+    };
+    setPhase('done');
+    onInstalled(newHost);
+  };
+
+  const handleStart = async () => {
+    if (!host.trim() || !privateKeyPath) return;
+    setPhase('running');
+    setLog([]);
+    setError('');
+    credentialsRef.current = null;
+    streamIdRef.current = Date.now().toString();
+
+    const req: BootstrapRequest = {
+      host: host.trim(),
+      port,
+      username: username.trim() || 'ubuntu',
+      privateKeyPath,
+      agentPort,
+    };
+
+    try {
+      const outcome = await invokeCommand<BootstrapOutcome>('vm_bootstrap_start', { streamId: streamIdRef.current, req });
+      finish(outcome);
+    } catch (err) {
+      setError(String(err));
+      setPhase('error');
+    }
+  };
+
+  const handleRetryVerify = async () => {
+    const creds = credentialsRef.current;
+    if (!creds) return;
+    setIsRetrying(true);
+    try {
+      await invokeCommand<void>('vm_bootstrap_retry_verify', {
+        host: { url: creds.url, token: creds.token, certPem: creds.certPem },
+      });
+      finish(creds);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-6">
+      <div className="w-full max-w-lg rounded-2xl bg-[#151515] border border-white/10 flex flex-col overflow-hidden max-h-[85vh]">
+        <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Server className="w-4 h-4 text-[var(--accent-color)]" />
+            <span className="text-sm font-bold text-white">{t.hostServerBootstrapTitle || 'Set Up a New VM Automatically'}</span>
+          </div>
+          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar">
+          {phase === 'form' && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="text"
+                  placeholder={t.hostServerBootstrapHost || 'VM address (e.g. 140.245.125.66)'}
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="col-span-2 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                />
+                <input
+                  type="text"
+                  placeholder={t.hostServerBootstrapUsername || 'SSH username'}
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  className="px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                />
+                <input
+                  type="number"
+                  placeholder="22"
+                  value={port}
+                  onChange={(e) => setPort(Number(e.target.value) || 22)}
+                  className="px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={pickPrivateKey}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-left flex items-center gap-2 cursor-pointer hover:bg-white/10 transition"
+              >
+                <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className={privateKeyPath ? 'text-white truncate' : 'text-slate-500'}>
+                  {privateKeyPath || t.hostServerBootstrapPickKey || 'Choose private key file...'}
+                </span>
+              </button>
+
+              <input
+                type="text"
+                placeholder={t.hostServerRemoteNamePlaceholder || 'Name (e.g. My VPS)'}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+
+              <button
+                type="button"
+                onClick={() => setShowAdvanced((v) => !v)}
+                className="text-xs font-semibold text-slate-400 hover:text-white cursor-pointer"
+              >
+                {showAdvanced ? t.hostServerBootstrapHideAdvanced || 'Hide advanced' : t.hostServerBootstrapShowAdvanced || 'Advanced'}
+              </button>
+              {showAdvanced && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                    {t.hostServerBootstrapAgentPort || 'Agent port'}
+                  </label>
+                  <input
+                    type="number"
+                    value={agentPort}
+                    onChange={(e) => setAgentPort(Number(e.target.value) || 8642)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                  />
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleStart}
+                disabled={!host.trim() || !privateKeyPath}
+                className="w-full btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
+              >
+                {t.hostServerBootstrapConnect || 'Connect & Install'}
+              </button>
+            </>
+          )}
+
+          {(phase === 'running' || phase === 'error') && (
+            <>
+              <div className="rounded-xl bg-black/60 border border-white/10 h-56 overflow-y-auto custom-scrollbar px-3.5 py-3 font-mono text-[11px] text-slate-300 space-y-1">
+                {log.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+                {phase === 'running' && (
+                  <div className="flex items-center gap-1.5 text-slate-500">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    <span>{t.hostServerBootstrapWorking || 'Working...'}</span>
+                  </div>
+                )}
+                <div ref={logEndRef} />
+              </div>
+
+              {phase === 'error' && (
+                <>
+                  <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs">{error}</div>
+                  <div className="flex items-center gap-2">
+                    {credentialsRef.current && (
+                      <button
+                        type="button"
+                        onClick={handleRetryVerify}
+                        disabled={isRetrying}
+                        className="flex-1 btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40 flex items-center justify-center gap-1.5"
+                      >
+                        {isRetrying && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        <span>{t.hostServerBootstrapRetry || 'Retry'}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setPhase('form')}
+                      className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-white/5 hover:bg-white/10 text-slate-300 cursor-pointer active:scale-95 transition"
+                    >
+                      {t.hostServerBootstrapStartOver || 'Start Over'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
