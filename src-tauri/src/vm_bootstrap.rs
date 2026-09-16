@@ -6,7 +6,9 @@
 use russh::client::{self, Handle};
 use russh::keys::{load_secret_key, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use russh::ChannelMsg;
+use std::net::Ipv6Addr;
 use std::sync::Arc;
+use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
@@ -71,12 +73,42 @@ impl client::Handler for AcceptAnyHostKey {
     }
 }
 
+/// How long to wait for the TCP connection and SSH handshake to start before giving up.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(20);
+/// For quick commands that only read something back (`command -v java`, `cat`, `ufw status`).
+const SHORT_COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+/// For apt and the agent installer, which download packages and can legitimately take minutes.
+const LONG_COMMAND_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+/// Longest single output line forwarded to the wizard as a progress event.
+const MAX_PROGRESS_LINE_CHARS: usize = 500;
+/// How much of a command's output is kept for the caller to inspect.
+const MAX_CAPTURED_OUTPUT_BYTES: usize = 64 * 1024;
+
+/// Formats a host for use in a URL or a `host:port` message: trims whitespace and wraps IPv6
+/// literals in brackets.
+fn display_host(host: &str) -> String {
+    let host = host.trim();
+    if host.parse::<Ipv6Addr>().is_ok() {
+        format!("[{}]", host)
+    } else {
+        host.to_string()
+    }
+}
+
 async fn connect(host: &str, port: u16, username: &str, private_key_path: &str) -> Result<Handle<AcceptAnyHostKey>, String> {
+    let host = host.trim();
     let key_pair = load_secret_key(private_key_path, None)
         .map_err(|e| format!("Could not read the private key at {}: {}", private_key_path, e))?;
-    let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (host, port), AcceptAnyHostKey)
+    let config = Arc::new(client::Config {
+        // Keepalives notice a silently dropped connection; the inactivity timeout then ends the
+        // session instead of letting a command wait forever.
+        keepalive_interval: Some(Duration::from_secs(15)),
+        inactivity_timeout: Some(Duration::from_secs(120)),
+        ..Default::default()
+    });
+    let mut session = tokio::time::timeout(CONNECT_TIMEOUT, client::connect(config, (host, port), AcceptAnyHostKey))
         .await
+        .map_err(|_| format!("Timed out connecting to {}:{}", display_host(host), port))?
         .map_err(|e| format!("Host unreachable: {}", e))?;
     // RSA keys must sign with a hash the server accepts (rsa-sha2-256/512); modern OpenSSH
     // rejects the legacy SHA-1 default, so ask the server which one it supports.
@@ -95,45 +127,137 @@ async fn connect(host: &str, port: u16, username: &str, private_key_path: &str) 
     Ok(session)
 }
 
-/// Opens one exec channel, sends `command`, and collects its combined stdout+stderr and exit
-/// code. One command per call rather than a persistent shell — every step in this module only
-/// ever needs to run one command and see whether it succeeded.
-async fn run_remote_command(session: &mut Handle<AcceptAnyHostKey>, command: &str) -> Result<(String, u32), String> {
-    let mut channel = session.channel_open_session().await.map_err(|e| e.to_string())?;
-    channel.exec(true, command).await.map_err(|e| e.to_string())?;
+/// Splits a byte stream into lines as chunks arrive. Both `\n` and `\r` end a line (apt and curl
+/// redraw progress with `\r`), empty lines are dropped, and each line is capped at
+/// `MAX_PROGRESS_LINE_CHARS`.
+#[derive(Default)]
+struct LineSplitter {
+    pending: Vec<u8>,
+}
 
-    let mut output = String::new();
-    let mut exit_code: Option<u32> = None;
-    // Read until the channel closes, not just until EOF: OpenSSH sends the exit status after
-    // EOF, so stopping at EOF would lose it.
-    loop {
-        let Some(msg) = channel.wait().await else { break };
-        match msg {
-            ChannelMsg::Data { data } => output.push_str(&String::from_utf8_lossy(&data)),
-            ChannelMsg::ExtendedData { data, .. } => output.push_str(&String::from_utf8_lossy(&data)),
-            ChannelMsg::ExitStatus { exit_status } => exit_code = Some(exit_status),
-            ChannelMsg::Close => break,
-            _ => {}
+impl LineSplitter {
+    fn push(&mut self, chunk: &[u8], on_line: &mut dyn FnMut(&str)) {
+        for &byte in chunk {
+            if byte == b'\n' || byte == b'\r' {
+                self.emit_pending(on_line);
+            } else {
+                self.pending.push(byte);
+            }
         }
     }
-    // No exit status at all (e.g. the command was killed by a signal) is never a success.
-    Ok((output, exit_code.unwrap_or(u32::MAX)))
+
+    fn finish(&mut self, on_line: &mut dyn FnMut(&str)) {
+        self.emit_pending(on_line);
+    }
+
+    fn emit_pending(&mut self, on_line: &mut dyn FnMut(&str)) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let line = String::from_utf8_lossy(&self.pending);
+        let line = line.trim_end();
+        if !line.is_empty() {
+            if line.chars().count() > MAX_PROGRESS_LINE_CHARS {
+                let truncated: String = line.chars().take(MAX_PROGRESS_LINE_CHARS).collect();
+                on_line(&format!("{}...", truncated));
+            } else {
+                on_line(line);
+            }
+        }
+        self.pending.clear();
+    }
+}
+
+/// Appends `chunk` to `buffer`, keeping only the last `MAX_CAPTURED_OUTPUT_BYTES` bytes.
+fn append_bounded(buffer: &mut Vec<u8>, chunk: &[u8]) {
+    buffer.extend_from_slice(chunk);
+    if buffer.len() > MAX_CAPTURED_OUTPUT_BYTES {
+        let excess = buffer.len() - MAX_CAPTURED_OUTPUT_BYTES;
+        buffer.drain(..excess);
+    }
+}
+
+/// Opens one exec channel, sends `command`, and collects its combined stdout+stderr (the last
+/// `MAX_CAPTURED_OUTPUT_BYTES` of it) and exit code. One command per call rather than a
+/// persistent shell, since every step in this module only ever needs to run one command and see
+/// whether it succeeded.
+///
+/// `label` describes the step in error messages ("Lost the SSH connection while <label>").
+/// `on_line` receives each output line as it arrives; pass a no-op for commands whose output
+/// must not reach the UI (the token file, for one).
+async fn run_remote_command(
+    session: &mut Handle<AcceptAnyHostKey>,
+    command: &str,
+    label: &str,
+    timeout: Duration,
+    on_line: &mut (dyn FnMut(&str) + Send),
+) -> Result<(String, u32), String> {
+    let run = async {
+        let mut channel = session
+            .channel_open_session()
+            .await
+            .map_err(|e| format!("Lost the SSH connection while {}: {}", label, e))?;
+        channel
+            .exec(true, command)
+            .await
+            .map_err(|e| format!("Lost the SSH connection while {}: {}", label, e))?;
+        // Close our side of stdin so a command that tries to read it gets EOF instead of waiting.
+        channel
+            .eof()
+            .await
+            .map_err(|e| format!("Lost the SSH connection while {}: {}", label, e))?;
+
+        let mut captured = Vec::new();
+        let mut splitter = LineSplitter::default();
+        let mut exit_code: Option<u32> = None;
+        // Read until the channel closes, not just until EOF: OpenSSH sends the exit status after
+        // EOF, so stopping at EOF would lose it.
+        while let Some(msg) = channel.wait().await {
+            match msg {
+                ChannelMsg::Data { data } | ChannelMsg::ExtendedData { data, .. } => {
+                    append_bounded(&mut captured, &data);
+                    splitter.push(&data, on_line);
+                }
+                ChannelMsg::ExitStatus { exit_status } => exit_code = Some(exit_status),
+                ChannelMsg::Close => break,
+                _ => {}
+            }
+        }
+        splitter.finish(on_line);
+
+        match exit_code {
+            Some(code) => Ok((String::from_utf8_lossy(&captured).into_owned(), code)),
+            None => Err(format!("Lost the SSH connection while {} (no exit status received).", label)),
+        }
+    };
+
+    tokio::time::timeout(timeout, run)
+        .await
+        .map_err(|_| format!("Timed out after {} seconds while {}.", timeout.as_secs(), label))?
 }
 
 pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequest) -> Result<BootstrapOutcome, String> {
     let agent_port = if req.agent_port == 0 { DEFAULT_AGENT_PORT } else { req.agent_port };
+    let host = display_host(&req.host);
+    let mut silent = |_: &str| {};
 
-    emit_progress(&app, &stream_id, "Connecting over SSH...");
+    emit_progress(&app, &stream_id, format!("Connecting over SSH to {}:{}...", host, req.port));
     let mut session = connect(&req.host, req.port, &req.username, &req.private_key_path).await?;
     emit_progress(&app, &stream_id, "Connected.");
 
     emit_progress(&app, &stream_id, "Checking for Java...");
-    let (_, java_check_code) = run_remote_command(&mut session, "command -v java").await?;
+    let (_, java_check_code) =
+        run_remote_command(&mut session, "command -v java", "checking for Java", SHORT_COMMAND_TIMEOUT, &mut silent).await?;
     if java_check_code != 0 {
         emit_progress(&app, &stream_id, "Java not found, installing OpenJDK 21 (this can take a minute)...");
-        let (install_output, install_code) =
-            run_remote_command(&mut session, "sudo apt-get update && sudo apt-get install -y openjdk-21-jre-headless").await?;
-        emit_progress(&app, &stream_id, install_output);
+        let (_, install_code) = run_remote_command(
+            &mut session,
+            "sudo apt-get update && sudo apt-get install -y openjdk-21-jre-headless",
+            "installing Java",
+            LONG_COMMAND_TIMEOUT,
+            &mut |line| emit_progress(&app, &stream_id, line),
+        )
+        .await?;
         if install_code != 0 {
             return Err(
                 "Could not install Java. If `sudo` needs a password for this user, either grant \
@@ -147,11 +271,34 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
     }
 
     emit_progress(&app, &stream_id, "Checking the firewall...");
-    let (ufw_status, _) = run_remote_command(&mut session, "sudo ufw status").await?;
-    if ufw_status.contains("Status: active") {
-        let _ = run_remote_command(&mut session, &format!("sudo ufw allow {}/tcp", agent_port)).await;
-        let _ = run_remote_command(&mut session, "sudo ufw allow 25565/tcp").await;
-        emit_progress(&app, &stream_id, "Opened the agent and Minecraft ports in ufw.");
+    let (ufw_status, ufw_status_code) =
+        run_remote_command(&mut session, "sudo ufw status", "checking the firewall", SHORT_COMMAND_TIMEOUT, &mut silent).await?;
+    if ufw_status_code != 0 {
+        emit_progress(&app, &stream_id, "Warning: Could not check ufw status, skipping firewall step.");
+    } else if ufw_status.contains("Status: active") {
+        for port in [agent_port, 25565] {
+            let result = run_remote_command(
+                &mut session,
+                &format!("sudo ufw allow {}/tcp", port),
+                "opening a firewall port",
+                SHORT_COMMAND_TIMEOUT,
+                &mut silent,
+            )
+            .await;
+            match result {
+                Ok((_, 0)) => emit_progress(&app, &stream_id, format!("Opened port {}/tcp in ufw.", port)),
+                Ok((_, code)) => emit_progress(
+                    &app,
+                    &stream_id,
+                    format!("Warning: Could not open port {}/tcp in ufw (exit code {}). Open it manually.", port, code),
+                ),
+                Err(e) => emit_progress(
+                    &app,
+                    &stream_id,
+                    format!("Warning: Could not open port {}/tcp in ufw ({}). Open it manually.", port, e),
+                ),
+            }
+        }
     } else {
         emit_progress(&app, &stream_id, "ufw isn't active on this VM, skipping (nothing to open at the OS level).");
     }
@@ -161,25 +308,45 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
         "curl -fsSL https://raw.githubusercontent.com/pecora31/MCL-Client/main/scripts/install-agent.sh | sudo MCL_AGENT_PORT={} bash",
         agent_port
     );
-    let (agent_install_output, agent_install_code) = run_remote_command(&mut session, &install_agent_cmd).await?;
-    emit_progress(&app, &stream_id, agent_install_output);
+    let (_, agent_install_code) = run_remote_command(
+        &mut session,
+        &install_agent_cmd,
+        "installing mcl-agent",
+        LONG_COMMAND_TIMEOUT,
+        &mut |line| emit_progress(&app, &stream_id, line),
+    )
+    .await?;
     if agent_install_code != 0 {
-        return Err("mcl-agent installation script failed — see the log above for details.".to_string());
+        return Err("mcl-agent installation script failed. See the log above for details.".to_string());
     }
     emit_progress(&app, &stream_id, "mcl-agent installed.");
 
     emit_progress(&app, &stream_id, "Reading the agent's token and certificate...");
-    let (token_raw, token_code) = run_remote_command(&mut session, &format!("cat {}/agent-token.txt", AGENT_DATA_DIR)).await?;
+    let (token_raw, token_code) = run_remote_command(
+        &mut session,
+        &format!("cat {}/agent-token.txt", AGENT_DATA_DIR),
+        "reading the agent's token",
+        SHORT_COMMAND_TIMEOUT,
+        &mut silent,
+    )
+    .await?;
     if token_code != 0 || token_raw.trim().is_empty() {
         return Err("Could not read the agent's token file after installation.".to_string());
     }
-    let (cert_raw, cert_code) = run_remote_command(&mut session, &format!("cat {}/agent-cert.pem", AGENT_DATA_DIR)).await?;
+    let (cert_raw, cert_code) = run_remote_command(
+        &mut session,
+        &format!("cat {}/agent-cert.pem", AGENT_DATA_DIR),
+        "reading the agent's certificate",
+        SHORT_COMMAND_TIMEOUT,
+        &mut silent,
+    )
+    .await?;
     if cert_code != 0 || cert_raw.trim().is_empty() {
         return Err("Could not read the agent's certificate file after installation.".to_string());
     }
 
     let outcome = BootstrapOutcome {
-        url: format!("https://{}:{}", req.host, agent_port),
+        url: format!("https://{}:{}", host, agent_port),
         token: token_raw.trim().to_string(),
         cert_pem: cert_raw.trim().to_string(),
     };
@@ -207,7 +374,53 @@ pub async fn run_bootstrap(app: AppHandle, stream_id: String, req: BootstrapRequ
             e, agent_port
         )
     })?;
-    emit_progress(&app, &stream_id, "Done — the agent is reachable.");
+    emit_progress(&app, &stream_id, "Done. The agent is reachable.");
 
     Ok(outcome)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn split_all(chunks: &[&[u8]]) -> Vec<String> {
+        let mut lines = Vec::new();
+        let mut splitter = LineSplitter::default();
+        let mut collect = |line: &str| lines.push(line.to_string());
+        for chunk in chunks {
+            splitter.push(chunk, &mut collect);
+        }
+        splitter.finish(&mut collect);
+        lines
+    }
+
+    #[test]
+    fn splits_lines_across_chunks_and_carriage_returns() {
+        let lines = split_all(&[b"Get:1 ht", b"tp://a\r\n\nProgress 10%\rProgress 20%", b"\ndone"]);
+        assert_eq!(lines, vec!["Get:1 http://a", "Progress 10%", "Progress 20%", "done"]);
+    }
+
+    #[test]
+    fn caps_long_lines() {
+        let long = "x".repeat(MAX_PROGRESS_LINE_CHARS + 50);
+        let lines = split_all(&[long.as_bytes()]);
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].chars().count(), MAX_PROGRESS_LINE_CHARS + 3);
+    }
+
+    #[test]
+    fn bounded_buffer_keeps_the_tail() {
+        let mut buffer = Vec::new();
+        append_bounded(&mut buffer, &vec![b'a'; MAX_CAPTURED_OUTPUT_BYTES]);
+        append_bounded(&mut buffer, b"tail");
+        assert_eq!(buffer.len(), MAX_CAPTURED_OUTPUT_BYTES);
+        assert!(buffer.ends_with(b"tail"));
+    }
+
+    #[test]
+    fn display_host_trims_and_brackets_ipv6() {
+        assert_eq!(display_host(" 140.245.125.66 "), "140.245.125.66");
+        assert_eq!(display_host("vm.example.com"), "vm.example.com");
+        assert_eq!(display_host(" 2001:db8::1 "), "[2001:db8::1]");
+    }
 }
