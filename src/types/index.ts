@@ -319,6 +319,22 @@ export interface HostedServerStatus {
   state: HostedServerState;
   hasJar: boolean;
   serverDir: string;
+  /** Only present when this status came from a remote agent (local hosting has no need for its own machine's stats here). */
+  system?: SystemStats;
+}
+
+export interface BackupInfo {
+  name: string;
+  sizeBytes: number;
+  createdAt: number;
+}
+
+export interface SystemStats {
+  cpuPercent: number;
+  memUsedMb: number;
+  memTotalMb: number;
+  diskUsedMb: number;
+  diskTotalMb: number;
 }
 
 export interface P2PMemberInfo {

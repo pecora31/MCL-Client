@@ -203,6 +203,14 @@ fn select_folder(default_path: Option<String>) -> Option<String> {
     dialog.pick_folder().map(|p| p.to_string_lossy().to_string())
 }
 
+#[tauri::command]
+fn select_save_path(default_name: String) -> Option<String> {
+    rfd::FileDialog::new()
+        .set_file_name(&default_name)
+        .save_file()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
 const MAX_INLINE_FILE_BYTES: u64 = 3 * 1024 * 1024;
 
 fn mime_from_extension(path: &std::path::Path) -> &'static str {
@@ -740,6 +748,7 @@ pub fn run() {
             get_game_data_dir,
             set_game_data_dir,
             select_folder,
+            select_save_path,
             select_file,
             scan_storage_cleanup,
             execute_storage_cleanup,

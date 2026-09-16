@@ -3,7 +3,7 @@
 // self-signed certificate, so cert-pinned requests must originate from the Rust backend
 // (see src-tauri/src/remote_agent.rs) rather than this file directly hitting the network.
 import { invokeCommand } from './api';
-import type { HostedServerStatus, ServerPropertiesSummary } from '../types';
+import type { HostedServerStatus, ServerPropertiesSummary, BackupInfo } from '../types';
 
 export interface RemoteHost {
   id: string;
@@ -83,4 +83,12 @@ export const remoteAgent = {
   startLogStream: (host: RemoteHost, streamId: string) =>
     invokeCommand<void>('remote_agent_start_log_stream', { host: toHostArg(host), streamId }),
   stopLogStream: (streamId: string) => invokeCommand<void>('remote_agent_stop_log_stream', { streamId }),
+  listBackups: (host: RemoteHost) => invokeCommand<BackupInfo[]>('remote_agent_list_backups', { host: toHostArg(host) }),
+  backupNow: (host: RemoteHost) => invokeCommand<BackupInfo>('remote_agent_backup_now', { host: toHostArg(host) }),
+  downloadBackup: (host: RemoteHost, name: string, savePath: string) =>
+    invokeCommand<void>('remote_agent_download_backup', { host: toHostArg(host), name, savePath }),
+  deleteBackup: (host: RemoteHost, name: string) =>
+    invokeCommand<void>('remote_agent_delete_backup', { host: toHostArg(host), name }),
+  restoreBackup: (host: RemoteHost, name: string) =>
+    invokeCommand<void>('remote_agent_restore_backup', { host: toHostArg(host), name }),
 };
