@@ -26,6 +26,7 @@ import { RamAllocationField } from '../common/RamAllocationField';
 import { Checkbox } from '../common/Checkbox';
 import { P2PDirectConnectCard } from './P2PDirectConnectCard';
 import { RemoteFileBrowser } from './RemoteFileBrowser';
+import { VmBootstrapWizard } from './VmBootstrapWizard';
 
 interface HostServerViewProps {
   instances: GameInstance[];
@@ -48,6 +49,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([]);
   const [selectedHostId, setSelectedHostId] = useState<string>(LOCAL_HOST_ID);
   const [isAddHostOpen, setIsAddHostOpen] = useState(false);
+  const [isBootstrapOpen, setIsBootstrapOpen] = useState(false);
   const [newHostName, setNewHostName] = useState('');
   const [newHostUrl, setNewHostUrl] = useState('');
   const [newHostToken, setNewHostToken] = useState('');
@@ -499,6 +501,14 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
           <Plus className="w-3 h-3" />
           <span>{t.hostServerAddRemote || 'Add a remote host'}</span>
         </button>
+        <button
+          type="button"
+          onClick={() => setIsBootstrapOpen(true)}
+          className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer"
+        >
+          <Server className="w-3 h-3" />
+          <span>{t.hostServerBootstrapButton || 'Set up a new VM automatically'}</span>
+        </button>
       </div>
 
       {isAddHostOpen && (
@@ -549,6 +559,20 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
             {t.btnSave || 'Save'}
           </button>
         </div>
+      )}
+
+      {isBootstrapOpen && (
+        <VmBootstrapWizard
+          language={language}
+          onClose={() => setIsBootstrapOpen(false)}
+          onInstalled={(newHost) => {
+            const next = [...remoteHosts, newHost];
+            setRemoteHosts(next);
+            saveRemoteHosts(next);
+            setSelectedHostId(newHost.id);
+            setIsBootstrapOpen(false);
+          }}
+        />
       )}
 
       {error && (
