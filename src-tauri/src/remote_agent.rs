@@ -95,8 +95,30 @@ async fn post_no_content<B: Serialize>(host: &RemoteHostConfig, path: &str, body
     Ok(())
 }
 
+/// Host machine stats the agent attaches to `/v1/status`; mirrors the agent's own struct.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemStats {
+    pub cpu_percent: f32,
+    pub mem_used_mb: u64,
+    pub mem_total_mb: u64,
+    pub disk_used_mb: u64,
+    pub disk_total_mb: u64,
+}
+
+/// `/v1/status`'s body: the plain `HostedServerStatus` fields flattened alongside `system`, so
+/// the frontend receives the same flat shape the agent sent instead of serde dropping `system`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAgentStatus {
+    #[serde(flatten)]
+    pub status: HostedServerStatus,
+    #[serde(default)]
+    pub system: Option<SystemStats>,
+}
+
 #[tauri::command]
-pub async fn remote_agent_status(host: RemoteHostConfig) -> Result<HostedServerStatus, String> {
+pub async fn remote_agent_status(host: RemoteHostConfig) -> Result<RemoteAgentStatus, String> {
     get_json(&host, "/v1/status").await
 }
 
@@ -610,5 +632,21 @@ mod tests {
         let client = client_for(&host).unwrap();
         let result = client.get(format!("{}/ping", base_url(&host))).send().await;
         assert!(result.is_err(), "a client pinned to the wrong certificate must not be able to connect");
+    }
+
+    #[test]
+    fn agent_status_keeps_system_stats_and_round_trips_flat() {
+        let raw = r#"{"state":"running","hasJar":true,"serverDir":"/srv","system":{"cpuPercent":12.5,"memUsedMb":100,"memTotalMb":200,"diskUsedMb":300,"diskTotalMb":400}}"#;
+        let parsed: RemoteAgentStatus = serde_json::from_str(raw).unwrap();
+        let system = parsed.system.as_ref().expect("system stats must survive deserialization");
+        assert_eq!(system.disk_total_mb, 400);
+
+        let out: Value = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(out["hasJar"], Value::Bool(true));
+        assert_eq!(out["system"]["memUsedMb"], 100);
+
+        let without: RemoteAgentStatus =
+            serde_json::from_str(r#"{"state":"stopped","hasJar":false,"serverDir":"/srv"}"#).unwrap();
+        assert!(without.system.is_none());
     }
 }
