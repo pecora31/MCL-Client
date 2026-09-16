@@ -190,8 +190,10 @@ fn pre_restore_path(server_dir: &Path, top_name: &str) -> PathBuf {
 /// All-or-nothing: every entry's path is validated before anything on disk changes
 /// (`enclosed_name()` is the `zip` crate's zip-slip defense), then each top-level name the
 /// archive contains is moved aside to `<name>.pre-restore` so the restored world never mixes
-/// with files newer than the backup. If extraction fails part way, the partial output is
-/// removed and the moved-aside copies are put back; on success they are deleted.
+/// with files newer than the backup. A leftover `<name>.pre-restore` aborts the restore rather
+/// than being deleted. If extraction fails part way, the partial output is removed and the
+/// moved-aside copies are put back; on success they are deleted. A live original that was not
+/// moved aside is never removed.
 pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) -> Result<(), String> {
     let backup_path = backups_dir.join(backup_name);
     let file = File::open(&backup_path).map_err(|e| format!("Could not open backup {}: {}", backup_name, e))?;
@@ -212,31 +214,42 @@ pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) 
         }
     }
 
-    // (b) Move the current copies aside.
+    // (b) Move the current copies aside. On any failure here nothing has been extracted yet, so
+    // only the entries already moved are put back and nothing is deleted.
     let mut moved_aside: Vec<String> = Vec::new();
-    let mut result: Result<(), String> = Ok(());
+    let mut absent_before: Vec<String> = Vec::new();
     for top in &top_names {
         let current = server_dir.join(top);
         let aside = pre_restore_path(server_dir, top);
-        if let Err(e) = remove_path(&aside) {
-            result = Err(e);
-            break;
-        }
-        if fs::symlink_metadata(&current).is_ok() {
-            if let Err(e) = fs::rename(&current, &aside) {
-                result = Err(format!("Could not move {} aside before restoring: {}", top, e));
-                break;
+        let failure = if fs::symlink_metadata(&aside).is_ok() {
+            // Never delete it: an earlier interrupted restore may have left the only good copy.
+            Some(format!(
+                "A previous restore left {}.pre-restore in the server folder. Inspect it (it may be the only copy of {}) and move or delete it before restoring again.",
+                top, top
+            ))
+        } else {
+            match fs::symlink_metadata(&current) {
+                Ok(_) => match fs::rename(&current, &aside) {
+                    Ok(()) => {
+                        moved_aside.push(top.clone());
+                        None
+                    }
+                    Err(e) => Some(format!("Could not move {} aside before restoring: {}", top, e)),
+                },
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    absent_before.push(top.clone());
+                    None
+                }
+                Err(e) => Some(format!("Could not check {} before restoring: {}", top, e)),
             }
-            moved_aside.push(top.clone());
+        };
+        if let Some(message) = failure {
+            return Err(append_rollback_errors(message, put_back_aside(server_dir, &moved_aside)));
         }
     }
 
     // (c) Extract.
-    if result.is_ok() {
-        result = extract_archive(&mut archive, server_dir);
-    }
-
-    match result {
+    match extract_archive(&mut archive, server_dir) {
         Ok(()) => {
             // (d) Success: the moved-aside copies are no longer needed.
             for top in &moved_aside {
@@ -245,15 +258,34 @@ pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) 
             Ok(())
         }
         Err(e) => {
-            // (d) Failure: drop partial output and put the original files back.
-            for top in &top_names {
+            // (d) Failure: remove partial output only where the original is safe in its
+            // `.pre-restore` copy or never existed, then put the originals back.
+            for top in moved_aside.iter().chain(absent_before.iter()) {
                 let _ = remove_path(&server_dir.join(top));
             }
-            for top in &moved_aside {
-                let _ = fs::rename(pre_restore_path(server_dir, top), server_dir.join(top));
-            }
-            Err(e)
+            Err(append_rollback_errors(e, put_back_aside(server_dir, &moved_aside)))
         }
+    }
+}
+
+/// Renames each `<name>.pre-restore` back to `<name>`, returning a message for every one that
+/// could not be put back so the operator knows where the original still is.
+fn put_back_aside(server_dir: &Path, moved_aside: &[String]) -> Vec<String> {
+    moved_aside
+        .iter()
+        .filter_map(|top| {
+            fs::rename(pre_restore_path(server_dir, top), server_dir.join(top)).err().map(|e| {
+                format!("Could not put {} back ({}); the original is preserved at {}.pre-restore.", top, e, top)
+            })
+        })
+        .collect()
+}
+
+fn append_rollback_errors(message: String, rollback_errors: Vec<String>) -> String {
+    if rollback_errors.is_empty() {
+        message
+    } else {
+        format!("{} {}", message, rollback_errors.join(" "))
     }
 }
 
@@ -405,6 +437,49 @@ mod tests {
         assert_eq!(fs::read_to_string(server_dir.join("server.properties")).unwrap(), "level-name=world\n");
         assert!(!server_dir.join("world.pre-restore").exists());
         assert!(!server_dir.join("server.properties.pre-restore").exists());
+
+        let _ = fs::remove_dir_all(&server_dir);
+        let _ = fs::remove_dir_all(&backups_dir);
+    }
+
+    #[test]
+    fn a_leftover_pre_restore_copy_aborts_the_restore_without_touching_anything() {
+        let server_dir = temp_test_dir("leftover-server");
+        let backups_dir = temp_test_dir("leftover-backups");
+        {
+            let file = File::create(backups_dir.join("3000.zip")).unwrap();
+            let mut writer = zip::ZipWriter::new(file);
+            let options = zip::write::SimpleFileOptions::default();
+            // server.properties comes first so it is moved aside before the world check fails,
+            // which exercises putting an already moved entry back.
+            writer.start_file("server.properties", options).unwrap();
+            writer.write_all(b"level-name=from_backup\n").unwrap();
+            writer.start_file("world/level.dat", options).unwrap();
+            writer.write_all(b"backup world").unwrap();
+            writer.start_file("whitelist.json", options).unwrap();
+            writer.write_all(b"[\"from_backup\"]").unwrap();
+            writer.finish().unwrap();
+        }
+        fs::write(server_dir.join("server.properties"), "level-name=world\n").unwrap();
+        fs::create_dir_all(server_dir.join("world")).unwrap();
+        fs::write(server_dir.join("world/level.dat"), "current world").unwrap();
+        fs::write(server_dir.join("world/extra.dat"), "current extra").unwrap();
+        // A previous restore left this behind; it may be the only good copy.
+        fs::create_dir_all(server_dir.join("world.pre-restore")).unwrap();
+        fs::write(server_dir.join("world.pre-restore/level.dat"), "left by an earlier restore").unwrap();
+
+        let err = restore_backup(&server_dir, &backups_dir, "3000.zip").unwrap_err();
+        assert!(err.contains("world.pre-restore"), "error must name the leftover copy: {}", err);
+
+        assert_eq!(fs::read_to_string(server_dir.join("world/level.dat")).unwrap(), "current world");
+        assert_eq!(fs::read_to_string(server_dir.join("world/extra.dat")).unwrap(), "current extra");
+        assert_eq!(fs::read_to_string(server_dir.join("server.properties")).unwrap(), "level-name=world\n");
+        assert_eq!(
+            fs::read_to_string(server_dir.join("world.pre-restore/level.dat")).unwrap(),
+            "left by an earlier restore"
+        );
+        assert!(!server_dir.join("server.properties.pre-restore").exists());
+        assert!(!server_dir.join("whitelist.json").exists(), "nothing may be extracted");
 
         let _ = fs::remove_dir_all(&server_dir);
         let _ = fs::remove_dir_all(&backups_dir);
