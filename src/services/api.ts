@@ -103,6 +103,8 @@ export const TAURI_COMMANDS = [
   'p2p_start_client',
   'p2p_stop_client',
   'p2p_get_client_status',
+  'vm_bootstrap_start',
+  'vm_bootstrap_retry_verify',
 ] as const;
 
 export type TauriCommand = (typeof TAURI_COMMANDS)[number];

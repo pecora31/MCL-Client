@@ -685,6 +685,16 @@ fn p2p_get_client_status() -> p2p_tunnel::P2PClientStatus {
     p2p_tunnel::get_p2p_client_status()
 }
 
+#[tauri::command]
+async fn vm_bootstrap_start(app: tauri::AppHandle, stream_id: String, req: vm_bootstrap::BootstrapRequest) -> Result<vm_bootstrap::BootstrapOutcome, String> {
+    vm_bootstrap::run_bootstrap(app, stream_id, req).await
+}
+
+#[tauri::command]
+async fn vm_bootstrap_retry_verify(host: remote_agent::RemoteHostConfig) -> Result<(), String> {
+    remote_agent::remote_agent_status(host).await.map(|_| ())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -828,7 +838,9 @@ pub fn run() {
             p2p_toggle_lock,
             p2p_start_client,
             p2p_stop_client,
-            p2p_get_client_status
+            p2p_get_client_status,
+            vm_bootstrap_start,
+            vm_bootstrap_retry_verify,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
