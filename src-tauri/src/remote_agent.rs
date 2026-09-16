@@ -212,6 +212,78 @@ pub async fn remote_agent_sync_mods(host: RemoteHostConfig, instance_id: String)
     Ok(uploaded)
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub name: String,
+    pub size_bytes: u64,
+    pub created_at: u64,
+}
+
+#[tauri::command]
+pub async fn remote_agent_list_backups(host: RemoteHostConfig) -> Result<Vec<BackupInfo>, String> {
+    get_json(&host, "/v1/backups").await
+}
+
+#[tauri::command]
+pub async fn remote_agent_backup_now(host: RemoteHostConfig) -> Result<BackupInfo, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .post(format!("{}/v1/backups", base_url(&host)))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    resp.json::<BackupInfo>().await.map_err(|e| e.to_string())
+}
+
+/// Downloads one backup straight to `save_path` (chosen by the frontend via `rfd`'s native
+/// save dialog) rather than returning the bytes through Tauri's IPC, so a large world backup
+/// never has to round-trip through the webview's own memory.
+#[tauri::command]
+pub async fn remote_agent_download_backup(host: RemoteHostConfig, name: String, save_path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/backups/{}", base_url(&host), name))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    tokio::fs::write(&save_path, &bytes).await.map_err(|e| format!("Could not save the backup: {}", e))
+}
+
+#[tauri::command]
+pub async fn remote_agent_delete_backup(host: RemoteHostConfig, name: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .delete(format!("{}/v1/backups/{}", base_url(&host), name))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct RestoreBody {
+    name: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_restore_backup(host: RemoteHostConfig, name: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/restore", &RestoreBody { name }).await
+}
+
 /// Live-tails one remote host's `/v1/logs` SSE stream, forwarding each line as a
 /// `remote-server-log` event tagged with `streamId` so the frontend can tell streams from
 /// different hosts apart. Keyed by `stream_id` (the saved host's own id) so switching hosts
