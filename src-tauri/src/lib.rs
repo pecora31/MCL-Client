@@ -1,4 +1,5 @@
 mod addon_registry;
+pub mod backup;
 mod discord_rpc;
 mod game_stats;
 pub mod hidden_process;
