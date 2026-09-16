@@ -56,6 +56,20 @@ pub fn read_server_properties(dir: &str) -> Result<ServerPropertiesSummary, Stri
     Ok(summary)
 }
 
+/// The one `server.properties` key `ServerPropertiesSummary` doesn't model — needed on its own
+/// by the backup feature to know which world folder(s) to archive. Minecraft's own default
+/// (`world`) covers both a missing file and a file with no `level-name` line.
+pub fn read_level_name(dir: &Path) -> String {
+    let Ok(raw) = fs::read_to_string(dir.join(FILE_NAME)) else {
+        return "world".to_string();
+    };
+    parse_properties(&raw)
+        .get("level-name")
+        .cloned()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "world".to_string())
+}
+
 pub fn write_server_properties(dir: &str, summary: &ServerPropertiesSummary) -> Result<(), String> {
     let path = Path::new(dir).join(FILE_NAME);
     let raw = fs::read_to_string(&path)
@@ -183,5 +197,19 @@ level-name=world
         assert!(summary.online_mode);
         assert_eq!(summary.difficulty, "easy");
         assert_eq!(summary.max_players, 20);
+    }
+
+    #[test]
+    fn read_level_name_finds_a_custom_name_and_falls_back_to_world() {
+        let dir = std::env::temp_dir().join("mcl-server-config-test-level-name");
+        let _ = fs::create_dir_all(&dir);
+
+        // No server.properties at all yet — Minecraft's own default.
+        assert_eq!(read_level_name(&dir), "world");
+
+        fs::write(dir.join(FILE_NAME), "level-name=survival_smp\nonline-mode=true\n").unwrap();
+        assert_eq!(read_level_name(&dir), "survival_smp");
+
+        let _ = fs::remove_dir_all(&dir);
     }
 }
