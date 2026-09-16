@@ -25,6 +25,7 @@ import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { RamAllocationField } from '../common/RamAllocationField';
 import { Checkbox } from '../common/Checkbox';
 import { P2PDirectConnectCard } from './P2PDirectConnectCard';
+import { RemoteFileBrowser } from './RemoteFileBrowser';
 
 interface HostServerViewProps {
   instances: GameInstance[];
@@ -815,6 +816,8 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   </div>
                 </div>
               )}
+
+              {selectedHost && <RemoteFileBrowser host={selectedHost} language={language} />}
 
               {/* Live console */}
               <div className="rounded-2xl bg-black/60 border border-white/[0.06] overflow-hidden">
