@@ -50,12 +50,22 @@ function readCurrentUsername(): string {
   return 'Player';
 }
 
-function renderPingBadge(pingMs: number | null | undefined) {
-  if (pingMs == null || pingMs === 0) {
+// A null/zero ping used to be treated as "this must be the host" — it isn't; it's also what a
+// client's own self-entry and a just-joined member (ping not measured yet) report. Who is
+// actually hosting is `member.isHost`, straight from the backend, not inferred from a number.
+function renderPingBadge(pingMs: number | null | undefined, isHost: boolean) {
+  if (isHost) {
     return (
       <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
         <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
         Host
+      </span>
+    );
+  }
+  if (pingMs == null || pingMs === 0) {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold bg-white/5 text-slate-400 border border-white/10">
+        &mdash;
       </span>
     );
   }
@@ -468,22 +478,30 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
           )}
 
           {isHosting && (
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                readOnly
-                value={hostStatus?.ticket || ''}
-                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 text-[10px] font-mono text-emerald-300 select-all focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={handleCopyAddress}
-                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white cursor-pointer shrink-0"
-                title={t.p2pWidgetCopyBtn || 'Copy'}
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </div>
+            <>
+              <div className="p-2 rounded-lg bg-black/40 border border-white/5">
+                <div className="text-[9px] uppercase text-slate-500 tracking-wider">
+                  {t.p2pWidgetForwardingLabel || 'Forwarding to (must match your Minecraft server)'}
+                </div>
+                <div className="text-[11px] font-mono text-emerald-300 truncate">127.0.0.1:{hostStatus?.targetPort}</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={hostStatus?.ticket || ''}
+                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg bg-black/50 border border-white/10 text-[10px] font-mono text-emerald-300 select-all focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={handleCopyAddress}
+                  className="p-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white cursor-pointer shrink-0"
+                  title={t.p2pWidgetCopyBtn || 'Copy'}
+                >
+                  {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+            </>
           )}
 
           {!isHosting && clientStatus?.isConnected && (
@@ -517,7 +535,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
                   {member.isHost && <span className="ml-1 text-[9px] text-slate-500">({t.p2pWidgetHostBadge || 'Host'})</span>}
                 </span>
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {renderPingBadge(member.pingMs)}
+                  {renderPingBadge(member.pingMs, member.isHost)}
                   {isHosting && !member.isHost && (
                     <button
                       type="button"

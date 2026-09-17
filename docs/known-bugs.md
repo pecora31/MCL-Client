@@ -84,9 +84,72 @@ Mỗi mục ghi: **Trạng thái**, **Mô tả** (người dùng báo cáo gì),
 - **Đã sửa ở**: `src/components/mods/ModStore.tsx` — thêm `setInstallingId(null)` vào cả 3
   nhánh return sớm đó.
 
+### 11. Chủ phòng P2P không thấy/xác nhận được cổng đang chuyển tiếp
+- **Trạng thái**: Đã sửa — chưa release.
+- **Mô tả**: Bên client thấy được "Address to join in Minecraft", nhưng bên host không có gì
+  hiển thị port đang forward để đối chiếu với server thật đang chạy trên máy.
+- **Đã sửa ở**: `src/components/p2p/P2PFloatingWidget.tsx` — view "active" của host giờ hiện
+  khối "Forwarding to (must match your Minecraft server): 127.0.0.1:&lt;targetPort&gt;" ngay
+  trên ô ticket, đối xứng với ô "Address to join" bên client. Cổng vẫn chỉ đặt được lúc tạo
+  phòng (ô nhập port trong form Create).
+
+### 12. Tag "Host" (màu xanh) bị gán nhầm cho thành viên thay vì chủ phòng thật
+- **Trạng thái**: Đã sửa — chưa release.
+- **Mô tả**: Ảnh chụp cho thấy pecora (chủ phòng thật, có chữ "(Chủ phòng)" cạnh tên — đúng) lại
+  hiện ping số ms bình thường, còn Panther096 (thành viên) lại bị gắn badge xanh "Host".
+- **Nguyên nhân**: `renderPingBadge()` (P2PFloatingWidget.tsx) suy luận "là host" chỉ từ việc
+  `pingMs == null || pingMs === 0`, không hề đọc field `member.isHost` thật sự trả về từ backend.
+  Client tự báo cáo ping của chính mình là `0.0` làm placeholder ("đây là tôi, không phải peer
+  mạng") — badge nhìn vào con số đó và kết luận nhầm "vậy đây chắc là host".
+- **Đã sửa ở**: `renderPingBadge()` nhận thêm tham số `isHost`, chỉ hiện chữ "Host" khi
+  `member.isHost === true`; ping null/0 ở một thành viên thường thì hiện dấu gạch ngang trung
+  tính thay vì suy diễn.
+
+### 13. [GỐC RỄ CỦA MỤC 4 DƯỚI] Mã mời (ticket) bị tái sử dụng giữa các phòng khác nhau
+- **Trạng thái**: Đã sửa — chưa release.
+- **Mô tả**: Tạo nhiều phòng riêng biệt (đóng phòng cũ, tạo phòng mới) vẫn sinh ra ticket giống
+  ticket phòng trước — ai dùng ticket cũ sẽ bị nối vào bất kỳ phòng nào đang chạy lúc đó trên
+  máy host, không phải phòng họ tưởng đang tham gia. Đây rất có thể là nguyên nhân trực tiếp của
+  báo cáo "thành viên không kết nối được dù port/địa chỉ khớp" — họ có thể đã dùng một ticket cũ
+  từ lần thử trước.
+- **Nguyên nhân**: Danh tính P2P (NodeID) đã được cố định vĩnh viễn từ một fix trước đó trong
+  session này (để ticket sống sót qua việc mở lại app) — nhưng `encode_ticket()` chỉ mã hoá
+  `NodeAddr` (bản chất là chính NodeID đó), không có gì đại diện riêng cho TỪNG phòng. Vì NodeID
+  không đổi, hai phòng khác nhau tạo ra ticket giống hệt nhau về nội dung định danh.
+- **Đã sửa ở**: `src-tauri/src/p2p_tunnel.rs` — mỗi lần `start_p2p_host` chạy sẽ sinh một
+  `room_id` ngẫu nhiên (UUID v4) mới, nhúng vào ticket cùng `NodeAddr` (`TicketPayload`). Client
+  gửi kèm `room_id` giải mã được trong bước bắt tay (`HandshakeRequest`); host so khớp với
+  `room_id` của phòng đang chạy — sai thì từ chối kèm thông báo rõ ràng "This invite is for a
+  room that isn't running anymore" thay vì âm thầm cho vào nhầm phòng. Có test riêng
+  (`two_tickets_from_the_same_host_carry_different_room_ids`) xác nhận 2 lần tạo phòng sinh
+  ticket khác nhau.
+- **Ghi chú cho người dùng**: Vì fix này thay đổi định dạng ticket, **ticket cũ (tạo trước bản
+  vá) sẽ không dùng được nữa** — cần tạo phòng mới và gửi lại ticket mới cho bạn bè.
+
+### 14. Lỗi mạng khi tải Fabric loader meta làm launch thất bại hoàn toàn
+- **Trạng thái**: Đã sửa (giảm thiểu) — chưa release.
+- **Mô tả**: Bạn của người dùng launch profile Fabric 1.20.1, log báo
+  `[MCL/ERROR] Could not set up Fabric 0.19.5 ... error sending request for url
+  (https://meta.fabricmc.net/v2/versions/loader/1.20.1/0.19.5)` — game không khởi động được.
+- **Nguyên nhân**: `get_loader_meta()` (fabric.rs, dùng chung cho cả Fabric và Quilt) gọi
+  `reqwest::Client::new()` không có timeout, không retry — một trục trặc mạng thoáng qua (DNS,
+  TLS, mất kết nối giữa chừng) làm hỏng toàn bộ lần khởi động, dù thử lại ngay có thể đã thành
+  công. Không rõ đây có liên quan đến việc bạn của user đang đồng thời thử kết nối P2P hay không.
+- **Đã sửa ở**: `src-tauri/src/minecraft_core/fabric.rs` — đặt timeout 15s mỗi lần gọi, thử lại
+  tối đa 3 lần với backoff (500ms/1000ms) trước khi báo lỗi hẳn.
+
 ---
 
 ## Đang mở / đang xử lý
+
+### 15. Thành viên không kết nối được vào phòng dù port/địa chỉ khớp nhau
+- **Trạng thái**: Nghi vấn đã được khắc phục qua mục 13 (ticket tái sử dụng) — **cần người dùng
+  xác nhận lại bằng phòng mới, ticket mới** sau khi cập nhật bản vá này.
+- **Mô tả**: Host tạo phòng, thành viên nhập đúng ticket + đúng port nhưng không vào được.
+- Nếu sau khi tạo phòng MỚI (ticket mới, port đã xác nhận qua ô "Forwarding to" mới thêm ở mục
+  11) mà vẫn không kết nối được, khả năng cao là do NAT/tường lửa chặn kết nối P2P trực tiếp
+  (iroh có relay dự phòng nhưng không phải lúc nào cũng đủ) — cần xin lại **nội dung lỗi chính
+  xác** hiện ra ở khung Join Room lúc đó để chẩn đoán tiếp, log không đủ để kết luận chắc chắn.
 
 ### 8. [NGHIÊM TRỌNG] Mod đã cài biến mất khỏi tab "Đã cài" và khỏi ổ đĩa
 - **Trạng thái**: **ĐÃ ĐIỀU TRA CODE, CHƯA TÌM RA BUG TRONG MCL** — cần thêm dữ liệu chẩn đoán

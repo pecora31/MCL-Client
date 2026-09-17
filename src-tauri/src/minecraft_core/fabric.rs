@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FabricLoaderResponse {
@@ -69,27 +70,49 @@ pub fn loader_endpoints(loader: &str) -> Option<LoaderEndpoints> {
     }
 }
 
+/// How many times a request-level failure (DNS hiccup, TLS reset, connection refused mid-handshake)
+/// is retried before giving up. A single such blip used to fail the whole launch outright —
+/// `reqwest::Client::new()` has no timeout at all by default, so a stalled connection could also
+/// hang indefinitely instead of failing fast enough to retry.
+const META_FETCH_ATTEMPTS: u32 = 3;
+const META_FETCH_TIMEOUT: Duration = Duration::from_secs(15);
+
 pub async fn get_loader_meta(
     endpoints: &LoaderEndpoints,
     game_version: &str,
     loader_version: &str,
 ) -> Result<FabricLoaderResponse, String> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(META_FETCH_TIMEOUT)
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!(
         "{}/versions/loader/{}/{}",
         endpoints.meta_root, game_version, loader_version
     );
 
-    let resp: FabricLoaderResponse = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| format!("{} meta API failed: {}", endpoints.display_name, e))?
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse {} meta: {}", endpoints.display_name, e))?;
+    let mut last_err = String::new();
+    for attempt in 1..=META_FETCH_ATTEMPTS {
+        match client.get(&url).send().await {
+            Ok(resp) => {
+                return resp
+                    .json::<FabricLoaderResponse>()
+                    .await
+                    .map_err(|e| format!("Failed to parse {} meta: {}", endpoints.display_name, e));
+            }
+            Err(e) => {
+                last_err = e.to_string();
+                if attempt < META_FETCH_ATTEMPTS {
+                    tokio::time::sleep(Duration::from_millis(500 * attempt as u64)).await;
+                }
+            }
+        }
+    }
 
-    Ok(resp)
+    Err(format!(
+        "{} meta API failed after {} attempts: {}",
+        endpoints.display_name, META_FETCH_ATTEMPTS, last_err
+    ))
 }
 
 // Converts maven coordinate "net.fabricmc:fabric-loader:0.16.10" into path and URL

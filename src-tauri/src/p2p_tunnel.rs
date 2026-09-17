@@ -105,6 +105,10 @@ struct HandshakeRequest {
     pub username: String,
     pub password: Option<String>,
     pub node_id: String,
+    /// The room_id this ticket was minted for — checked against whatever room is actually
+    /// running right now (see TicketPayload's doc comment).
+    #[serde(default)]
+    pub room_id: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -131,6 +135,8 @@ struct HostPeerSession {
 struct HostState {
     endpoint: Endpoint,
     ticket: String,
+    #[allow(dead_code)] // Kept alive by the Arc the accept task holds; never read from HostState directly.
+    room_id: String,
     node_id: String,
     room_name: String,
     host_username: String,
@@ -184,19 +190,34 @@ fn now_secs() -> u64 {
         .as_secs()
 }
 
-pub fn encode_ticket(addr: &NodeAddr) -> Result<String, String> {
-    let json = serde_json::to_string(addr).map_err(|e| e.to_string())?;
+/// What a ticket actually encodes. The node address alone is not enough: this install's P2P
+/// identity is now stable across restarts (see `load_or_create_secret_key`), so a bare NodeAddr
+/// stays "valid" forever — a ticket handed out for one room would silently work to join whatever
+/// *later* room happens to be running on the same node. `room_id` is a fresh random token minted
+/// each time a room starts, so the host can tell "a ticket for the room that's live right now"
+/// apart from "a ticket for some room I closed already" and reject the latter with a clear error
+/// instead of quietly letting the peer in — or, if the target port also changed, forwarding them
+/// into a room they never actually asked to join.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TicketPayload {
+    addr: NodeAddr,
+    room_id: String,
+}
+
+pub fn encode_ticket(addr: &NodeAddr, room_id: &str) -> Result<String, String> {
+    let payload = TicketPayload { addr: addr.clone(), room_id: room_id.to_string() };
+    let json = serde_json::to_string(&payload).map_err(|e| e.to_string())?;
     Ok(BASE64_URL_SAFE_NO_PAD.encode(json.as_bytes()))
 }
 
-pub fn decode_ticket(ticket: &str) -> Result<NodeAddr, String> {
+pub fn decode_ticket(ticket: &str) -> Result<(NodeAddr, String), String> {
     let raw = ticket.trim();
     let bytes = BASE64_URL_SAFE_NO_PAD
         .decode(raw.as_bytes())
         .map_err(|e| format!("Invalid Base64 URL Safe ticket format: {}", e))?;
-    let addr: NodeAddr = serde_json::from_slice(&bytes)
-        .map_err(|e| format!("Invalid NodeAddr JSON payload inside ticket: {}", e))?;
-    Ok(addr)
+    let payload: TicketPayload = serde_json::from_slice(&bytes)
+        .map_err(|e| format!("Invalid ticket payload — it may be from an older MCL version: {}", e))?;
+    Ok((payload.addr, payload.room_id))
 }
 
 /// Starts hosting a P2P Room with Room Name, optional Freestyle Password, and target local Minecraft port.
@@ -245,7 +266,10 @@ pub async fn start_p2p_host(
         .await
         .map_err(|e| format!("Failed to read P2P node address: {}", e))?;
 
-    let ticket = encode_ticket(&node_addr)?;
+    // Fresh every time a room starts — see TicketPayload's doc comment for why a stable node
+    // identity alone isn't enough to key a ticket to *this* room.
+    let room_id = uuid::Uuid::new_v4().to_string();
+    let ticket = encode_ticket(&node_addr, &room_id)?;
     let node_id = node_addr.node_id.to_string();
     let direct_addresses: Vec<String> = node_addr
         .direct_addresses
@@ -266,6 +290,7 @@ pub async fn start_p2p_host(
     let expected_password = clean_password.clone();
     let room_name_clone = clean_room_name.clone();
     let host_username_clone = clean_host_username.clone();
+    let room_id_clone = room_id.clone();
 
     let accept_task = tokio::spawn(async move {
         while let Some(incoming) = ep_clone.accept().await {
@@ -286,6 +311,7 @@ pub async fn start_p2p_host(
             let expected_pass = expected_password.clone();
             let r_name = room_name_clone.clone();
             let h_user = host_username_clone.clone();
+            let expected_room_id = room_id_clone.clone();
 
             tokio::spawn(async move {
                 handle_incoming_peer(
@@ -294,6 +320,7 @@ pub async fn start_p2p_host(
                     expected_pass,
                     r_name,
                     h_user,
+                    expected_room_id,
                     peers_counter,
                     locked_flag,
                     members_ref,
@@ -330,6 +357,7 @@ pub async fn start_p2p_host(
     *lock = Some(HostState {
         endpoint,
         ticket,
+        room_id,
         node_id,
         room_name: clean_room_name,
         host_username: clean_host_username,
@@ -401,6 +429,7 @@ async fn handle_incoming_peer(
     expected_password: Option<String>,
     room_name: String,
     host_username: String,
+    expected_room_id: String,
     peers_counter: Arc<AtomicUsize>,
     is_locked: Arc<AtomicBool>,
     members_map: Arc<Mutex<HashMap<String, HostPeerSession>>>,
@@ -451,6 +480,29 @@ async fn handle_incoming_peer(
             return;
         }
     };
+
+    // The ticket this peer used may be for a room that isn't the one running right now — this
+    // install's P2P identity is stable across restarts, so an old ticket still resolves to this
+    // same node. Reject it explicitly instead of letting the peer in under a room they never
+    // actually asked to join (or forwarding their traffic to whatever the current target_port
+    // happens to be).
+    if handshake_req.room_id != expected_room_id {
+        let err_resp = HandshakeResponse {
+            success: false,
+            room_name: None,
+            host_username: None,
+            error: Some(
+                "This invite is for a room that isn't running anymore. Ask the host for a new one."
+                    .to_string(),
+            ),
+        };
+        if let Ok(json) = serde_json::to_string(&err_resp) {
+            let _ = writer.write_all(format!("{}\n", json).as_bytes()).await;
+            let _ = writer.finish();
+        }
+        let _ = connection.close(8u32.into(), b"Stale invite for a room that is no longer running");
+        return;
+    }
 
     // Verify password if required
     if let Some(ref required_pwd) = expected_password {
@@ -704,7 +756,7 @@ async fn connect_and_handshake(
     username: &str,
     password: &Option<String>,
 ) -> Result<(Connection, HandshakeResponse, String), ConnectAttemptError> {
-    let node_addr = decode_ticket(ticket).map_err(ConnectAttemptError::Rejected)?;
+    let (node_addr, room_id) = decode_ticket(ticket).map_err(ConnectAttemptError::Rejected)?;
 
     let client_node_id = endpoint
         .node_addr()
@@ -729,6 +781,7 @@ async fn connect_and_handshake(
         username: username.to_string(),
         password: password.clone(),
         node_id: client_node_id.clone(),
+        room_id,
     };
 
     let req_json = serde_json::to_string(&req).map_err(|e| ConnectAttemptError::Rejected(e.to_string()))?;
@@ -868,7 +921,7 @@ pub async fn start_p2p_client(
         connect_and_handshake(&endpoint, &ticket, &clean_username, &password)
             .await
             .map_err(ConnectAttemptError::into_message)?;
-    let remote_node_id = decode_ticket(&ticket)?.node_id.to_string();
+    let remote_node_id = decode_ticket(&ticket)?.0.node_id.to_string();
 
     // Bind local TCP listener (try 39565 first, fall back to random open port 0)
     let listener = match TcpListener::bind("127.0.0.1:39565").await {
@@ -1124,11 +1177,35 @@ mod tests {
             direct_addresses: direct,
         };
 
-        let ticket = encode_ticket(&node_addr).expect("encode should succeed");
+        let ticket = encode_ticket(&node_addr, "room-abc-123").expect("encode should succeed");
         assert!(!ticket.is_empty());
 
-        let decoded = decode_ticket(&ticket).expect("decode should succeed");
-        assert_eq!(decoded.node_id, node_id);
-        assert_eq!(decoded.direct_addresses.len(), 2);
+        let (decoded_addr, decoded_room_id) = decode_ticket(&ticket).expect("decode should succeed");
+        assert_eq!(decoded_addr.node_id, node_id);
+        assert_eq!(decoded_addr.direct_addresses.len(), 2);
+        assert_eq!(decoded_room_id, "room-abc-123");
+    }
+
+    #[test]
+    fn two_tickets_from_the_same_host_carry_different_room_ids() {
+        // The actual bug this guards: a stable P2P identity means the NodeAddr portion of two
+        // tickets minted by the same install is identical — room_id is what must differ, or a
+        // ticket from a room that was closed still "works" against whatever room is live now.
+        use std::collections::BTreeSet;
+
+        let key = iroh::SecretKey::from_bytes(&[3u8; 32]);
+        let node_addr = NodeAddr {
+            node_id: key.public(),
+            relay_url: None,
+            direct_addresses: BTreeSet::new(),
+        };
+
+        let ticket_a = encode_ticket(&node_addr, "room-one").expect("encode should succeed");
+        let ticket_b = encode_ticket(&node_addr, "room-two").expect("encode should succeed");
+        assert_ne!(ticket_a, ticket_b);
+
+        let (_, room_id_a) = decode_ticket(&ticket_a).expect("decode should succeed");
+        let (_, room_id_b) = decode_ticket(&ticket_b).expect("decode should succeed");
+        assert_ne!(room_id_a, room_id_b);
     }
 }
