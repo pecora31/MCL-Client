@@ -21,6 +21,7 @@ import { BackgroundCustomizerModal } from './components/home/BackgroundCustomize
 import { P2PFloatingWidget } from './components/p2p/P2PFloatingWidget';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict, ShareManifest } from './types';
 import { invokeCommand, isTauri, checkModConflicts } from './services/api';
+import { filterDismissedConflicts, dismissConflicts } from './services/dismissedModConflicts';
 import { readStoredJson, writeStoredJson } from './services/storage';
 import { listen } from '@tauri-apps/api/event';
 import type { Language } from './locales/i18n';
@@ -255,6 +256,7 @@ export const App: React.FC = () => {
   const [deleteTargetInstance, setDeleteTargetInstance] = useState<GameInstance | null>(null);
   const [isStorageCleanupModalOpen, setIsStorageCleanupModalOpen] = useState(false);
   const [modConflicts, setModConflicts] = useState<ModConflict[]>([]);
+  const [modConflictInstanceId, setModConflictInstanceId] = useState<string | null>(null);
   const [shareMode, setShareMode] = useState<'share' | 'import' | null>(null);
   const [sharingInstanceId, setSharingInstanceId] = useState<string>('');
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
@@ -686,10 +688,11 @@ export const App: React.FC = () => {
 
     if (isTauri() && !skipConflictCheck) {
       try {
-        const found = await checkModConflicts(targetInstance.id);
+        const found = filterDismissedConflicts(targetInstance.id, await checkModConflicts(targetInstance.id));
         const blocking = found.filter((c) => c.kind === 'breaks' || c.kind === 'missing');
         if (blocking.length > 0) {
           setModConflicts(found);
+          setModConflictInstanceId(targetInstance.id);
           return;
         }
         for (const soft of found) {
@@ -703,11 +706,13 @@ export const App: React.FC = () => {
 
     const currentServer = savedServers.find((s) => s.id === activeServerId) || savedServers[0];
 
-    // Inject direct connect server IP and port if user enabled directConnectServer
+    // The toggle is the one on/off switch for auto-connect: off means off, even if this profile
+    // has a serverIp/serverPort saved on it from an earlier launch with the toggle on. Without
+    // this, turning the toggle off silently kept reconnecting to whatever server was last used.
     const launchData: GameInstance = {
       ...targetInstance,
-      serverIp: directConnectServer && currentServer ? currentServer.ip : targetInstance.serverIp,
-      serverPort: directConnectServer && currentServer ? currentServer.port : targetInstance.serverPort,
+      serverIp: directConnectServer && currentServer ? currentServer.ip : undefined,
+      serverPort: directConnectServer && currentServer ? currentServer.port : undefined,
     };
 
     setIsRunning(false);
@@ -752,8 +757,10 @@ export const App: React.FC = () => {
               ...prev,
               `[${new Date().toLocaleTimeString()}] [MCL/${shareFailed ? 'WARN' : 'INFO'}] ${skinResult.message}`,
             ]);
-            // Open the log instead of leaving the only mention of it in a closed panel
-            if (shareFailed) setIsConsoleOpen(true);
+            // Logged, but not forced open: a skin-sync name collision is cosmetic and doesn't
+            // stop the game from launching, so popping the console on every single launch for it
+            // was more disruptive than the thing it was warning about. The console is one click
+            // away for anyone who wants to check.
           } catch (skinErr: any) {
             setConsoleLogs((prev) => [
               ...prev,
@@ -1143,9 +1150,16 @@ export const App: React.FC = () => {
             isOpen={modConflicts.length > 0}
             conflicts={modConflicts}
             language={language}
-            onClose={() => setModConflicts([])}
-            onLaunchAnyway={() => {
+            onClose={() => {
               setModConflicts([]);
+              setModConflictInstanceId(null);
+            }}
+            onLaunchAnyway={(dontShowAgain) => {
+              if (dontShowAgain && modConflictInstanceId) {
+                dismissConflicts(modConflictInstanceId, modConflicts);
+              }
+              setModConflicts([]);
+              setModConflictInstanceId(null);
               handleLaunch({ skipConflictCheck: true });
             }}
           />

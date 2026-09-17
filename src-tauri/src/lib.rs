@@ -622,10 +622,29 @@ fn app_close(window: tauri::Window) {
 
 #[tauri::command]
 fn set_window_size(window: tauri::Window, width: f64, height: f64) {
+    let monitor = window.current_monitor().ok().flatten();
+    let (width, height) = clamp_size_to_monitor(monitor.as_ref(), width, height);
     let _ = window.set_resizable(true);
     let _ = window.set_size(tauri::LogicalSize::new(width, height));
     let _ = window.center();
     let _ = window.set_resizable(false);
+}
+
+/// A saved or default window size is chosen in logical pixels, but a screen's logical work area
+/// shrinks as Windows display scaling goes up — a 1920x1080 monitor at 175% scaling only offers
+/// about 1097x617 logical pixels. A size that's perfectly DPI-correct can still be bigger than
+/// that, so clamp to whatever the current monitor can actually show (minus a little headroom for
+/// the taskbar) instead of requesting a size Windows has to squeeze the window to fit, which is
+/// what made the window spill off-screen on a scaled-up laptop display.
+fn clamp_size_to_monitor(monitor: Option<&tauri::window::Monitor>, width: f64, height: f64) -> (f64, f64) {
+    let Some(monitor) = monitor else {
+        return (width, height);
+    };
+    let scale = monitor.scale_factor();
+    let logical: tauri::LogicalSize<f64> = monitor.size().to_logical(scale);
+    let max_width = (logical.width - 40.0).max(640.0);
+    let max_height = (logical.height - 80.0).max(480.0);
+    (width.min(max_width), height.min(max_height))
 }
 
 #[tauri::command]
@@ -735,7 +754,9 @@ pub fn run() {
             )?;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(false);
-                let _ = window.set_size(tauri::LogicalSize::new(1600.0, 900.0));
+                let monitor = window.current_monitor().ok().flatten();
+                let (w, h) = clamp_size_to_monitor(monitor.as_ref(), 1600.0, 900.0);
+                let _ = window.set_size(tauri::LogicalSize::new(w, h));
                 let _ = window.set_resizable(false);
                 let _ = window.center();
 
