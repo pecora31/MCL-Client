@@ -480,7 +480,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
   ];
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto p-10 space-y-7 custom-scrollbar">
+    <div className="flex-1 flex flex-col overflow-y-auto p-8 space-y-6 custom-scrollbar">
       {/* Header */}
       <div>
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 text-[var(--accent-color)] text-xs font-semibold mb-2 tracking-wide">
@@ -494,102 +494,102 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
         </p>
       </div>
 
-      <div className="max-w-2xl grid grid-cols-2 gap-4">
-        {/* Profile picker */}
-        <div>
-          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-            {t.hostServerProfileLabel || 'Profile to Host'}
-          </label>
-          <CustomSelect value={selectedId} onChange={setSelectedId} options={profileOptions} />
+      {/* Control bar: which profile, which machine to run it on */}
+      <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] p-5 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+              {t.hostServerProfileLabel || 'Profile to Host'}
+            </label>
+            <CustomSelect value={selectedId} onChange={setSelectedId} options={profileOptions} />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+              {t.hostServerWhereLabel || 'Where'}
+            </label>
+            <CustomSelect value={selectedHostId} onChange={setSelectedHostId} options={hostOptions} />
+          </div>
         </div>
 
-        {/* Where to host: this computer, or a saved remote MCL Agent */}
-        <div>
-          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-            {t.hostServerWhereLabel || 'Where'}
-          </label>
-          <CustomSelect value={selectedHostId} onChange={setSelectedHostId} options={hostOptions} />
-        </div>
-      </div>
-
-      <div className="max-w-2xl flex items-center gap-2 -mt-3">
-        {selectedHost && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {selectedHost && (
+            <button
+              type="button"
+              onClick={() => handleRemoveHost(selectedHost.id)}
+              className="text-xs font-semibold text-slate-500 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition"
+            >
+              <Trash2 className="w-3 h-3" />
+              <span>{t.hostServerRemoveHost || 'Remove this host'}</span>
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => handleRemoveHost(selectedHost.id)}
-            className="text-xs font-semibold text-slate-500 hover:text-rose-300 flex items-center gap-1 cursor-pointer transition"
+            onClick={() => setIsAddHostOpen((v) => !v)}
+            className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer ml-auto"
           >
-            <Trash2 className="w-3 h-3" />
-            <span>{t.hostServerRemoveHost || 'Remove this host'}</span>
+            <Plus className="w-3 h-3" />
+            <span>{t.hostServerAddRemote || 'Add a remote host'}</span>
           </button>
+          <button
+            type="button"
+            onClick={() => setIsBootstrapOpen(true)}
+            className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer"
+          >
+            <Server className="w-3 h-3" />
+            <span>{t.hostServerBootstrapButton || 'Set up a new VM automatically'}</span>
+          </button>
+        </div>
+
+        {isAddHostOpen && (
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
+            <div className="flex items-start gap-2 text-xs text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-lg p-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent-color)]" />
+              <span>
+                {t.hostServerRemoteWarning ||
+                  "The agent prints its address, bearer token and certificate path the first time it runs — paste that certificate file's contents below so MCL knows it's really talking to your server."}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="text"
+                placeholder={t.hostServerRemoteNamePlaceholder || 'Name (e.g. My VPS)'}
+                value={newHostName}
+                onChange={(e) => setNewHostName(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+              <input
+                type="text"
+                placeholder={t.hostServerRemoteUrlPlaceholder || 'https://host:8642'}
+                value={newHostUrl}
+                onChange={(e) => setNewHostUrl(e.target.value)}
+                className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+            </div>
+            <input
+              type="password"
+              placeholder={t.hostServerRemoteTokenPlaceholder || 'Bearer token (printed when the agent first starts)'}
+              value={newHostToken}
+              onChange={(e) => setNewHostToken(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+            />
+            <textarea
+              placeholder={t.hostServerRemoteCertPlaceholder || '-----BEGIN CERTIFICATE-----\n... (paste agent-cert.pem here) ...\n-----END CERTIFICATE-----'}
+              value={newHostCertPem}
+              onChange={(e) => setNewHostCertPem(e.target.value)}
+              rows={4}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[var(--accent-color)] resize-none"
+            />
+            <button
+              type="button"
+              onClick={handleAddHost}
+              disabled={!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim() || !newHostCertPem.trim()}
+              className="btn-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
+            >
+              {t.btnSave || 'Save'}
+            </button>
+          </div>
         )}
-        <button
-          type="button"
-          onClick={() => setIsAddHostOpen((v) => !v)}
-          className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer ml-auto"
-        >
-          <Plus className="w-3 h-3" />
-          <span>{t.hostServerAddRemote || 'Add a remote host'}</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setIsBootstrapOpen(true)}
-          className="text-xs font-semibold text-[var(--accent-light)] hover:underline flex items-center gap-1 cursor-pointer"
-        >
-          <Server className="w-3 h-3" />
-          <span>{t.hostServerBootstrapButton || 'Set up a new VM automatically'}</span>
-        </button>
       </div>
-
-      {isAddHostOpen && (
-        <div className="max-w-2xl p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
-          <div className="flex items-start gap-2 text-xs text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-lg p-2.5">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent-color)]" />
-            <span>
-              {t.hostServerRemoteWarning ||
-                "The agent prints its address, bearer token and certificate path the first time it runs — paste that certificate file's contents below so MCL knows it's really talking to your server."}
-            </span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <input
-              type="text"
-              placeholder={t.hostServerRemoteNamePlaceholder || 'Name (e.g. My VPS)'}
-              value={newHostName}
-              onChange={(e) => setNewHostName(e.target.value)}
-              className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-            />
-            <input
-              type="text"
-              placeholder={t.hostServerRemoteUrlPlaceholder || 'https://host:8642'}
-              value={newHostUrl}
-              onChange={(e) => setNewHostUrl(e.target.value)}
-              className="px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-            />
-          </div>
-          <input
-            type="password"
-            placeholder={t.hostServerRemoteTokenPlaceholder || 'Bearer token (printed when the agent first starts)'}
-            value={newHostToken}
-            onChange={(e) => setNewHostToken(e.target.value)}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-          />
-          <textarea
-            placeholder={t.hostServerRemoteCertPlaceholder || '-----BEGIN CERTIFICATE-----\n... (paste agent-cert.pem here) ...\n-----END CERTIFICATE-----'}
-            value={newHostCertPem}
-            onChange={(e) => setNewHostCertPem(e.target.value)}
-            rows={4}
-            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[var(--accent-color)] resize-none"
-          />
-          <button
-            type="button"
-            onClick={handleAddHost}
-            disabled={!newHostName.trim() || !newHostUrl.trim() || !newHostToken.trim() || !newHostCertPem.trim()}
-            className="btn-primary px-4 py-2 rounded-xl text-xs font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
-          >
-            {t.btnSave || 'Save'}
-          </button>
-        </div>
-      )}
 
       {isBootstrapOpen && (
         <VmBootstrapWizard
@@ -606,17 +606,17 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
       )}
 
       {error && (
-        <div className="max-w-2xl p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex items-start gap-3">
+        <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-300 text-sm flex items-start gap-3">
           <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
           <span>{error}</span>
         </div>
       )}
 
       {instance && (
-        <div className="max-w-2xl space-y-5">
+        <>
           {!status?.hasJar ? (
             /* Not prepared yet: EULA + download */
-            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
+            <div className="max-w-xl p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
               <div>
                 <h3 className="text-base font-bold text-white flex items-center gap-2">
                   {selectedHost ? <Cloud className="w-4 h-4 text-[var(--accent-color)]" /> : <Monitor className="w-4 h-4 text-[var(--accent-color)]" />}
@@ -653,7 +653,12 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
               </button>
             </div>
           ) : (
-            <>
+            /* Prepared: a dashboard instead of one long column — status + console carry the
+               main area, config/backups/sync sit in a narrower side column next to it, and the
+               file browser (wide by nature) spans the full width underneath both. */
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 items-start">
+                <div className="xl:col-span-2 space-y-6">
               {/* Start / Stop + connect info */}
               <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
                 <div className="flex items-center justify-between gap-3">
@@ -786,85 +791,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                 )}
               </div>
 
-              {selectedHost && (
-                <button
-                  type="button"
-                  onClick={handleSyncMods}
-                  disabled={isSyncingMods}
-                  className="w-full px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMods ? 'animate-spin' : ''}`} />
-                  <span>{isSyncingMods ? t.hostServerSyncingMods || 'Syncing mods...' : t.hostServerSyncMods || 'Sync Mods to This Host'}</span>
-                </button>
-              )}
-
-              {selectedHost && (
-                <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
-                  <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
-                      {t.hostServerBackupsTitle || 'Backups'} ({backups.length})
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleBackupNow}
-                      disabled={isBackingUp}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
-                    >
-                      <RefreshCw className={`w-3.5 h-3.5 ${isBackingUp ? 'animate-spin' : ''}`} />
-                      <span>{isBackingUp ? t.hostServerBackingUp || 'Backing up...' : t.hostServerBackupNow || 'Backup now'}</span>
-                    </button>
-                  </div>
-                  <div className="divide-y divide-white/5 max-h-56 overflow-y-auto custom-scrollbar">
-                    {backups.length === 0 ? (
-                      <p className="px-4 py-3 text-xs text-slate-500">{t.hostServerNoBackupsYet || 'No backups yet.'}</p>
-                    ) : (
-                      backups.map((b) => (
-                        <div key={b.name} className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
-                          <div className="min-w-0">
-                            <div className="font-mono text-slate-200 truncate">{new Date(b.createdAt * 1000).toLocaleString()}</div>
-                            <div className="text-slate-500">{(b.sizeBytes / 1024 / 1024).toFixed(1)} MB</div>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => handleDownloadBackup(b.name)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
-                              title={t.hostServerDownloadBackup || 'Download'}
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleRestoreBackup(b.name)}
-                              disabled={restoringName === b.name}
-                              className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition cursor-pointer disabled:opacity-40"
-                              title={t.hostServerRestoreBackup || 'Restore'}
-                            >
-                              {restoringName === b.name ? (
-                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              ) : (
-                                <RotateCcw className="w-3.5 h-3.5" />
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBackup(b.name)}
-                              className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
-                              title={t.hostServerDeleteBackup || 'Delete'}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {selectedHost && <RemoteFileBrowser host={selectedHost} language={language} />}
-
-              {/* Live console */}
+              {/* Live console — stays paired with status in the main column */}
               <div className="rounded-2xl bg-black/60 border border-white/[0.06] overflow-hidden">
                 <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
@@ -912,92 +839,176 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                   </form>
                 )}
               </div>
+                </div>
 
-              {/* Server settings, no folder picker needed — MCL already knows where this one is */}
-              {summary && (
-                <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
-                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                    {t.serverConfigTitle || 'Server Config'}
-                  </h3>
-
-                  <Checkbox checked={summary.onlineMode} onChange={(v) => updateSummary({ onlineMode: v })} align="start">
-                    <div>
-                      <div className="text-sm font-bold text-white">
-                        {t.serverConfigOnlineMode || 'Require a Microsoft account'}
-                      </div>
-                      <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                        {t.serverConfigOnlineModeDesc ||
-                          "Off lets offline accounts join — turn this off for a group all using offline accounts, or no one can connect."}
-                      </p>
-                    </div>
-                  </Checkbox>
-
-                  <div className="space-y-3.5">
-                    <Checkbox checked={summary.pvp} onChange={(v) => updateSummary({ pvp: v })}>
-                      <span className="text-sm font-semibold text-white">{t.serverConfigPvp || 'Players can fight each other'}</span>
-                    </Checkbox>
-                    <Checkbox checked={summary.whiteList} onChange={(v) => updateSummary({ whiteList: v })}>
-                      <span className="text-sm font-semibold text-white">{t.serverConfigWhitelist || 'Only allow listed players'}</span>
-                    </Checkbox>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                        {t.serverConfigDifficulty || 'Difficulty'}
-                      </label>
-                      <CustomSelect
-                        value={summary.difficulty}
-                        onChange={(v) => updateSummary({ difficulty: v })}
-                        options={difficultyOptions}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                        {t.serverConfigMaxPlayers || 'Max Players'}
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        value={summary.maxPlayers}
-                        onChange={(e) => updateSummary({ maxPlayers: Math.max(1, Number(e.target.value) || 1) })}
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                        {t.serverConfigPort || 'Port'}
-                      </label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={65535}
-                        value={summary.serverPort}
-                        onChange={(e) =>
-                          updateSummary({ serverPort: Math.min(65535, Math.max(1, Number(e.target.value) || 25565)) })
-                        }
-                        className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-3 pt-1">
-                    <p className="text-xs text-slate-500">
-                      {t.serverConfigRestartHint || 'Restart the server for changes to take effect.'}
-                    </p>
+                {/* Sidebar: config, backups, mod sync — the "settings" side of the dashboard */}
+                <div className="space-y-6">
+                  {selectedHost && (
                     <button
                       type="button"
-                      onClick={handleSaveProperties}
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
+                      onClick={handleSyncMods}
+                      disabled={isSyncingMods}
+                      className="w-full px-4 py-2.5 rounded-xl text-xs font-bold bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
                     >
-                      <span>{t.btnSave || 'Save'}</span>
+                      <RefreshCw className={`w-3.5 h-3.5 ${isSyncingMods ? 'animate-spin' : ''}`} />
+                      <span>{isSyncingMods ? t.hostServerSyncingMods || 'Syncing mods...' : t.hostServerSyncMods || 'Sync Mods to This Host'}</span>
                     </button>
-                  </div>
+                  )}
+
+                  {/* Server settings, no folder picker needed — MCL already knows where this one is */}
+                  {summary && (
+                    <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-4">
+                      <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                        {t.serverConfigTitle || 'Server Config'}
+                      </h3>
+
+                      <Checkbox checked={summary.onlineMode} onChange={(v) => updateSummary({ onlineMode: v })} align="start">
+                        <div>
+                          <div className="text-sm font-bold text-white">
+                            {t.serverConfigOnlineMode || 'Require a Microsoft account'}
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                            {t.serverConfigOnlineModeDesc ||
+                              "Off lets offline accounts join — turn this off for a group all using offline accounts, or no one can connect."}
+                          </p>
+                        </div>
+                      </Checkbox>
+
+                      <div className="space-y-3.5">
+                        <Checkbox checked={summary.pvp} onChange={(v) => updateSummary({ pvp: v })}>
+                          <span className="text-sm font-semibold text-white">{t.serverConfigPvp || 'Players can fight each other'}</span>
+                        </Checkbox>
+                        <Checkbox checked={summary.whiteList} onChange={(v) => updateSummary({ whiteList: v })}>
+                          <span className="text-sm font-semibold text-white">{t.serverConfigWhitelist || 'Only allow listed players'}</span>
+                        </Checkbox>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                            {t.serverConfigDifficulty || 'Difficulty'}
+                          </label>
+                          <CustomSelect
+                            value={summary.difficulty}
+                            onChange={(v) => updateSummary({ difficulty: v })}
+                            options={difficultyOptions}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                            {t.serverConfigMaxPlayers || 'Max Players'}
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            value={summary.maxPlayers}
+                            onChange={(e) => updateSummary({ maxPlayers: Math.max(1, Number(e.target.value) || 1) })}
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                            {t.serverConfigPort || 'Port'}
+                          </label>
+                          <input
+                            type="number"
+                            min={1}
+                            max={65535}
+                            value={summary.serverPort}
+                            onChange={(e) =>
+                              updateSummary({ serverPort: Math.min(65535, Math.max(1, Number(e.target.value) || 25565)) })
+                            }
+                            className="w-full px-3.5 py-2.5 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-1">
+                        <p className="text-xs text-slate-500">
+                          {t.serverConfigRestartHint || 'Restart the server for changes to take effect.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleSaveProperties}
+                          className="px-4 py-2 rounded-xl text-xs font-bold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition"
+                        >
+                          <span>{t.btnSave || 'Save'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedHost && (
+                    <div className="rounded-2xl bg-white/[0.02] border border-white/[0.06] overflow-hidden">
+                      <div className="px-4 py-2.5 border-b border-white/[0.06] flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-300 uppercase tracking-wider">
+                          {t.hostServerBackupsTitle || 'Backups'} ({backups.length})
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleBackupNow}
+                          disabled={isBackingUp}
+                          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-white/10 hover:bg-white/15 text-white flex items-center gap-1.5 cursor-pointer active:scale-95 transition disabled:opacity-40"
+                        >
+                          <RefreshCw className={`w-3.5 h-3.5 ${isBackingUp ? 'animate-spin' : ''}`} />
+                          <span>{isBackingUp ? t.hostServerBackingUp || 'Backing up...' : t.hostServerBackupNow || 'Backup now'}</span>
+                        </button>
+                      </div>
+                      <div className="divide-y divide-white/5 max-h-56 overflow-y-auto custom-scrollbar">
+                        {backups.length === 0 ? (
+                          <p className="px-4 py-3 text-xs text-slate-500">{t.hostServerNoBackupsYet || 'No backups yet.'}</p>
+                        ) : (
+                          backups.map((b) => (
+                            <div key={b.name} className="px-4 py-2.5 flex items-center justify-between gap-3 text-xs">
+                              <div className="min-w-0">
+                                <div className="font-mono text-slate-200 truncate">{new Date(b.createdAt * 1000).toLocaleString()}</div>
+                                <div className="text-slate-500">{(b.sizeBytes / 1024 / 1024).toFixed(1)} MB</div>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadBackup(b.name)}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition cursor-pointer"
+                                  title={t.hostServerDownloadBackup || 'Download'}
+                                >
+                                  <Download className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRestoreBackup(b.name)}
+                                  disabled={restoringName === b.name}
+                                  className="p-1.5 rounded-lg text-amber-400 hover:text-amber-300 hover:bg-amber-500/10 transition cursor-pointer disabled:opacity-40"
+                                  title={t.hostServerRestoreBackup || 'Restore'}
+                                >
+                                  {restoringName === b.name ? (
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <RotateCcw className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteBackup(b.name)}
+                                  className="p-1.5 rounded-lg text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition cursor-pointer"
+                                  title={t.hostServerDeleteBackup || 'Delete'}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              )}
-            </>
+              </div>
+
+              {/* File browser is wide by nature — give it the full row below the grid */}
+              {selectedHost && <RemoteFileBrowser host={selectedHost} language={language} />}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
