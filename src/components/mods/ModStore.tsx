@@ -39,6 +39,9 @@ import {
   searchAddonsMultiSource,
   getModrinthDownloadInfo,
   getCurseForgeDownloadInfo,
+  getModrinthProjectsInfo,
+  getCurseForgeModInfo,
+  type DependencyProjectInfo,
   installAddon,
   getInstalledAddons,
   toggleAddon,
@@ -67,6 +70,7 @@ import {
   getLoaderIcon,
 } from './ModIcons';
 import { InstallModpackModal } from '../instances/InstallModpackModal';
+import { DependencyConfirmModal, type DependencyChoice } from './DependencyConfirmModal';
 
 export { ModrinthLogo, CurseForgeLogo, getLoaderIcon };
 
@@ -202,6 +206,18 @@ function getCategoryName(cat: { id: string; nameVi: string; nameEn: string }, la
     return jaMap[cat.id.toLowerCase()] || cat.nameEn;
   }
   return cat.nameEn;
+}
+
+// Everything already resolved about the mod itself, held onto while a dependency-confirm modal
+// (if the mod declares any) waits on the player's choice before the actual download happens.
+interface PendingMainInstall {
+  item: AddonItem;
+  downloadUrl: string;
+  fileName: string;
+  fileSha1?: string;
+  installedProjectId?: string;
+  installedSource: AddonSource;
+  installedVersionId?: string;
 }
 
 // Complete Mod Loader list with authentic Modrinth SVGs
@@ -768,6 +784,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
   const [loading, setLoading] = useState(false);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [pendingDeps, setPendingDeps] = useState<{ main: PendingMainInstall; deps: DependencyChoice[] } | null>(null);
 
   // Installed Tab Search, Filters, Sorting, View Mode and Pagination
   const [installedSearchQuery, setInstalledSearchQuery] = useState('');
@@ -1025,6 +1042,76 @@ export const ModStore: React.FC<ModStoreProps> = ({
     }
   }, [activeInstance?.id, installedContentType, activeSubTab]);
 
+  // Finishes an install once any dependency prompt has been resolved (or skipped straight
+  // past, when the mod declared none). Split out of handleInstall so the dependency-confirm
+  // modal can sit between "resolved what to download" and "actually download it".
+  const finishInstall = async (main: PendingMainInstall, selectedDeps: DependencyChoice[]) => {
+    if (!activeInstance) return;
+    setInstallingId(main.item.id);
+    try {
+      const installed = await installAddon(activeInstance.id, main.downloadUrl, main.fileName, contentType, {
+        sha1: main.fileSha1,
+        projectId: main.installedProjectId,
+        source: main.installedSource,
+        versionId: main.installedVersionId,
+      });
+      setInstalledItems((prev) => [installed, ...prev]);
+      main.item.isInstalled = true;
+
+      for (const dep of selectedDeps) {
+        try {
+          let depInstalled: LocalMod | null = null;
+          if (dep.source === 'modrinth') {
+            const depInfo = await getModrinthDownloadInfo(
+              dep.id,
+              effectiveVersion || activeInstance.gameVersion,
+              effectiveLoader || activeInstance.loader
+            );
+            if (!depInfo?.url) continue;
+            depInstalled = await installAddon(activeInstance.id, depInfo.url, depInfo.fileName, contentType, {
+              sha1: depInfo.sha1,
+              projectId: dep.id,
+              source: 'modrinth',
+              versionId: depInfo.versionId,
+            });
+          } else {
+            const depInfo = await getCurseForgeDownloadInfo(
+              dep.id,
+              effectiveVersion || activeInstance.gameVersion,
+              effectiveLoader || activeInstance.loader,
+              curseForgeApiKey
+            );
+            if (!depInfo.url) continue;
+            depInstalled = await installAddon(activeInstance.id, depInfo.url, depInfo.fileName, contentType, {
+              projectId: dep.id,
+              source: 'curseforge',
+              versionId: depInfo.versionId,
+            });
+          }
+          const finalDep = depInstalled;
+          setInstalledItems((prev) => (prev.some((p) => p.fileName === finalDep.fileName) ? prev : [finalDep, ...prev]));
+        } catch (depErr) {
+          console.warn('Could not install a selected dependency:', dep.id, depErr);
+        }
+      }
+
+      setNotification({
+        type: 'success',
+        text: `${t.installSuccess || 'Installed successfully!'} (${main.fileName}) - ${activeInstance.name}`,
+      });
+      setTimeout(() => setNotification(null), 4500);
+    } catch (err: any) {
+      console.error('Install failed:', err);
+      setNotification({
+        type: 'error',
+        text: err?.toString() || t.installFailed || 'Installation failed.',
+      });
+    } finally {
+      setInstallingId(null);
+      setPendingDeps(null);
+    }
+  };
+
   // Handle Addon Installation (with deduplication fallback support)
   const handleInstall = async (item: AddonItem) => {
     if (!activeInstance) return;
@@ -1040,7 +1127,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
       // for the right file, rather than guessing from a file name.
       let installedSource: AddonSource | undefined;
       let installedVersionId: string | undefined;
-      let requiredDependencies: string[] = [];
+      let requiredDependencyIds: string[] = [];
 
       // 1. If available on Modrinth, attempt Modrinth direct download first
       if (item.modrinthId || item.source === 'modrinth') {
@@ -1056,7 +1143,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           installedProjectId = item.modrinthId || item.id;
           installedSource = 'modrinth';
           installedVersionId = info.versionId;
-          requiredDependencies = info.requiredDependencies || [];
+          requiredDependencyIds = info.requiredDependencies || [];
         }
       }
 
@@ -1081,6 +1168,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           installedProjectId = item.curseforgeId || item.id;
           installedSource = 'curseforge';
           installedVersionId = info.versionId;
+          requiredDependencyIds = info.requiredDependencies || [];
         } else if (!info.directAllowed) {
           openExternalUrl(item.webUrl);
           setNotification({
@@ -1106,58 +1194,42 @@ export const ModStore: React.FC<ModStoreProps> = ({
         return;
       }
 
-      const installed = await installAddon(activeInstance.id, downloadUrl, fileName, contentType, {
-        sha1: fileSha1,
-        projectId: installedProjectId,
-        source: installedSource,
-        versionId: installedVersionId,
-      });
-      setInstalledItems((prev) => [installed, ...prev]);
-      item.isInstalled = true;
+      const main: PendingMainInstall = {
+        item,
+        downloadUrl,
+        fileName,
+        fileSha1,
+        installedProjectId,
+        installedSource: installedSource as AddonSource,
+        installedVersionId,
+      };
 
-      // Mods such as Sodium refuse to load without their required libraries, so pull those
-      // in as well rather than letting the game crash on startup
-      for (const dependencyId of requiredDependencies) {
-        try {
-          const depInfo = await getModrinthDownloadInfo(
-            dependencyId,
-            effectiveVersion || activeInstance.gameVersion,
-            effectiveLoader || activeInstance.loader
-          );
-          if (!depInfo?.url) continue;
-          const depInstalled = await installAddon(
-            activeInstance.id,
-            depInfo.url,
-            depInfo.fileName,
-            contentType,
-            {
-              sha1: depInfo.sha1,
-              projectId: dependencyId,
-              source: 'modrinth',
-              versionId: depInfo.versionId,
-            }
-          );
-          setInstalledItems((prev) =>
-            prev.some((p) => p.fileName === depInstalled.fileName) ? prev : [depInstalled, ...prev]
-          );
-        } catch (depErr) {
-          console.warn('Could not install a required dependency:', dependencyId, depErr);
-        }
+      // No declared dependencies — nothing to ask about, install straight away like before.
+      if (requiredDependencyIds.length === 0) {
+        await finishInstall(main, []);
+        return;
       }
 
-      setNotification({
-        type: 'success',
-        text: `${t.installSuccess || 'Installed successfully!'} (${fileName}) - ${activeInstance.name}`,
+      // Resolve names/icons for the confirm modal — a project id alone means nothing to a player.
+      const depInfos =
+        installedSource === 'modrinth'
+          ? await getModrinthProjectsInfo(requiredDependencyIds)
+          : (await Promise.all(requiredDependencyIds.map((id) => getCurseForgeModInfo(id, curseForgeApiKey)))).filter(
+              (d): d is DependencyProjectInfo => d !== null
+            );
+      const deps: DependencyChoice[] = requiredDependencyIds.map((id) => {
+        const found = depInfos.find((d) => d.id === id);
+        return { id, title: found?.title || id, iconUrl: found?.iconUrl, source: installedSource as AddonSource };
       });
 
-      setTimeout(() => setNotification(null), 4500);
+      setInstallingId(null);
+      setPendingDeps({ main, deps });
     } catch (err: any) {
       console.error('Install failed:', err);
       setNotification({
         type: 'error',
         text: err?.toString() || t.installFailed || 'Installation failed.',
       });
-    } finally {
       setInstallingId(null);
     }
   };
@@ -3154,6 +3226,20 @@ export const ModStore: React.FC<ModStoreProps> = ({
             text: `${t.modpackInstalledSuccess || 'Modpack installed successfully:'} ${newInstance.name}`,
           });
         }}
+        language={language}
+      />
+
+      {/* Dependency confirmation — shown when the mod just picked declares it needs others */}
+      <DependencyConfirmModal
+        isOpen={pendingDeps !== null}
+        sourceModName={pendingDeps?.main.item.name || ''}
+        dependencies={pendingDeps?.deps || []}
+        isInstalling={installingId !== null}
+        onCancel={() => setPendingDeps(null)}
+        onSkip={() => pendingDeps && finishInstall(pendingDeps.main, [])}
+        onConfirm={(selectedIds) =>
+          pendingDeps && finishInstall(pendingDeps.main, pendingDeps.deps.filter((d) => selectedIds.includes(d.id)))
+        }
         language={language}
       />
     </div>

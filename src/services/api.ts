@@ -434,6 +434,51 @@ export async function searchModrinthMods(
   return { hits, total_hits: res.total };
 }
 
+export interface DependencyProjectInfo {
+  id: string;
+  title: string;
+  iconUrl?: string;
+}
+
+// Batch-fetch just enough about a set of Modrinth projects (title, icon) to show a human a
+// dependency-confirmation list — one request instead of N, since a mod can pull in several.
+export async function getModrinthProjectsInfo(projectIds: string[]): Promise<DependencyProjectInfo[]> {
+  if (projectIds.length === 0) return [];
+  try {
+    const res = await fetch(
+      `https://api.modrinth.com/v2/projects?ids=${encodeURIComponent(JSON.stringify(projectIds))}`,
+      { headers: { 'User-Agent': 'MCLClient-Launcher/1.0.0 (https://github.com/pecora31/MCL-Client)' } }
+    );
+    if (!res.ok) return [];
+    const data: any[] = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data.map((p) => ({ id: p.id, title: p.title, iconUrl: p.icon_url || undefined }));
+  } catch (err) {
+    console.error('Failed to get Modrinth projects info:', err);
+    return [];
+  }
+}
+
+// Same idea for a single CurseForge mod — CurseForge has no batch-by-id endpoint reachable
+// through the proxy, so this is called once per dependency (there are rarely more than a few).
+export async function getCurseForgeModInfo(
+  modId: string | number,
+  customApiKey?: string
+): Promise<DependencyProjectInfo | null> {
+  try {
+    const request = curseForgeRequest(`/v1/mods/${modId}`, '', customApiKey);
+    const res = await fetch(request.url, { headers: request.headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const mod = data.data;
+    if (!mod) return null;
+    return { id: String(mod.id), title: mod.name, iconUrl: mod.logo?.thumbnailUrl || undefined };
+  } catch (err) {
+    console.error('Failed to get CurseForge mod info:', err);
+    return null;
+  }
+}
+
 // Get direct download info from Modrinth
 export async function getModrinthDownloadInfo(
   projectId: string,
@@ -774,6 +819,7 @@ export async function getCurseForgeDownloadInfo(
   versionId?: string;
   /** The MCL service turned the lookup away for coming too often; retrying later works. */
   rateLimited?: boolean;
+  requiredDependencies?: string[];
 }> {
   const modLoaderType = getCurseForgeLoaderType(loader);
 
@@ -810,6 +856,10 @@ export async function getCurseForgeDownloadInfo(
       fileName: file.fileName || `${modId}.jar`,
       directAllowed: Boolean(downloadUrl),
       versionId: file.id ? String(file.id) : undefined,
+      // relationType 3 = RequiredDependency in CurseForge's schema
+      requiredDependencies: (file.dependencies || [])
+        .filter((d: any) => d.relationType === 3 && d.modId)
+        .map((d: any) => String(d.modId)),
     };
   } catch (err) {
     console.error('Failed to get CurseForge download info:', err);
