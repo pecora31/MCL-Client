@@ -478,7 +478,12 @@ pub fn remote_agent_start_log_stream(app_handle: AppHandle, host: RemoteHostConf
     let token = host.token.clone();
     let sid = stream_id.clone();
 
-    let task = tokio::spawn(async move {
+    // tauri::async_runtime::spawn rather than tokio::spawn: this command is a plain sync `fn`,
+    // and Tauri does not guarantee its calling thread has an entered Tokio runtime context
+    // (a bare tokio::spawn here panics with "there is no reactor running" when invoked from
+    // such a thread) — Tauri's own spawn always dispatches onto the runtime it manages,
+    // regardless of which thread the command itself happened to run on.
+    let task = tauri::async_runtime::spawn(async move {
         let mut retry_count = 0;
         const MAX_RETRIES: u32 = 8;
 
@@ -568,7 +573,7 @@ pub fn remote_agent_start_log_stream(app_handle: AppHandle, host: RemoteHostConf
     });
 
     let mut guard = LOG_STREAMS.lock().unwrap_or_else(|e| e.into_inner());
-    guard.get_or_insert_with(HashMap::new).insert(stream_id, task.abort_handle());
+    guard.get_or_insert_with(HashMap::new).insert(stream_id, task.inner().abort_handle());
     Ok(())
 }
 
