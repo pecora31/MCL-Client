@@ -138,6 +138,22 @@ Mỗi mục ghi: **Trạng thái**, **Mô tả** (người dùng báo cáo gì),
 - **Đã sửa ở**: `src-tauri/src/minecraft_core/fabric.rs` — đặt timeout 15s mỗi lần gọi, thử lại
   tối đa 3 lần với backoff (500ms/1000ms) trước khi báo lỗi hẳn.
 
+### 16. Mục lịch sử phòng đã hết hạn (ticket cũ) nằm lại mãi, gây khó hiểu khi bấm vào
+- **Trạng thái**: Đã sửa — chưa release.
+- **Mô tả**: Hệ quả tự nhiên của mục 13 (mỗi phòng giờ có ticket riêng): lịch sử phòng của người
+  tham gia không còn gộp các lần join từ cùng một host thành 1 mục nữa — giờ mỗi phiên phòng là
+  1 mục riêng. Mục ứng với phòng đã đóng bị từ chối đúng như thiết kế, nhưng cứ nằm lì trong danh
+  sách không có dấu hiệu gì là đã hỏng, khiến người dùng tưởng là bug ("1 phòng ấn không được,
+  ấn phòng kia thì lại vào được").
+- **Đã sửa ở**:
+  - `src-tauri/src/p2p_tunnel.rs` — thông báo lỗi khi từ chối ticket cũ giờ có tiền tố ổn định
+    `STALE_TICKET::` để frontend nhận diện được (không dùng số hiệu đóng kết nối vì
+    `rejection_reason()` chỉ đọc được phần text, không đọc được mã số).
+  - `src/services/p2pRoomHistory.ts` — thêm `forgetP2PRoomByTicket()`.
+  - `src/components/p2p/P2PFloatingWidget.tsx` — khi bắt được lỗi có tiền tố này (ở cả
+    `joinWithTicket` lẫn `refreshClientStatus`), tự động xoá mục lịch sử tương ứng khỏi danh
+    sách và bóc tiền tố trước khi hiển thị cho người dùng.
+
 ---
 
 ## Đang mở / đang xử lý

@@ -26,7 +26,7 @@ import {
   p2pStopClient,
   p2pGetClientStatus,
 } from '../../services/api';
-import { loadP2PRoomHistory, rememberJoinedRoom, forgetP2PRoom, formatRelativeTime, type P2PRoomHistoryEntry } from '../../services/p2pRoomHistory';
+import { loadP2PRoomHistory, rememberJoinedRoom, forgetP2PRoom, forgetP2PRoomByTicket, formatRelativeTime, type P2PRoomHistoryEntry } from '../../services/p2pRoomHistory';
 import type { P2PHostStatus, P2PClientStatus, P2PMemberInfo } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 
@@ -175,7 +175,12 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
       const status = await p2pGetClientStatus();
       setClientStatus(status);
       if (!status.isConnected && !status.isReconnecting && status.error) {
-        setJoinError(status.error);
+        const staleMarker = 'STALE_TICKET::';
+        setJoinError(
+          status.error.includes(staleMarker)
+            ? status.error.slice(status.error.indexOf(staleMarker) + staleMarker.length)
+            : status.error
+        );
       }
     } catch {
       // Browser preview fallback
@@ -246,7 +251,16 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
       );
       setView('active');
     } catch (err) {
-      setJoinError(String(err));
+      const message = String(err);
+      const staleMarker = 'STALE_TICKET::';
+      if (message.includes(staleMarker)) {
+        // This exact ticket can never succeed again — leaving it in history would just be a
+        // trap the next time the player tries it, so it's removed the moment it's confirmed dead.
+        setHistory(forgetP2PRoomByTicket(ticket.trim()));
+        setJoinError(message.slice(message.indexOf(staleMarker) + staleMarker.length));
+      } else {
+        setJoinError(message);
+      }
     } finally {
       setIsJoining(false);
     }

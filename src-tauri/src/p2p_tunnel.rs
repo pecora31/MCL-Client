@@ -492,7 +492,12 @@ async fn handle_incoming_peer(
             room_name: None,
             host_username: None,
             error: Some(
-                "This invite is for a room that isn't running anymore. Ask the host for a new one."
+                // The prefix is a stable marker the frontend matches on to auto-remove this
+                // entry from the player's room history — a ticket rejected for this reason
+                // will never succeed again (the host would have to reuse an old room_id, which
+                // it never does), so leaving it in the list is just a landmine. Stripped before
+                // display.
+                "STALE_TICKET::This invite is for a room that isn't running anymore. Ask the host for a new one."
                     .to_string(),
             ),
         };

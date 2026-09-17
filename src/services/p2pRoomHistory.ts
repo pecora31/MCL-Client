@@ -46,6 +46,18 @@ export function forgetP2PRoom(id: string): P2PRoomHistoryEntry[] {
   return next;
 }
 
+/**
+ * Same idea, keyed by ticket instead of id — for when a reconnect attempt is what discovers the
+ * entry is dead (the host rejected it as a stale invite for a room that no longer runs), rather
+ * than the player explicitly deleting it. Without this, a room that can never succeed again sits
+ * in the list indefinitely with nothing distinguishing it from one that still works.
+ */
+export function forgetP2PRoomByTicket(ticket: string): P2PRoomHistoryEntry[] {
+  const next = loadP2PRoomHistory().filter((e) => e.ticket !== ticket);
+  saveP2PRoomHistory(next);
+  return next;
+}
+
 export function formatRelativeTime(timestampMs: number, language: Language): string {
   const seconds = Math.max(0, Math.floor((Date.now() - timestampMs) / 1000));
   const isVi = language === 'vi';
