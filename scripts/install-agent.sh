@@ -29,9 +29,18 @@ if [ "$ARCH" != "x86_64" ]; then
   exit 1
 fi
 
+# Stop first if this is a re-run: overwriting a binary that systemd currently has running
+# fails ("Failure writing output to destination", ETXTBSY) since Linux won't let you write
+# into an executable's own in-use inode. Downloading to a temp file and moving it into place
+# below also sidesteps this on its own, but stopping first means the old process isn't still
+# holding the previous binary in memory once this restarts it further down.
+systemctl stop mcl-agent 2>/dev/null || true
+
 echo "Downloading the latest mcl-agent build..."
-curl -fsSL "https://github.com/$REPO/releases/latest/download/mcl-agent-linux-x86_64" -o "$BIN_PATH"
-chmod +x "$BIN_PATH"
+TMP_BIN="$(mktemp)"
+curl -fsSL "https://github.com/$REPO/releases/latest/download/mcl-agent-linux-x86_64" -o "$TMP_BIN"
+chmod +x "$TMP_BIN"
+mv -f "$TMP_BIN" "$BIN_PATH"
 
 mkdir -p "$DATA_DIR"
 
