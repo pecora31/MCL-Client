@@ -221,12 +221,17 @@ pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) 
     for top in &top_names {
         let current = server_dir.join(top);
         let aside = pre_restore_path(server_dir, top);
-        let failure = if fs::symlink_metadata(&aside).is_ok() {
-            // Never delete it: an earlier interrupted restore may have left the only good copy.
-            Some(format!(
-                "A previous restore left {}.pre-restore in the server folder. Inspect it (it may be the only copy of {}) and move or delete it before restoring again.",
+        let aside_state = match fs::symlink_metadata(&aside) {
+            Ok(_) => Some(format!(
+                // Never delete it: an earlier interrupted restore may have left the only good copy.
+                "{}.pre-restore is already in the server folder, left by a previous restore that failed or whose cleanup failed. Inspect it (it may be the only copy of {}) and move or delete it before restoring again.",
                 top, top
-            ))
+            )),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => Some(format!("Could not check {}.pre-restore before restoring: {}", top, e)),
+        };
+        let failure = if aside_state.is_some() {
+            aside_state
         } else {
             match fs::symlink_metadata(&current) {
                 Ok(_) => match fs::rename(&current, &aside) {
@@ -252,8 +257,15 @@ pub fn restore_backup(server_dir: &Path, backups_dir: &Path, backup_name: &str) 
     match extract_archive(&mut archive, server_dir) {
         Ok(()) => {
             // (d) Success: the moved-aside copies are no longer needed.
+            // A copy that can't be deleted doesn't undo the restore, but say so: the next restore
+            // will refuse to run until it is removed.
             for top in &moved_aside {
-                let _ = remove_path(&pre_restore_path(server_dir, top));
+                if let Err(e) = remove_path(&pre_restore_path(server_dir, top)) {
+                    eprintln!(
+                        "Warning: restore succeeded but {}.pre-restore could not be deleted ({}); remove it before the next restore.",
+                        top, e
+                    );
+                }
             }
             Ok(())
         }

@@ -386,10 +386,13 @@ fn effective_retention(spec: Option<&ServerSpec>) -> usize {
 /// so everything in memory is on disk) and the zip is taken from a quiescent world, then
 /// `save-on` is always sent afterwards, whether the backup succeeded or not.
 ///
-/// The work runs in its own spawned task: if the caller's future is dropped (the HTTP client
-/// disconnects, or the agent shuts down a request), dropping the `JoinHandle` does not cancel
-/// the task, so `save-on` is still sent and autosave is never left off. Manual and scheduled
-/// backups both come through here, so both take `backup_lock`.
+/// The work runs in its own spawned task, so a dropped caller future (the HTTP client
+/// disconnects, or graceful shutdown drops the request) does not cancel it: dropping the
+/// `JoinHandle` leaves the task running and `save-on` is still sent. Agent shutdown itself
+/// (Ctrl+C or a Windows Service stop) drops the runtime and would cancel the task, so `run`
+/// waits up to 120s for `backup_lock` before returning; a backup still running after that is
+/// cancelled and saving can be left off. A kill or crash of the agent process is not covered.
+/// Manual and scheduled backups, and restores, all take `backup_lock`, so none overlap.
 async fn run_backup(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
     let state = state.clone();
     tokio::spawn(async move { run_backup_serialized(&state).await })
@@ -757,7 +760,8 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
     let app = Router::new()
         .merge(protected)
         .layer(tower_http::cors::CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+    let shutdown_lock = state.backup_lock.clone();
 
     let addr: SocketAddr = format!("{}:{}", bind, port)
         .parse()
@@ -793,6 +797,18 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .serve(app.into_make_service())
         .await
         .expect("agent server crashed");
+
+    // Returning drops the runtime, which cancels every spawned task. Wait (bounded) for an
+    // in-flight backup or restore to release `backup_lock` first, so `save-on` gets sent and a
+    // restore isn't cut off half way. The guard is held until return so nothing new starts.
+    const SHUTDOWN_WAIT: Duration = Duration::from_secs(120);
+    match tokio::time::timeout(SHUTDOWN_WAIT, shutdown_lock.lock_owned()).await {
+        Ok(_guard) => {}
+        Err(_) => eprintln!(
+            "A backup or restore was still running after {}s; shutting down anyway. World saving may be left off until the server restarts or `save-on` is sent.",
+            SHUTDOWN_WAIT.as_secs()
+        ),
+    }
 }
 
 /// Ctrl+C, on every platform this builds for — the shutdown trigger for a plain foreground
