@@ -12,7 +12,9 @@ import {
   Unlock,
   UserX,
   AlertCircle,
-  RotateCcw,
+  Menu,
+  Plus,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   p2pStartHost,
@@ -32,7 +34,8 @@ interface P2PFloatingWidgetProps {
   language: Language;
 }
 
-type PopupMode = 'none' | 'create' | 'join';
+/** Everything the drop-up panel can show; toggling the main button always returns here first. */
+type PanelView = 'closed' | 'list' | 'chooser' | 'create' | 'join' | 'active';
 
 function readCurrentUsername(): string {
   try {
@@ -69,14 +72,35 @@ function renderPingBadge(pingMs: number | null | undefined) {
   );
 }
 
+/** Discord's server rail avatars: no per-room image exists here, so a color+initial stands in for one. */
+const AVATAR_COLORS = [
+  'bg-rose-500/20 text-rose-300 border-rose-500/30',
+  'bg-amber-500/20 text-amber-300 border-amber-500/30',
+  'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
+  'bg-sky-500/20 text-sky-300 border-sky-500/30',
+  'bg-violet-500/20 text-violet-300 border-violet-500/30',
+  'bg-pink-500/20 text-pink-300 border-pink-500/30',
+  'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
+  'bg-orange-500/20 text-orange-300 border-orange-500/30',
+];
+
+function avatarColorClass(seed: string): string {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function avatarLetter(name: string): string {
+  return (name.trim()[0] || '?').toUpperCase();
+}
+
 export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }) => {
   const t = getTranslation(language);
   const currentUsername = readCurrentUsername();
 
   const [hostStatus, setHostStatus] = useState<P2PHostStatus | null>(null);
   const [clientStatus, setClientStatus] = useState<P2PClientStatus | null>(null);
-  const [popup, setPopup] = useState<PopupMode>('none');
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [view, setView] = useState<PanelView>('closed');
   const [history, setHistory] = useState<P2PRoomHistoryEntry[]>([]);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -97,6 +121,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
   const isHosting = !!hostStatus?.isRunning;
   const isClientActive = !!(clientStatus?.isConnected || clientStatus?.isReconnecting);
   const isActive = isHosting || isClientActive;
+  const activeRoomName = isHosting ? hostStatus?.roomName || 'MCL Room' : clientStatus?.roomName || 'MCL Room';
 
   useEffect(() => {
     setHistory(loadP2PRoomHistory());
@@ -115,18 +140,17 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isHosting, isClientActive]);
 
-  // Close the popup on an outside click, same convenience any popover gets.
+  // Close the panel on an outside click, same convenience any popover gets.
   useEffect(() => {
-    if (popup === 'none' && !isPanelOpen) return;
+    if (view === 'closed') return;
     const handler = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
-        setPopup('none');
-        setIsPanelOpen(false);
+        setView('closed');
       }
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
-  }, [popup, isPanelOpen]);
+  }, [view]);
 
   const refreshHostStatus = async () => {
     try {
@@ -155,8 +179,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
       const port = Number(hostPortText) || 25565;
       const status = await p2pStartHost(roomName.trim() || 'MCL Room', currentUsername, hostPassword || undefined, port);
       setHostStatus(status);
-      setPopup('none');
-      setIsPanelOpen(true);
+      setView('active');
     } catch (err) {
       setCreateError(String(err));
     } finally {
@@ -168,7 +191,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
     try {
       await p2pStopHost();
       await refreshHostStatus();
-      setIsPanelOpen(false);
+      setView('closed');
     } catch {
       // ignore
     }
@@ -211,8 +234,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
           ticket: ticket.trim(),
         })
       );
-      setPopup('none');
-      setIsPanelOpen(true);
+      setView('active');
     } catch (err) {
       setJoinError(String(err));
     } finally {
@@ -224,7 +246,7 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
     try {
       await p2pStopClient();
       await refreshClientStatus();
-      setIsPanelOpen(false);
+      setView('closed');
     } catch {
       // ignore
     }
@@ -244,17 +266,116 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
 
   const statusPillColor = clientStatus?.isReconnecting ? 'bg-amber-400' : 'bg-emerald-400';
 
+  const BackHeader: React.FC<{ title: string }> = ({ title }) => (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => setView('list')}
+        title={t.p2pWidgetBackTooltip || 'Back'}
+        className="p-1 -ml-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 cursor-pointer transition"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+      </button>
+      <span className="text-xs font-bold text-white">{title}</span>
+    </div>
+  );
+
   return (
     <div className="fixed bottom-5 right-5 z-40 flex flex-col items-end gap-2" ref={panelRef}>
-      {/* Popup: create room form */}
-      {popup === 'create' && (
-        <div className="w-72 p-4 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white">{t.p2pWidgetCreateTitle || 'Create a Room'}</span>
-            <button type="button" onClick={() => setPopup('none')} className="text-slate-400 hover:text-white cursor-pointer">
-              <X className="w-3.5 h-3.5" />
+      {/* Icon rail: the active room (if any), room history, and a "+" to create or join */}
+      {view === 'list' && (
+        <div className="flex flex-col items-center gap-2 p-2 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl max-h-[70vh] overflow-y-auto custom-scrollbar">
+          <div className="flex items-center justify-between w-full px-1">
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t.p2pWidgetYourRooms || 'Your Rooms'}</span>
+            <button type="button" onClick={() => setView('closed')} className="text-slate-500 hover:text-white cursor-pointer">
+              <X className="w-3 h-3" />
             </button>
           </div>
+
+          {isActive && (
+            <button
+              type="button"
+              onClick={() => setView('active')}
+              title={activeRoomName}
+              className={`relative shrink-0 w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm border-2 border-[var(--accent-color)] cursor-pointer transition hover:brightness-110 ${avatarColorClass(
+                activeRoomName
+              )}`}
+            >
+              {avatarLetter(activeRoomName)}
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full ${statusPillColor} border-2 border-[#151515] animate-pulse`} />
+            </button>
+          )}
+
+          {isActive && history.length > 0 && <div className="w-8 h-px bg-white/10 shrink-0" />}
+
+          {history.map((entry) => (
+            <div key={entry.id} className="relative group shrink-0">
+              <button
+                type="button"
+                onClick={() => joinWithTicket(entry.ticket, joinPassword)}
+                disabled={isJoining}
+                title={`${entry.roomName} · ${entry.hostUsername} · ${formatRelativeTime(entry.joinedAt, language)}`}
+                className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm border cursor-pointer transition hover:brightness-110 disabled:opacity-40 ${avatarColorClass(
+                  entry.id
+                )}`}
+              >
+                {avatarLetter(entry.roomName)}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleForget(entry.id)}
+                className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 hover:bg-rose-400 text-white opacity-0 group-hover:opacity-100 flex items-center justify-center cursor-pointer transition"
+              >
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </div>
+          ))}
+
+          {joinError && (
+            <div className="w-full p-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-[10px] flex items-start gap-1.5">
+              <AlertCircle className="w-3 h-3 shrink-0 mt-0.5" />
+              <span>{joinError}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setView('chooser')}
+            title={t.p2pWidgetAddRoomTooltip || 'Create or Join Room'}
+            className="shrink-0 w-11 h-11 rounded-2xl border-2 border-dashed border-white/20 hover:border-[var(--accent-color)] text-slate-400 hover:text-[var(--accent-color)] flex items-center justify-center cursor-pointer transition"
+          >
+            <Plus className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
+      {/* Chooser: pick create or join, reached from the "+" icon */}
+      {view === 'chooser' && (
+        <div className="w-64 p-3 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-2">
+          <BackHeader title={t.p2pWidgetAddRoomTooltip || 'Create or Join Room'} />
+          <button
+            type="button"
+            onClick={() => setView('create')}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[var(--accent-color)]/50 transition text-xs font-bold text-white cursor-pointer"
+          >
+            <Globe className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+            <span>{t.p2pWidgetCreateRoom || 'Create Room'}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('join')}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[var(--accent-color)]/50 transition text-xs font-bold text-white cursor-pointer"
+          >
+            <Users className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+            <span>{t.p2pWidgetJoinRoom || 'Join Room'}</span>
+          </button>
+        </div>
+      )}
+
+      {/* Create room form */}
+      {view === 'create' && (
+        <div className="w-72 p-4 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-3">
+          <BackHeader title={t.p2pWidgetCreateTitle || 'Create a Room'} />
           <input
             type="text"
             value={roomName}
@@ -295,15 +416,10 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
         </div>
       )}
 
-      {/* Popup: join room form + history */}
-      {popup === 'join' && (
-        <div className="w-80 p-4 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-white">{t.p2pWidgetJoinTitle || "Join a Friend's Room"}</span>
-            <button type="button" onClick={() => setPopup('none')} className="text-slate-400 hover:text-white cursor-pointer">
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
+      {/* Join room form */}
+      {view === 'join' && (
+        <div className="w-80 p-4 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-3">
+          <BackHeader title={t.p2pWidgetJoinTitle || "Join a Friend's Room"} />
           <input
             type="text"
             value={joinTicket}
@@ -333,61 +449,15 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
             {isJoining && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
             <span>{isJoining ? t.p2pWidgetJoiningBtn || 'Connecting...' : t.p2pWidgetJoinBtn || 'Join Room'}</span>
           </button>
-
-          <div className="pt-2 border-t border-white/10">
-            <div className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1.5">
-              {t.p2pWidgetHistoryTitle || 'Recent rooms'}
-            </div>
-            {history.length === 0 ? (
-              <p className="text-[11px] text-slate-500">{t.p2pWidgetHistoryEmpty || 'No recent rooms.'}</p>
-            ) : (
-              <div className="space-y-1">
-                {history.map((entry) => (
-                  <div key={entry.id} className="flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-white/[0.03] hover:bg-white/[0.06] transition">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold text-slate-200 truncate">{entry.roomName}</div>
-                      <div className="text-[10px] text-slate-500 truncate">
-                        {entry.hostUsername} &middot; {formatRelativeTime(entry.joinedAt, language)}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => joinWithTicket(entry.ticket, joinPassword)}
-                        disabled={isJoining}
-                        className="px-2 py-1 rounded-md text-[10px] font-semibold bg-white/10 hover:bg-white/15 text-white cursor-pointer disabled:opacity-40"
-                      >
-                        {t.p2pWidgetConnectAgain || 'Connect'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleForget(entry.id)}
-                        className="p-1 rounded-md text-slate-500 hover:text-rose-300 hover:bg-rose-500/10 cursor-pointer"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
-      {/* Expanded status panel, shown when hosting or connected */}
-      {isPanelOpen && isActive && (
+      {/* Expanded status panel for the active room */}
+      {view === 'active' && isActive && (
         <div className="w-80 p-4 rounded-2xl bg-[#151515] border border-white/10 shadow-2xl space-y-3 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className={`w-2 h-2 rounded-full ${statusPillColor} animate-pulse shrink-0`} />
-              <span className="text-xs font-bold text-white truncate">
-                {isHosting ? hostStatus?.roomName || 'MCL Room' : clientStatus?.roomName || 'MCL Room'}
-              </span>
-            </div>
-            <button type="button" onClick={() => setIsPanelOpen(false)} className="text-slate-400 hover:text-white cursor-pointer shrink-0">
-              <X className="w-3.5 h-3.5" />
-            </button>
+            <BackHeader title={activeRoomName} />
+            <span className={`w-2 h-2 rounded-full ${statusPillColor} animate-pulse shrink-0`} />
           </div>
 
           {!isHosting && clientStatus?.isReconnecting && (
@@ -487,42 +557,23 @@ export const P2PFloatingWidget: React.FC<P2PFloatingWidgetProps> = ({ language }
         </div>
       )}
 
-      {/* Collapsed row: either the two entry buttons, or a compact status pill */}
-      {isActive ? (
-        <button
-          type="button"
-          onClick={() => setIsPanelOpen((v) => !v)}
-          className="flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-[#151515] border border-white/10 shadow-2xl cursor-pointer hover:border-white/20 transition"
-        >
-          <span className={`w-2 h-2 rounded-full ${statusPillColor} animate-pulse`} />
-          <span className="text-xs font-bold text-white">
-            {isHosting ? hostStatus?.connectedPeersCount ?? 0 : (clientStatus?.members?.length || 2) - 1}
+      {/* One entry point for everything: room history, a way to create/join, and — when active — a live status badge */}
+      <button
+        type="button"
+        onClick={() => setView((v) => (v === 'closed' ? 'list' : 'closed'))}
+        className="flex items-center gap-2 px-3.5 py-2.5 rounded-full bg-[#151515] border border-white/10 shadow-2xl cursor-pointer hover:border-white/20 transition"
+      >
+        <Menu className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+        <span className="text-xs font-bold text-white">{t.p2pWidgetYourRooms || 'Your Rooms'}</span>
+        {isActive && (
+          <span className="flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${statusPillColor} animate-pulse`} />
+            <span className="text-xs font-bold text-white">
+              {isHosting ? hostStatus?.connectedPeersCount ?? 0 : (clientStatus?.members?.length || 2) - 1}
+            </span>
           </span>
-          {!isHosting && !clientStatus?.isReconnecting && renderPingBadge(clientStatus?.pingMs)}
-          {isHosting && (
-            <RotateCcw className={`w-3 h-3 text-slate-500 ${isPanelOpen ? '' : 'hidden'}`} />
-          )}
-        </button>
-      ) : (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setPopup(popup === 'create' ? 'none' : 'create')}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-[#151515] border border-white/10 shadow-2xl cursor-pointer hover:border-[var(--accent-color)]/50 transition text-xs font-bold text-white"
-          >
-            <Globe className="w-3.5 h-3.5 text-[var(--accent-color)]" />
-            <span>{t.p2pWidgetCreateRoom || 'Create Room'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPopup(popup === 'join' ? 'none' : 'join')}
-            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-full bg-[#151515] border border-white/10 shadow-2xl cursor-pointer hover:border-[var(--accent-color)]/50 transition text-xs font-bold text-white"
-          >
-            <Users className="w-3.5 h-3.5 text-[var(--accent-color)]" />
-            <span>{t.p2pWidgetJoinRoom || 'Join Room'}</span>
-          </button>
-        </div>
-      )}
+        )}
+      </button>
     </div>
   );
 };
