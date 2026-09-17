@@ -21,10 +21,15 @@ const isValidPort = (value: number): boolean => Number.isInteger(value) && value
 export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, onInstalled, onClose }) => {
   const t = getTranslation(language);
   const [host, setHost] = useState('');
-  const [port, setPort] = useState(22);
+  // Kept as free-form text rather than a number, so clearing the field to type a new value
+  // doesn't immediately snap back to a coerced 0 — isValidPort/Number(...) only run at the
+  // points that actually need a numeric port (validation, disabling Connect, the request body).
+  const [portText, setPortText] = useState('22');
   const [username, setUsername] = useState('ubuntu');
   const [privateKeyPath, setPrivateKeyPath] = useState('');
-  const [agentPort, setAgentPort] = useState(8642);
+  const [agentPortText, setAgentPortText] = useState('8642');
+  const port = Number(portText);
+  const agentPort = Number(agentPortText);
   const [displayName, setDisplayName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
@@ -68,7 +73,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   }, []);
 
   const pickPrivateKey = async () => {
-    const path = await invokeCommand<string | null>('select_file', { filterName: null, filterExtensions: null });
+    const path = await invokeCommand<string | null>('select_file_path', { filterName: null, filterExtensions: null });
     if (path) setPrivateKeyPath(path);
   };
 
@@ -186,12 +191,11 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                   className="px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                 />
                 <input
-                  type="number"
-                  placeholder="22"
-                  min={1}
-                  max={65535}
-                  value={port}
-                  onChange={(e) => setPort(Number(e.target.value))}
+                  type="text"
+                  inputMode="numeric"
+                  placeholder={t.hostServerBootstrapPortPlaceholder || 'SSH port (default 22)'}
+                  value={portText}
+                  onChange={(e) => setPortText(e.target.value.replace(/[^0-9]/g, ''))}
                   className="px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                 />
               </div>
@@ -228,11 +232,11 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                     {t.hostServerBootstrapAgentPort || 'Agent port'}
                   </label>
                   <input
-                    type="number"
-                    min={1}
-                    max={65535}
-                    value={agentPort}
-                    onChange={(e) => setAgentPort(Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="8642"
+                    value={agentPortText}
+                    onChange={(e) => setAgentPortText(e.target.value.replace(/[^0-9]/g, ''))}
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
                   />
                 </div>

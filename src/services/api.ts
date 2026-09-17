@@ -33,6 +33,7 @@ export const TAURI_COMMANDS = [
   'set_game_data_dir',
   'select_folder',
   'select_file',
+  'select_file_path',
   'scan_storage_cleanup',
   'execute_storage_cleanup',
   'read_server_properties',
@@ -1158,6 +1159,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'select_folder':
     case 'select_file':
+    case 'select_file_path':
       // No native picker in browser mode, so behave as if the user cancelled
       return null as unknown as T;
 

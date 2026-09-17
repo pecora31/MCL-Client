@@ -221,6 +221,20 @@ fn select_save_path(default_name: String) -> Option<String> {
         .map(|p| p.to_string_lossy().to_string())
 }
 
+/// Just the picked path, nothing else — unlike `select_file` (below), which reads small files
+/// into a data URI for previewing things like background images. Callers that need an actual
+/// filesystem path to hand to something else (an SSH private key file, for instance) must use
+/// this one instead, or they will get a `data:...;base64,...` string where a path was expected.
+#[tauri::command]
+fn select_file_path(filter_name: Option<String>, filter_extensions: Option<Vec<String>>) -> Option<String> {
+    let extensions = filter_extensions.unwrap_or_default();
+    let mut dialog = rfd::FileDialog::new();
+    if !extensions.is_empty() {
+        dialog = dialog.add_filter(filter_name.unwrap_or_else(|| "Files".to_string()), &extensions);
+    }
+    dialog.pick_file().map(|p| p.to_string_lossy().to_string())
+}
+
 const MAX_INLINE_FILE_BYTES: u64 = 3 * 1024 * 1024;
 
 fn mime_from_extension(path: &std::path::Path) -> &'static str {
@@ -770,6 +784,7 @@ pub fn run() {
             select_folder,
             select_save_path,
             select_file,
+            select_file_path,
             scan_storage_cleanup,
             execute_storage_cleanup,
             read_server_properties,
