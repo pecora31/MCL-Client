@@ -1,4 +1,5 @@
 mod addon_registry;
+pub mod backup;
 mod discord_rpc;
 mod game_stats;
 pub mod hidden_process;
@@ -10,6 +11,7 @@ mod modpack_installer;
 mod mod_conflicts;
 pub mod models;
 mod remote_agent;
+pub mod remote_files;
 pub mod server_config;
 pub mod server_host;
 mod server_ping;
@@ -22,6 +24,15 @@ pub mod p2p_tunnel;
 #[cfg(not(feature = "p2p"))]
 #[path = "p2p_tunnel_stub.rs"]
 pub mod p2p_tunnel;
+
+// The VM bootstrap wizard's SSH client (russh) is desktop-only — mcl-agent never SSHes
+// anywhere, so the agent binary builds with the `remote-setup` feature off and gets a
+// matching stub instead, same reasoning and same pattern as p2p_tunnel above.
+#[cfg(feature = "remote-setup")]
+pub mod vm_bootstrap;
+#[cfg(not(feature = "remote-setup"))]
+#[path = "vm_bootstrap_stub.rs"]
+pub mod vm_bootstrap;
 
 use models::{
     GameInstance, JavaInstallation, LocalMod, ServerPropertiesSummary, ServerStatus,
@@ -200,6 +211,28 @@ fn select_folder(default_path: Option<String>) -> Option<String> {
         }
     }
     dialog.pick_folder().map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn select_save_path(default_name: String) -> Option<String> {
+    rfd::FileDialog::new()
+        .set_file_name(&default_name)
+        .save_file()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+/// Just the picked path, nothing else — unlike `select_file` (below), which reads small files
+/// into a data URI for previewing things like background images. Callers that need an actual
+/// filesystem path to hand to something else (an SSH private key file, for instance) must use
+/// this one instead, or they will get a `data:...;base64,...` string where a path was expected.
+#[tauri::command]
+fn select_file_path(filter_name: Option<String>, filter_extensions: Option<Vec<String>>) -> Option<String> {
+    let extensions = filter_extensions.unwrap_or_default();
+    let mut dialog = rfd::FileDialog::new();
+    if !extensions.is_empty() {
+        dialog = dialog.add_filter(filter_name.unwrap_or_else(|| "Files".to_string()), &extensions);
+    }
+    dialog.pick_file().map(|p| p.to_string_lossy().to_string())
 }
 
 const MAX_INLINE_FILE_BYTES: u64 = 3 * 1024 * 1024;
@@ -589,10 +622,29 @@ fn app_close(window: tauri::Window) {
 
 #[tauri::command]
 fn set_window_size(window: tauri::Window, width: f64, height: f64) {
+    let monitor = window.current_monitor().ok().flatten();
+    let (width, height) = clamp_size_to_monitor(monitor.as_ref(), width, height);
     let _ = window.set_resizable(true);
     let _ = window.set_size(tauri::LogicalSize::new(width, height));
     let _ = window.center();
     let _ = window.set_resizable(false);
+}
+
+/// A saved or default window size is chosen in logical pixels, but a screen's logical work area
+/// shrinks as Windows display scaling goes up — a 1920x1080 monitor at 175% scaling only offers
+/// about 1097x617 logical pixels. A size that's perfectly DPI-correct can still be bigger than
+/// that, so clamp to whatever the current monitor can actually show (minus a little headroom for
+/// the taskbar) instead of requesting a size Windows has to squeeze the window to fit, which is
+/// what made the window spill off-screen on a scaled-up laptop display.
+fn clamp_size_to_monitor(monitor: Option<&tauri::window::Monitor>, width: f64, height: f64) -> (f64, f64) {
+    let Some(monitor) = monitor else {
+        return (width, height);
+    };
+    let scale = monitor.scale_factor();
+    let logical: tauri::LogicalSize<f64> = monitor.size().to_logical(scale);
+    let max_width = (logical.width - 40.0).max(640.0);
+    let max_height = (logical.height - 80.0).max(480.0);
+    (width.min(max_width), height.min(max_height))
 }
 
 #[tauri::command]
@@ -666,6 +718,16 @@ fn p2p_get_client_status() -> p2p_tunnel::P2PClientStatus {
     p2p_tunnel::get_p2p_client_status()
 }
 
+#[tauri::command]
+async fn vm_bootstrap_start(app: tauri::AppHandle, stream_id: String, req: vm_bootstrap::BootstrapRequest) -> Result<vm_bootstrap::BootstrapOutcome, String> {
+    vm_bootstrap::run_bootstrap(app, stream_id, req).await
+}
+
+#[tauri::command]
+async fn vm_bootstrap_retry_verify(host: remote_agent::RemoteHostConfig) -> Result<(), String> {
+    remote_agent::remote_agent_status(host).await.map(|_| ())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -692,7 +754,9 @@ pub fn run() {
             )?;
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.set_shadow(false);
-                let _ = window.set_size(tauri::LogicalSize::new(1600.0, 900.0));
+                let monitor = window.current_monitor().ok().flatten();
+                let (w, h) = clamp_size_to_monitor(monitor.as_ref(), 1600.0, 900.0);
+                let _ = window.set_size(tauri::LogicalSize::new(w, h));
                 let _ = window.set_resizable(false);
                 let _ = window.center();
 
@@ -739,7 +803,9 @@ pub fn run() {
             get_game_data_dir,
             set_game_data_dir,
             select_folder,
+            select_save_path,
             select_file,
+            select_file_path,
             scan_storage_cleanup,
             execute_storage_cleanup,
             read_server_properties,
@@ -759,6 +825,19 @@ pub fn run() {
             remote_agent::remote_agent_send_command,
             remote_agent::remote_agent_start_log_stream,
             remote_agent::remote_agent_stop_log_stream,
+            remote_agent::remote_agent_list_backups,
+            remote_agent::remote_agent_backup_now,
+            remote_agent::remote_agent_download_backup,
+            remote_agent::remote_agent_delete_backup,
+            remote_agent::remote_agent_restore_backup,
+            remote_agent::remote_agent_list_files,
+            remote_agent::remote_agent_mkdir,
+            remote_agent::remote_agent_rename,
+            remote_agent::remote_agent_delete_file,
+            remote_agent::remote_agent_read_text_file,
+            remote_agent::remote_agent_write_text_file,
+            remote_agent::remote_agent_upload_file,
+            remote_agent::remote_agent_download_file,
             detect_java,
             find_best_java,
             get_system_info,
@@ -795,7 +874,9 @@ pub fn run() {
             p2p_toggle_lock,
             p2p_start_client,
             p2p_stop_client,
-            p2p_get_client_status
+            p2p_get_client_status,
+            vm_bootstrap_start,
+            vm_bootstrap_retry_verify,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

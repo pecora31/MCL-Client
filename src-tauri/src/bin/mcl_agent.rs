@@ -12,10 +12,12 @@
 //! channel the operator already trusts (the same one used to hand over the token), and it
 //! needs no domain name, no ACME setup and no reverse proxy in front of it.
 
+use app_lib::backup;
 use app_lib::models::ServerPropertiesSummary;
+use app_lib::remote_files;
 use app_lib::server_config;
 use app_lib::server_host::{self, HostedServerStatus};
-use axum::extract::{Path as AxumPath, Request, State};
+use axum::extract::{Path as AxumPath, Query, Request, State};
 use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, Sse};
@@ -38,6 +40,13 @@ struct AppState {
     data_dir: PathBuf,
     token: String,
     log_tx: broadcast::Sender<String>,
+    /// Kept across calls (rather than built fresh per request) so `refresh_cpu_usage` has a
+    /// prior sample to diff against — `sysinfo` reports 0% CPU usage on a brand-new `System`'s
+    /// very first refresh, since there is nothing yet to compare it to.
+    system: Arc<std::sync::Mutex<sysinfo::System>>,
+    /// Held for a whole backup (save-off through save-on), so a manual and a scheduled backup
+    /// can never overlap and turn saving back on while the other is still zipping.
+    backup_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl AppState {
@@ -49,8 +58,60 @@ impl AppState {
         self.data_dir.join("server")
     }
 
+    fn backups_dir(&self) -> PathBuf {
+        self.data_dir.join("backups")
+    }
+
     fn spec_path(&self) -> PathBuf {
         self.data_dir.join("spec.json")
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SystemStats {
+    cpu_percent: f32,
+    mem_used_mb: u64,
+    mem_total_mb: u64,
+    disk_used_mb: u64,
+    disk_total_mb: u64,
+}
+
+/// Averaged across every core rather than a single global-aggregate call, since that's the one
+/// reading guaranteed to exist across `sysinfo` releases. Disk figures come from whichever
+/// mounted disk's mount point is exactly `/` — the only one that matters on the single-purpose
+/// Linux VPS this agent runs on — falling back to the first disk `sysinfo` reports if none
+/// matches (e.g. an unusual partition layout), so this never silently reports all zeroes.
+fn collect_system_stats(system: &Arc<std::sync::Mutex<sysinfo::System>>) -> SystemStats {
+    let mut sys = system.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    sys.refresh_cpu_usage();
+    sys.refresh_memory();
+    let cpu_percent = if sys.cpus().is_empty() {
+        0.0
+    } else {
+        sys.cpus().iter().map(|c| c.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32
+    };
+
+    let disks = sysinfo::Disks::new_with_refreshed_list();
+    let root_disk = disks
+        .iter()
+        .find(|d| d.mount_point() == std::path::Path::new("/"))
+        .or_else(|| disks.iter().next());
+    let (disk_used_mb, disk_total_mb) = match root_disk {
+        Some(d) => {
+            let total = d.total_space() / 1024 / 1024;
+            let available = d.available_space() / 1024 / 1024;
+            (total.saturating_sub(available), total)
+        }
+        None => (0, 0),
+    };
+
+    SystemStats {
+        cpu_percent,
+        mem_used_mb: sys.used_memory() / 1024 / 1024,
+        mem_total_mb: sys.total_memory() / 1024 / 1024,
+        disk_used_mb,
+        disk_total_mb,
     }
 }
 
@@ -62,6 +123,12 @@ struct ServerSpec {
     loader: String,
     game_version: String,
     loader_version: Option<String>,
+    #[serde(default = "default_retention")]
+    backup_retention_count: u32,
+}
+
+fn default_retention() -> u32 {
+    7
 }
 
 fn read_spec(state: &AppState) -> Option<ServerSpec> {
@@ -114,20 +181,34 @@ async fn require_token(State(state): State<Arc<AppState>>, req: Request, next: N
     Ok(next.run(req).await)
 }
 
-async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<HostedServerStatus> {
+#[derive(Serialize)]
+struct AgentStatusResponse {
+    #[serde(flatten)]
+    status: HostedServerStatus,
+    system: SystemStats,
+}
+
+async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<AgentStatusResponse> {
+    let system = collect_system_stats(&state.system);
     let Some(spec) = read_spec(&state) else {
-        return Ok(Json(HostedServerStatus {
-            state: server_host::ServerState::Stopped,
-            has_jar: false,
-            server_dir: state.server_dir().to_string_lossy().to_string(),
+        return Ok(Json(AgentStatusResponse {
+            status: HostedServerStatus {
+                state: server_host::ServerState::Stopped,
+                has_jar: false,
+                server_dir: state.server_dir().to_string_lossy().to_string(),
+            },
+            system,
         }));
     };
-    Ok(Json(server_host::get_status(
-        &state.server_dir(),
-        &spec.loader,
-        &spec.game_version,
-        spec.loader_version.as_deref(),
-    )))
+    Ok(Json(AgentStatusResponse {
+        status: server_host::get_status(
+            &state.server_dir(),
+            &spec.loader,
+            &spec.game_version,
+            spec.loader_version.as_deref(),
+        ),
+        system,
+    }))
 }
 
 #[derive(Deserialize)]
@@ -147,6 +228,9 @@ async fn prepare(State(state): State<Arc<AppState>>, Json(body): Json<PrepareReq
         loader: body.loader,
         game_version: body.game_version,
         loader_version: body.loader_version,
+        // Re-preparing (e.g. a loader or version change) must not reset a retention the
+        // operator already configured.
+        backup_retention_count: read_spec(&state).map(|s| s.backup_retention_count).unwrap_or_else(default_retention),
     };
     let server_dir = state.server_dir();
 
@@ -290,6 +374,227 @@ async fn upload_mod(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// How many backups to keep. Never below 1: a retention of 0 would delete the backup that was
+/// just made.
+fn effective_retention(spec: Option<&ServerSpec>) -> usize {
+    spec.map(|s| s.backup_retention_count).unwrap_or_else(default_retention).max(1) as usize
+}
+
+/// Takes one backup and rotates old ones. Shared by the HTTP handler and the scheduler.
+///
+/// If the server is running, world saving is paused first (`save-off`, then `save-all flush`
+/// so everything in memory is on disk) and the zip is taken from a quiescent world, then
+/// `save-on` is always sent afterwards, whether the backup succeeded or not.
+///
+/// The work runs in its own spawned task, so a dropped caller future (the HTTP client
+/// disconnects, or graceful shutdown drops the request) does not cancel it: dropping the
+/// `JoinHandle` leaves the task running and `save-on` is still sent. Agent shutdown itself
+/// (Ctrl+C or a Windows Service stop) drops the runtime and would cancel the task, so `run`
+/// waits up to 120s for `backup_lock` before returning; a backup still running after that is
+/// cancelled and saving can be left off. A kill or crash of the agent process is not covered.
+/// Manual and scheduled backups, and restores, all take `backup_lock`, so none overlap.
+async fn run_backup(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
+    let state = state.clone();
+    tokio::spawn(async move { run_backup_serialized(&state).await })
+        .await
+        .map_err(|e| format!("Backup task failed: {}", e))?
+}
+
+async fn run_backup_serialized(state: &Arc<AppState>) -> Result<backup::BackupInfo, String> {
+    let _guard = state.backup_lock.lock().await;
+    let spec = read_spec(state);
+    let server_dir = state.server_dir();
+    let running = spec.as_ref().is_some_and(|s| {
+        server_host::get_status(&server_dir, &s.loader, &s.game_version, s.loader_version.as_deref()).state
+            == server_host::ServerState::Running
+    });
+
+    if running {
+        // Best effort: a server adopted after an agent restart has no stdin pipe, and a backup
+        // of a live world is still better than no backup at all.
+        let _ = server_host::send_command(&server_dir, "save-off");
+        let _ = server_host::send_command(&server_dir, "save-all flush");
+        tokio::time::sleep(Duration::from_secs(3)).await;
+    }
+
+    let backups_dir = state.backups_dir();
+    let result = tokio::task::spawn_blocking(move || backup::create_backup(&server_dir, &backups_dir))
+        .await
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+
+    if running {
+        let _ = server_host::send_command(&state.server_dir(), "save-on");
+    }
+
+    let info = result?;
+    let retention = effective_retention(spec.as_ref());
+    let backups_dir = state.backups_dir();
+    tokio::task::spawn_blocking(move || backup::rotate_backups(&backups_dir, retention))
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(info)
+}
+
+async fn create_backup_now(State(state): State<Arc<AppState>>) -> ApiResult<backup::BackupInfo> {
+    run_backup(&state).await.map(Json).map_err(server_error)
+}
+
+async fn list_backups_handler(State(state): State<Arc<AppState>>) -> ApiResult<Vec<backup::BackupInfo>> {
+    Ok(Json(backup::list_backups(&state.backups_dir())))
+}
+
+fn safe_backup_name(name: &str) -> Result<(), ApiError> {
+    if name.contains('/') || name.contains('\\') || name.contains("..") || !name.ends_with(".zip") {
+        return Err(bad_request("Invalid backup name."));
+    }
+    Ok(())
+}
+
+async fn download_backup(State(state): State<Arc<AppState>>, AxumPath(name): AxumPath<String>) -> Result<Response, ApiError> {
+    safe_backup_name(&name)?;
+    let path = state.backups_dir().join(&name);
+    let bytes = tokio::fs::read(&path).await.map_err(|_| bad_request(format!("No backup named {}.", name)))?;
+    let headers = [
+        (header::CONTENT_TYPE, "application/zip".to_string()),
+        (header::CONTENT_DISPOSITION, format!("attachment; filename=\"{}\"", name)),
+    ];
+    Ok((headers, bytes).into_response())
+}
+
+async fn delete_backup(State(state): State<Arc<AppState>>, AxumPath(name): AxumPath<String>) -> Result<StatusCode, ApiError> {
+    safe_backup_name(&name)?;
+    std::fs::remove_file(state.backups_dir().join(&name)).map_err(|_| bad_request(format!("No backup named {}.", name)))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct RestoreRequest {
+    name: String,
+}
+
+async fn restore(State(state): State<Arc<AppState>>, Json(body): Json<RestoreRequest>) -> Result<StatusCode, ApiError> {
+    safe_backup_name(&body.name)?;
+    // Same pattern as `run_backup`: the work runs in a spawned task so a dropped request can't
+    // release `backup_lock` while the stop or the restore is still running on a blocking thread.
+    tokio::spawn(async move { restore_serialized(&state, body).await })
+        .await
+        .map_err(|e| server_error(format!("Restore task failed: {}", e)))?
+}
+
+/// Holds `backup_lock` for the whole stop+restore span, so a restore never overlaps a backup.
+async fn restore_serialized(state: &Arc<AppState>, body: RestoreRequest) -> Result<StatusCode, ApiError> {
+    let _guard = state.backup_lock.lock().await;
+    // Stop first if running — restoring over a live world's files while the server process
+    // still has them open is how you end up with a corrupted world, not a restored one. If it
+    // fails to stop, refuse to proceed rather than overwrite files a live process still holds.
+    let dir = state.server_dir();
+    tokio::task::spawn_blocking(move || server_host::stop_server(&dir))
+        .await
+        .map_err(|e| server_error(format!("Could not stop the server before restoring: {}", e)))?
+        .map_err(|e| server_error(format!("Could not stop the server before restoring: {}", e)))?;
+
+    let server_dir = state.server_dir();
+    let backups_dir = state.backups_dir();
+    let name = body.name.clone();
+    tokio::task::spawn_blocking(move || backup::restore_backup(&server_dir, &backups_dir, &name))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(server_error)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct FilePathQuery {
+    #[serde(default)]
+    path: String,
+}
+
+async fn list_files(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> ApiResult<Vec<remote_files::RemoteFileEntry>> {
+    let dir = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    if !dir.is_dir() {
+        return Err(bad_request("Not a folder."));
+    }
+    remote_files::list_dir(&dir).map(Json).map_err(server_error)
+}
+
+#[derive(Deserialize)]
+struct MkdirRequest {
+    path: String,
+}
+
+async fn mkdir(State(state): State<Arc<AppState>>, Json(body): Json<MkdirRequest>) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_for_write(&state.server_dir(), &body.path).map_err(bad_request)?;
+    tokio::task::spawn_blocking(move || std::fs::create_dir_all(&target))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+struct RenameRequest {
+    from: String,
+    to: String,
+}
+
+async fn rename_file(State(state): State<Arc<AppState>>, Json(body): Json<RenameRequest>) -> Result<StatusCode, ApiError> {
+    if body.from.trim().is_empty() {
+        return Err(bad_request("Cannot move the server's root folder."));
+    }
+    // A destination equal to (or nested inside) the source would ask the filesystem to move a
+    // folder into itself, which fails in confusing ways (or silently corrupts the tree
+    // depending on platform) rather than with a clear error — reject it up front instead.
+    if body.to == body.from || body.to.starts_with(&format!("{}/", body.from)) {
+        return Err(bad_request("Cannot move a folder into itself."));
+    }
+    let from = remote_files::resolve_existing(&state.server_dir(), &body.from).map_err(bad_request)?;
+    let to = remote_files::resolve_for_write(&state.server_dir(), &body.to).map_err(bad_request)?;
+    tokio::task::spawn_blocking(move || std::fs::rename(&from, &to))
+        .await
+        .map_err(|e| server_error(e.to_string()))?
+        .map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_file(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    let canonical_root = std::fs::canonicalize(state.server_dir()).map_err(|e| server_error(e.to_string()))?;
+    if target == canonical_root {
+        return Err(bad_request("Cannot delete the server's root folder."));
+    }
+    tokio::task::spawn_blocking(move || {
+        if target.is_dir() {
+            std::fs::remove_dir_all(&target)
+        } else {
+            std::fs::remove_file(&target)
+        }
+    })
+    .await
+    .map_err(|e| server_error(e.to_string()))?
+    .map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn read_file_content(State(state): State<Arc<AppState>>, Query(q): Query<FilePathQuery>) -> Result<Response, ApiError> {
+    let target = remote_files::resolve_existing(&state.server_dir(), &q.path).map_err(bad_request)?;
+    if !target.is_file() {
+        return Err(bad_request("Not a file."));
+    }
+    let bytes = tokio::fs::read(&target).await.map_err(|e| server_error(e.to_string()))?;
+    Ok(([(header::CONTENT_TYPE, "application/octet-stream")], bytes).into_response())
+}
+
+async fn write_file_content(
+    State(state): State<Arc<AppState>>,
+    Query(q): Query<FilePathQuery>,
+    body: axum::body::Bytes,
+) -> Result<StatusCode, ApiError> {
+    let target = remote_files::resolve_for_write(&state.server_dir(), &q.path).map_err(bad_request)?;
+    tokio::fs::write(&target, &body).await.map_err(|e| server_error(e.to_string()))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
     let rx = state.log_tx.subscribe();
     let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
@@ -359,6 +664,45 @@ fn config_value(flag: &str, env_key: &str, default: &str) -> String {
     std::env::var(env_key).unwrap_or_else(|_| default.to_string())
 }
 
+/// Backs up on a fixed 24h interval from whenever the agent started, independent of whether
+/// MCL desktop is even open — the whole point of an "emergency" backup on a VPS meant to run
+/// unattended. No cron parsing for v1: a fixed interval is enough, and much simpler.
+///
+/// An agent that restarts often (reboots, updates) would otherwise never reach its first 24h
+/// tick, so on startup a prepared server whose newest backup is over 24h old (or that has none)
+/// gets one backup shortly after start.
+async fn backup_scheduler(state: Arc<AppState>) {
+    const INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+    const STARTUP_DELAY: Duration = Duration::from_secs(5 * 60);
+
+    if read_spec(&state).is_some() {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let newest = backup::list_backups(&state.backups_dir()).first().map(|b| b.created_at);
+        let stale = newest.map_or(true, |created_at| now.saturating_sub(created_at) >= INTERVAL.as_secs());
+        if stale {
+            tokio::time::sleep(STARTUP_DELAY).await;
+            if read_spec(&state).is_some() {
+                if let Err(e) = run_backup(&state).await {
+                    eprintln!("Startup backup failed: {}", e);
+                }
+            }
+        }
+    }
+
+    loop {
+        tokio::time::sleep(INTERVAL).await;
+        if read_spec(&state).is_none() {
+            continue;
+        }
+        if let Err(e) = run_backup(&state).await {
+            eprintln!("Scheduled backup failed: {}", e);
+        }
+    }
+}
+
 /// Runs the agent until `shutdown` resolves, then lets in-flight requests finish (up to 5s)
 /// before returning. Used identically whether the caller is a plain foreground process
 /// (`shutdown` = Ctrl+C) or a Windows Service (`shutdown` = the SCM's Stop control).
@@ -378,7 +722,15 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         load_or_create_cert(&data_dir).expect("could not read or create the agent's TLS certificate");
     let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
-    let state = Arc::new(AppState { data_dir, token: token.clone(), log_tx });
+    let system = Arc::new(std::sync::Mutex::new(sysinfo::System::new()));
+    let state = Arc::new(AppState {
+        data_dir,
+        token: token.clone(),
+        log_tx,
+        system,
+        backup_lock: Arc::new(tokio::sync::Mutex::new(())),
+    });
+    tokio::spawn(backup_scheduler(state.clone()));
 
     let protected = Router::new()
         .route("/v1/status", get(get_status))
@@ -389,16 +741,27 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .route("/v1/properties", get(get_properties).post(set_properties))
         .route("/v1/mods", get(list_mods))
         .route("/v1/mods/:filename", post(upload_mod))
+        .route("/v1/backups", get(list_backups_handler).post(create_backup_now))
+        .route("/v1/backups/:name", get(download_backup).delete(delete_backup))
+        .route("/v1/restore", post(restore))
+        .route("/v1/files", get(list_files).delete(delete_file))
+        .route("/v1/files/mkdir", post(mkdir))
+        .route("/v1/files/rename", post(rename_file))
+        .route("/v1/files/content", get(read_file_content).put(write_file_content))
         .route("/v1/logs", get(logs))
         .route("/v1/health", get(health))
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_token));
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_token))
+        // Covers mod uploads and file-browser writes: axum's default `Bytes`-extractor body
+        // limit is 2 MB, which a modpack jar or a world file blows past immediately.
+        .layer(axum::extract::DefaultBodyLimit::max(1024 * 1024 * 1024));
 
     // Permissive because auth is the token, not the origin — the desktop app calls this from
     // a `tauri://` webview origin, which a stricter allow-list would have to special-case anyway.
     let app = Router::new()
         .merge(protected)
         .layer(tower_http::cors::CorsLayer::permissive())
-        .with_state(state);
+        .with_state(state.clone());
+    let shutdown_lock = state.backup_lock.clone();
 
     let addr: SocketAddr = format!("{}:{}", bind, port)
         .parse()
@@ -434,6 +797,18 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .serve(app.into_make_service())
         .await
         .expect("agent server crashed");
+
+    // Returning drops the runtime, which cancels every spawned task. Wait (bounded) for an
+    // in-flight backup or restore to release `backup_lock` first, so `save-on` gets sent and a
+    // restore isn't cut off half way. The guard is held until return so nothing new starts.
+    const SHUTDOWN_WAIT: Duration = Duration::from_secs(120);
+    match tokio::time::timeout(SHUTDOWN_WAIT, shutdown_lock.lock_owned()).await {
+        Ok(_guard) => {}
+        Err(_) => eprintln!(
+            "A backup or restore was still running after {}s; shutting down anyway. World saving may be left off until the server restarts or `save-on` is sent.",
+            SHUTDOWN_WAIT.as_secs()
+        ),
+    }
 }
 
 /// Ctrl+C, on every platform this builds for — the shutdown trigger for a plain foreground

@@ -95,8 +95,30 @@ async fn post_no_content<B: Serialize>(host: &RemoteHostConfig, path: &str, body
     Ok(())
 }
 
+/// Host machine stats the agent attaches to `/v1/status`; mirrors the agent's own struct.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SystemStats {
+    pub cpu_percent: f32,
+    pub mem_used_mb: u64,
+    pub mem_total_mb: u64,
+    pub disk_used_mb: u64,
+    pub disk_total_mb: u64,
+}
+
+/// `/v1/status`'s body: the plain `HostedServerStatus` fields flattened alongside `system`, so
+/// the frontend receives the same flat shape the agent sent instead of serde dropping `system`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteAgentStatus {
+    #[serde(flatten)]
+    pub status: HostedServerStatus,
+    #[serde(default)]
+    pub system: Option<SystemStats>,
+}
+
 #[tauri::command]
-pub async fn remote_agent_status(host: RemoteHostConfig) -> Result<HostedServerStatus, String> {
+pub async fn remote_agent_status(host: RemoteHostConfig) -> Result<RemoteAgentStatus, String> {
     get_json(&host, "/v1/status").await
 }
 
@@ -212,6 +234,220 @@ pub async fn remote_agent_sync_mods(host: RemoteHostConfig, instance_id: String)
     Ok(uploaded)
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackupInfo {
+    pub name: String,
+    pub size_bytes: u64,
+    pub created_at: u64,
+}
+
+#[tauri::command]
+pub async fn remote_agent_list_backups(host: RemoteHostConfig) -> Result<Vec<BackupInfo>, String> {
+    get_json(&host, "/v1/backups").await
+}
+
+#[tauri::command]
+pub async fn remote_agent_backup_now(host: RemoteHostConfig) -> Result<BackupInfo, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .post(format!("{}/v1/backups", base_url(&host)))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    resp.json::<BackupInfo>().await.map_err(|e| e.to_string())
+}
+
+/// Downloads one backup straight to `save_path` (chosen by the frontend via `rfd`'s native
+/// save dialog) rather than returning the bytes through Tauri's IPC, so a large world backup
+/// never has to round-trip through the webview's own memory.
+#[tauri::command]
+pub async fn remote_agent_download_backup(host: RemoteHostConfig, name: String, save_path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/backups/{}", base_url(&host), name))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    tokio::fs::write(&save_path, &bytes).await.map_err(|e| format!("Could not save the backup: {}", e))
+}
+
+#[tauri::command]
+pub async fn remote_agent_delete_backup(host: RemoteHostConfig, name: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .delete(format!("{}/v1/backups/{}", base_url(&host), name))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct RestoreBody {
+    name: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_restore_backup(host: RemoteHostConfig, name: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/restore", &RestoreBody { name }).await
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteFileEntry {
+    pub name: String,
+    pub is_dir: bool,
+    pub size_bytes: u64,
+    pub modified_at: u64,
+}
+
+#[tauri::command]
+pub async fn remote_agent_list_files(host: RemoteHostConfig, path: String) -> Result<Vec<RemoteFileEntry>, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    resp.json::<Vec<RemoteFileEntry>>().await.map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MkdirBody {
+    path: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_mkdir(host: RemoteHostConfig, path: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/files/mkdir", &MkdirBody { path }).await
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RenameBody {
+    from: String,
+    to: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_rename(host: RemoteHostConfig, from: String, to: String) -> Result<(), String> {
+    post_no_content(&host, "/v1/files/rename", &RenameBody { from, to }).await
+}
+
+#[tauri::command]
+pub async fn remote_agent_delete_file(host: RemoteHostConfig, path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .delete(format!("{}/v1/files", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// For the built-in text editor only — rejects anything that isn't valid UTF-8 here rather
+/// than in the frontend, since Tauri's IPC needs a `String` either way. The frontend already
+/// knows to fall back to download-only when this command errors.
+#[tauri::command]
+pub async fn remote_agent_read_text_file(host: RemoteHostConfig, path: String) -> Result<String, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    String::from_utf8(bytes.to_vec()).map_err(|_| "This file isn't plain text.".to_string())
+}
+
+#[tauri::command]
+pub async fn remote_agent_write_text_file(host: RemoteHostConfig, path: String, content: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .put(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &path)])
+        .bearer_auth(&host.token)
+        .body(content)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// Reads `local_path` off disk directly and streams its raw bytes to the agent — never through
+/// a JavaScript `string`, so an arbitrary binary upload (a plugin jar, a datapack zip) can't be
+/// corrupted the way it would be if it had to survive a UTF-8 round trip.
+#[tauri::command]
+pub async fn remote_agent_upload_file(host: RemoteHostConfig, local_path: String, remote_path: String) -> Result<(), String> {
+    let bytes = tokio::fs::read(&local_path).await.map_err(|e| format!("Could not read {}: {}", local_path, e))?;
+    let client = client_for(&host)?;
+    let resp = client
+        .put(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &remote_path)])
+        .bearer_auth(&host.token)
+        .body(bytes)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    Ok(())
+}
+
+/// The download counterpart to `remote_agent_upload_file` — writes straight to
+/// `local_save_path` rather than returning bytes through Tauri's IPC, same reasoning as
+/// `remote_agent_download_backup`.
+#[tauri::command]
+pub async fn remote_agent_download_file(host: RemoteHostConfig, remote_path: String, local_save_path: String) -> Result<(), String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .get(format!("{}/v1/files/content", base_url(&host)))
+        .query(&[("path", &remote_path)])
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    tokio::fs::write(&local_save_path, &bytes).await.map_err(|e| format!("Could not save the file: {}", e))
+}
+
 /// Live-tails one remote host's `/v1/logs` SSE stream, forwarding each line as a
 /// `remote-server-log` event tagged with `streamId` so the frontend can tell streams from
 /// different hosts apart. Keyed by `stream_id` (the saved host's own id) so switching hosts
@@ -242,7 +478,12 @@ pub fn remote_agent_start_log_stream(app_handle: AppHandle, host: RemoteHostConf
     let token = host.token.clone();
     let sid = stream_id.clone();
 
-    let task = tokio::spawn(async move {
+    // tauri::async_runtime::spawn rather than tokio::spawn: this command is a plain sync `fn`,
+    // and Tauri does not guarantee its calling thread has an entered Tokio runtime context
+    // (a bare tokio::spawn here panics with "there is no reactor running" when invoked from
+    // such a thread) — Tauri's own spawn always dispatches onto the runtime it manages,
+    // regardless of which thread the command itself happened to run on.
+    let task = tauri::async_runtime::spawn(async move {
         let mut retry_count = 0;
         const MAX_RETRIES: u32 = 8;
 
@@ -332,7 +573,7 @@ pub fn remote_agent_start_log_stream(app_handle: AppHandle, host: RemoteHostConf
     });
 
     let mut guard = LOG_STREAMS.lock().unwrap_or_else(|e| e.into_inner());
-    guard.get_or_insert_with(HashMap::new).insert(stream_id, task.abort_handle());
+    guard.get_or_insert_with(HashMap::new).insert(stream_id, task.inner().abort_handle());
     Ok(())
 }
 
@@ -396,5 +637,21 @@ mod tests {
         let client = client_for(&host).unwrap();
         let result = client.get(format!("{}/ping", base_url(&host))).send().await;
         assert!(result.is_err(), "a client pinned to the wrong certificate must not be able to connect");
+    }
+
+    #[test]
+    fn agent_status_keeps_system_stats_and_round_trips_flat() {
+        let raw = r#"{"state":"running","hasJar":true,"serverDir":"/srv","system":{"cpuPercent":12.5,"memUsedMb":100,"memTotalMb":200,"diskUsedMb":300,"diskTotalMb":400}}"#;
+        let parsed: RemoteAgentStatus = serde_json::from_str(raw).unwrap();
+        let system = parsed.system.as_ref().expect("system stats must survive deserialization");
+        assert_eq!(system.disk_total_mb, 400);
+
+        let out: Value = serde_json::to_value(&parsed).unwrap();
+        assert_eq!(out["hasJar"], Value::Bool(true));
+        assert_eq!(out["system"]["memUsedMb"], 100);
+
+        let without: RemoteAgentStatus =
+            serde_json::from_str(r#"{"state":"stopped","hasJar":false,"serverDir":"/srv"}"#).unwrap();
+        assert!(without.system.is_none());
     }
 }

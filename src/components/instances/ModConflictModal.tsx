@@ -1,13 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AlertTriangle, PackageX, X, Play } from 'lucide-react';
 import type { ModConflict } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
+import { Checkbox } from '../common/Checkbox';
 
 interface ModConflictModalProps {
   isOpen: boolean;
   conflicts: ModConflict[];
   onClose: () => void;
-  onLaunchAnyway: () => void;
+  onLaunchAnyway: (dontShowAgain: boolean) => void;
   language: Language;
 }
 
@@ -24,6 +25,12 @@ export const ModConflictModal: React.FC<ModConflictModalProps> = ({
   language,
 }) => {
   const t = getTranslation(language);
+  const [dontShowAgain, setDontShowAgain] = useState(false);
+  // Each open is a fresh decision — don't carry a checked box over from a previous, unrelated
+  // warning the player saw earlier in the session.
+  useEffect(() => {
+    if (isOpen) setDontShowAgain(false);
+  }, [isOpen]);
   if (!isOpen || conflicts.length === 0) return null;
 
   const describe = (conflict: ModConflict): string => {
@@ -94,20 +101,27 @@ export const ModConflictModal: React.FC<ModConflictModalProps> = ({
           ))}
         </div>
 
-        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-white/[0.08] bg-[#161616]/50">
-          <button
-            onClick={onClose}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/15 border border-white/10 text-white transition cursor-pointer"
-          >
-            {t.conflictCancel || 'Back to mods'}
-          </button>
-          <button
-            onClick={onLaunchAnyway}
-            className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold font-riot flex items-center gap-2 cursor-pointer shadow-md active:scale-95 transition"
-          >
-            <Play className="w-4 h-4" />
-            <span>{t.conflictLaunchAnyway || 'Launch anyway'}</span>
-          </button>
+        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-white/[0.08] bg-[#161616]/50">
+          <Checkbox checked={dontShowAgain} onChange={setDontShowAgain}>
+            <span className="text-xs font-medium text-slate-400">
+              {t.conflictDontShowAgain || "Don't show this again for these mods"}
+            </span>
+          </Checkbox>
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold bg-white/10 hover:bg-white/15 border border-white/10 text-white transition cursor-pointer"
+            >
+              {t.conflictCancel || 'Back to mods'}
+            </button>
+            <button
+              onClick={() => onLaunchAnyway(dontShowAgain)}
+              className="btn-primary px-6 py-2.5 rounded-xl text-sm font-bold font-riot flex items-center gap-2 cursor-pointer shadow-md active:scale-95 transition"
+            >
+              <Play className="w-4 h-4" />
+              <span>{t.conflictLaunchAnyway || 'Launch anyway'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>

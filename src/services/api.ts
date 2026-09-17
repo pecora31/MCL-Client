@@ -33,6 +33,7 @@ export const TAURI_COMMANDS = [
   'set_game_data_dir',
   'select_folder',
   'select_file',
+  'select_file_path',
   'scan_storage_cleanup',
   'execute_storage_cleanup',
   'read_server_properties',
@@ -52,6 +53,20 @@ export const TAURI_COMMANDS = [
   'remote_agent_send_command',
   'remote_agent_start_log_stream',
   'remote_agent_stop_log_stream',
+  'remote_agent_list_backups',
+  'remote_agent_backup_now',
+  'remote_agent_download_backup',
+  'remote_agent_delete_backup',
+  'remote_agent_restore_backup',
+  'remote_agent_list_files',
+  'remote_agent_mkdir',
+  'remote_agent_rename',
+  'remote_agent_delete_file',
+  'remote_agent_read_text_file',
+  'remote_agent_write_text_file',
+  'remote_agent_upload_file',
+  'remote_agent_download_file',
+  'select_save_path',
   'detect_java',
   'find_best_java',
   'get_system_info',
@@ -89,6 +104,8 @@ export const TAURI_COMMANDS = [
   'p2p_start_client',
   'p2p_stop_client',
   'p2p_get_client_status',
+  'vm_bootstrap_start',
+  'vm_bootstrap_retry_verify',
 ] as const;
 
 export type TauriCommand = (typeof TAURI_COMMANDS)[number];
@@ -1142,6 +1159,7 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
 
     case 'select_folder':
     case 'select_file':
+    case 'select_file_path':
       // No native picker in browser mode, so behave as if the user cancelled
       return null as unknown as T;
 

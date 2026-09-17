@@ -3,7 +3,7 @@
 // self-signed certificate, so cert-pinned requests must originate from the Rust backend
 // (see src-tauri/src/remote_agent.rs) rather than this file directly hitting the network.
 import { invokeCommand } from './api';
-import type { HostedServerStatus, ServerPropertiesSummary } from '../types';
+import type { HostedServerStatus, ServerPropertiesSummary, BackupInfo, RemoteFileEntry } from '../types';
 
 export interface RemoteHost {
   id: string;
@@ -83,4 +83,25 @@ export const remoteAgent = {
   startLogStream: (host: RemoteHost, streamId: string) =>
     invokeCommand<void>('remote_agent_start_log_stream', { host: toHostArg(host), streamId }),
   stopLogStream: (streamId: string) => invokeCommand<void>('remote_agent_stop_log_stream', { streamId }),
+  listBackups: (host: RemoteHost) => invokeCommand<BackupInfo[]>('remote_agent_list_backups', { host: toHostArg(host) }),
+  backupNow: (host: RemoteHost) => invokeCommand<BackupInfo>('remote_agent_backup_now', { host: toHostArg(host) }),
+  downloadBackup: (host: RemoteHost, name: string, savePath: string) =>
+    invokeCommand<void>('remote_agent_download_backup', { host: toHostArg(host), name, savePath }),
+  deleteBackup: (host: RemoteHost, name: string) =>
+    invokeCommand<void>('remote_agent_delete_backup', { host: toHostArg(host), name }),
+  restoreBackup: (host: RemoteHost, name: string) =>
+    invokeCommand<void>('remote_agent_restore_backup', { host: toHostArg(host), name }),
+  listFiles: (host: RemoteHost, path: string) =>
+    invokeCommand<RemoteFileEntry[]>('remote_agent_list_files', { host: toHostArg(host), path }),
+  mkdir: (host: RemoteHost, path: string) => invokeCommand<void>('remote_agent_mkdir', { host: toHostArg(host), path }),
+  renameFile: (host: RemoteHost, from: string, to: string) =>
+    invokeCommand<void>('remote_agent_rename', { host: toHostArg(host), from, to }),
+  deleteFile: (host: RemoteHost, path: string) => invokeCommand<void>('remote_agent_delete_file', { host: toHostArg(host), path }),
+  readTextFile: (host: RemoteHost, path: string) => invokeCommand<string>('remote_agent_read_text_file', { host: toHostArg(host), path }),
+  writeTextFile: (host: RemoteHost, path: string, content: string) =>
+    invokeCommand<void>('remote_agent_write_text_file', { host: toHostArg(host), path, content }),
+  uploadFile: (host: RemoteHost, localPath: string, remotePath: string) =>
+    invokeCommand<void>('remote_agent_upload_file', { host: toHostArg(host), localPath, remotePath }),
+  downloadFile: (host: RemoteHost, remotePath: string, localSavePath: string) =>
+    invokeCommand<void>('remote_agent_download_file', { host: toHostArg(host), remotePath, localSavePath }),
 };

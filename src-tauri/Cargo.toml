@@ -43,11 +43,13 @@ tauri-plugin-updater = "2.11.0"
 tauri-plugin-process = "2.3.1"
 toml = "1.0.7"
 iroh = { version = "0.33", optional = true }
+# ring instead of russh's default aws-lc-rs backend: aws-lc-sys needs NASM to build on Windows.
+russh = { version = "0.63", optional = true, default-features = false, features = ["ring", "flate2", "rsa"] }
 axum = { version = "0.7", optional = true }
 axum-server = { version = "0.7", optional = true, features = ["tls-rustls"] }
 rcgen = { version = "0.13", optional = true }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["aws-lc-rs"] }
-rand = { version = "0.8", optional = true }
+rand = "0.8"
 tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
 tower-http = { version = "0.6", optional = true, features = ["cors"] }
 
@@ -69,12 +71,13 @@ rustls = { version = "0.23", default-features = false, features = ["aws-lc-rs"] 
 # On for every desktop build; the agent turns it off (--no-default-features) because it never
 # hosts peer-to-peer rooms and iroh alone accounts for roughly 190 transitive crates in the
 # one binary that actually runs exposed on a VPS.
-default = ["p2p"]
+default = ["p2p", "remote-setup"]
 p2p = ["dep:iroh"]
+remote-setup = ["dep:russh"]
 
 # The agent binary is a separate, opt-in build: the desktop app never links axum, and a
 # plain `cargo build`/`cargo tauri build` for the launcher does not need it resolved.
-agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:rand", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]
+agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]
 
 [[bin]]
 name = "mcl-client"
