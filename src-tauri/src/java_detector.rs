@@ -52,16 +52,37 @@ pub fn required_java_major(game_version: &str) -> u32 {
     25
 }
 
+/// The newest Java MCL will trust for a given "required" bucket without downloading the exact
+/// one instead.
+///
+/// A JDK that merely clears the floor is not enough to assume "newer runtime, still fine":
+/// Forge/NeoForge (and their installers) parse bytecode with an ASM version frozen at that
+/// loader release, and it cannot read class files a JDK released well after it produces. This
+/// crashed for real — Java 25 running Forge for MC 1.20.1 (which only needs Java 17) failed
+/// with "Unsupported class file major version 69" the moment ModLauncher tried to transform a
+/// class. Each bucket's ceiling is the next version Mojang itself has actually shipped as the
+/// bundled runtime for some Minecraft release, since that's the newest JDK the loader ecosystem
+/// for that era has plausibly been tested against.
+fn max_safe_java_major(required: u32) -> u32 {
+    match required {
+        8 => 8,
+        17 => 21, // Mojang's own next bundled-runtime bump, and as far as Forge/NeoForge for
+        // this era has broadly proven itself
+        21 => 21, // no newer bucket confirmed safe yet for loaders built against this one
+        _ => u32::MAX, // the newest known requirement — nothing newer to compare against
+    }
+}
+
 /// Whether Automatic may run a game on the Java it found instead of downloading the exact one.
 ///
-/// Games built for Java 8 insist on Java 8: the jump to 17 is where Forge and the mods of that
-/// era break. From Java 17 on, a newer runtime generally runs the game fine, so an installed
-/// newer Java is used rather than downloading another one.
+/// Games built for Java 8 insist on Java 8. From Java 17 on, a newer runtime generally runs the
+/// game fine — but only up to `max_safe_java_major`; past that, a fresh download of the exact
+/// required version is safer than trusting a JDK this loader era was never tested against.
 pub fn installed_java_fits(found_major: u32, required: u32) -> bool {
     if required == 8 {
         found_major == 8
     } else {
-        found_major >= required
+        found_major >= required && found_major <= max_safe_java_major(required)
     }
 }
 
@@ -91,10 +112,12 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
         );
     }
 
-    // 2nd priority: any version >= required (pick the lowest that satisfies)
+    // 2nd priority: any version within the safe range for this requirement (pick the lowest
+    // that satisfies) — see max_safe_java_major for why this isn't just "anything newer".
+    let ceiling = max_safe_java_major(required);
     let mut compatible: Vec<&JavaInstallation> = javas
         .iter()
-        .filter(|j| j.major_version >= required)
+        .filter(|j| j.major_version >= required && j.major_version <= ceiling)
         .collect();
     compatible.sort_by_key(|j| j.major_version);
 
@@ -360,12 +383,21 @@ mod required_java_tests {
     }
 
     #[test]
-    fn newer_games_accept_any_newer_java() {
+    fn newer_games_accept_a_java_within_the_known_safe_range() {
         assert!(installed_java_fits(21, 21));
-        assert!(installed_java_fits(25, 21));
         assert!(installed_java_fits(21, 17));
         assert!(!installed_java_fits(17, 21), "too old");
         assert!(!installed_java_fits(0, 25), "nothing found");
+    }
+
+    #[test]
+    fn a_java_well_past_the_known_safe_ceiling_is_not_trusted() {
+        // The real bug this guards: Java 25 running Forge for MC 1.20.1 (needs Java 17)
+        // crashed with "Unsupported class file major version 69" — ModLauncher's bundled ASM
+        // cannot parse bytecode from a JDK released years after that Forge build. "newer" is
+        // not automatically "fine"; MCL should download the exact required version instead.
+        assert!(!installed_java_fits(25, 17), "Java 25 is well past Forge/NeoForge's tested range for MC 1.20.1");
+        assert!(!installed_java_fits(25, 21));
     }
 
     #[test]

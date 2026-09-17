@@ -18,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { invokeCommand, isTauri } from '../../services/api';
+import { openExternalUrl } from '../../services/externalLink';
 import { loadRemoteHosts, saveRemoteHosts, remoteAgent, type RemoteHost } from '../../services/remoteAgent';
 import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus, BackupInfo } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
@@ -634,7 +635,11 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                     href="https://www.minecraft.net/en-us/eula"
                     target="_blank"
                     rel="noreferrer"
-                    onClick={(e) => e.stopPropagation()}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      openExternalUrl('https://www.minecraft.net/en-us/eula');
+                    }}
                     className="text-[var(--accent-light)] hover:underline inline-flex items-center gap-1"
                   >
                     Minecraft EULA

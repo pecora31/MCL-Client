@@ -28,6 +28,7 @@ import type {
   LaunchBehavior,
 } from '../../types';
 import { invokeCommand, isTauri } from '../../services/api';
+import { openExternalUrl } from '../../services/externalLink';
 import { resetLauncherData } from '../../services/localData';
 import type { AppUpdateState } from '../../hooks/useAppUpdate';
 import { getTranslation, type Language } from '../../locales/i18n';
@@ -689,13 +690,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() =>
-                      isTauri()
-                        ? invokeCommand('open_external_url', { url: PRIVACY_URL }).catch((err) =>
-                            console.warn('Could not open the privacy page:', err)
-                          )
-                        : window.open(PRIVACY_URL, '_blank')
-                    }
+                    onClick={() => openExternalUrl(PRIVACY_URL)}
                     className="py-2.5 px-4 rounded-xl text-xs font-bold border border-white/10 bg-white/5 hover:bg-white/10 text-slate-200 transition cursor-pointer shrink-0"
                   >
                     {t.privacyBtn || 'Read the details'}

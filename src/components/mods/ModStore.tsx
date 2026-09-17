@@ -47,6 +47,7 @@ import {
   selectMrpackFile,
 } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
+import { openExternalUrl } from '../../services/externalLink';
 import {
   ModrinthLogo,
   CurseForgeLogo,
@@ -463,6 +464,10 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
                   href={item.webUrl}
                   target="_blank"
                   rel="noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openExternalUrl(item.webUrl);
+                  }}
                   className="text-[15px] font-bold text-white group-hover:text-[var(--accent-light)] transition truncate leading-snug"
                 >
                   {item.name}
@@ -573,6 +578,10 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
               href={item.webUrl}
               target="_blank"
               rel="noreferrer"
+              onClick={(e) => {
+                e.preventDefault();
+                openExternalUrl(item.webUrl);
+              }}
               title={t.viewOfficialWeb || 'View details on official website'}
               className="p-1.5 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer active:scale-95"
             >
@@ -1073,7 +1082,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           installedSource = 'curseforge';
           installedVersionId = info.versionId;
         } else if (!info.directAllowed) {
-          window.open(item.webUrl, '_blank');
+          openExternalUrl(item.webUrl);
           setNotification({
             type: 'info',
             text:
@@ -2330,6 +2339,10 @@ export const ModStore: React.FC<ModStoreProps> = ({
                               href={item.webUrl}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(e) => {
+                                e.preventDefault();
+                                openExternalUrl(item.webUrl);
+                              }}
                               title={t.viewOfficialWeb || 'View details on official website'}
                               className="p-2.5 rounded-xl bg-white/[0.03] border border-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition cursor-pointer active:scale-95"
                             >
