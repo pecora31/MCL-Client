@@ -20,6 +20,7 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { STEVE_SKIN_BASE64, ALEX_SKIN_BASE64 } from './presetSkins';
 import { normalizeSkinImage } from './skinImage';
 import { invokeCommand, isTauri } from '../../services/api';
+import { showToast } from '../../services/toastStore';
 import * as THREE from 'three';
 
 const applyShaderMaterial = (viewer: any) => {
@@ -314,12 +315,6 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [isAddCardDragging, setIsAddCardDragging] = useState<boolean>(false);
 
-  // Small transient banner for actions that have no other visible feedback (e.g. unequipping)
-  const [notification, setNotification] = useState<{ type: 'success' | 'info'; text: string } | null>(null);
-  const showNotification = (type: 'success' | 'info', text: string) => {
-    setNotification({ type, text });
-    setTimeout(() => setNotification(null), 3500);
-  };
 
   // Skin library stored in localStorage
   const [customSkins, setCustomSkins] = useState<SkinLibraryItem[]>(() => {
@@ -872,7 +867,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
     // of silently dropping it (which looked like "drag-and-drop doesn't do anything").
     const looksLikePng = file?.type === 'image/png' || /\.png$/i.test(file?.name || '');
     if (!file || !looksLikePng) {
-      showNotification('info', t.skinNotPngToast || 'Please choose a .PNG skin image.');
+      showToast('info', t.skinNotPngToast || 'Please choose a .PNG skin image.');
       return;
     }
 
@@ -910,7 +905,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
 
           // Add to custom skins library if not already existing
           const skinName = file.name.replace(/\.png$/i, '').slice(0, 24);
-          showNotification('success', t.skinAddedToast || 'Skin added to your library.');
+          showToast('success', t.skinAddedToast || 'Skin added to your library.');
           setCustomSkins((prev) => {
             if (prev.some((s) => s.skinUrl === skinUrl)) return prev;
             const newSkin: SkinLibraryItem = {
@@ -973,7 +968,7 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
   // Best-effort and silent: the local unequip already happened and is what the player sees.
   const unequipAndForgetPublishedSkin = () => {
     onUpdateSkin(STEVE_SKIN_BASE64, 'classic');
-    showNotification('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
+    showToast('info', t.skinUnequippedToast || 'Equipped skin deleted — reverted to the default Steve skin.');
     if (isTauri()) {
       invokeCommand('delete_published_skin', { username: account.username }).catch((err) =>
         console.warn('Could not delete the published skin:', err)
@@ -1119,32 +1114,6 @@ export const SkinStudio: React.FC<SkinStudioProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Small transient feedback banner (e.g. after unequipping a deleted skin) */}
-      {notification && (
-        <div
-          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs animate-fadeIn shrink-0 ${
-            notification.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              : 'bg-[var(--accent-color)]/10 border-[var(--accent-color)]/30 text-[var(--accent-color)]'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {notification.type === 'success' ? (
-              <Check className="w-4 h-4 shrink-0" />
-            ) : (
-              <Info className="w-4 h-4 shrink-0" />
-            )}
-            <span>{notification.text}</span>
-          </div>
-          <button
-            onClick={() => setNotification(null)}
-            className="p-1 hover:bg-white/10 rounded-lg transition text-slate-400 hover:text-white cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* Main Grid: Clean 3D Studio Showcase (Left) & Controls/Library (Right) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-1 min-h-0">

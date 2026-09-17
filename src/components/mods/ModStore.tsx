@@ -51,6 +51,7 @@ import {
 } from '../../services/api';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { openExternalUrl } from '../../services/externalLink';
+import { showToast } from '../../services/toastStore';
 import {
   ModrinthLogo,
   CurseForgeLogo,
@@ -647,10 +648,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
         setMrpackFilePath(filePath);
         setIsModpackModalOpen(true);
       } else {
-        setNotification({
-          type: 'error',
-          text: t.mrpackDropInvalid || 'Please drop a valid .mrpack file',
-        });
+        showToast('error', t.mrpackDropInvalid || 'Please drop a valid .mrpack file');
       }
     }
   };
@@ -783,7 +781,6 @@ export const ModStore: React.FC<ModStoreProps> = ({
   }, [installedContentType, activeSubTab]);
   const [loading, setLoading] = useState(false);
   const [installingId, setInstallingId] = useState<string | null>(null);
-  const [notification, setNotification] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [pendingDeps, setPendingDeps] = useState<{ main: PendingMainInstall; deps: DependencyChoice[] } | null>(null);
 
   // Installed Tab Search, Filters, Sorting, View Mode and Pagination
@@ -1095,17 +1092,10 @@ export const ModStore: React.FC<ModStoreProps> = ({
         }
       }
 
-      setNotification({
-        type: 'success',
-        text: `${t.installSuccess || 'Installed successfully!'} (${main.fileName}) - ${activeInstance.name}`,
-      });
-      setTimeout(() => setNotification(null), 4500);
+      showToast('success', `${t.installSuccess || 'Installed successfully!'} (${main.fileName}) - ${activeInstance.name}`);
     } catch (err: any) {
       console.error('Install failed:', err);
-      setNotification({
-        type: 'error',
-        text: err?.toString() || t.installFailed || 'Installation failed.',
-      });
+      showToast('error', err?.toString() || t.installFailed || 'Installation failed.');
     } finally {
       setInstallingId(null);
       setPendingDeps(null);
@@ -1116,7 +1106,6 @@ export const ModStore: React.FC<ModStoreProps> = ({
   const handleInstall = async (item: AddonItem) => {
     if (!activeInstance) return;
     setInstallingId(item.id);
-    setNotification(null);
 
     try {
       let downloadUrl: string | null = null;
@@ -1156,10 +1145,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
           curseForgeApiKey
         );
         if (info.rateLimited) {
-          setNotification({
-            type: 'error',
-            text: t.curseForgeBusy || 'Too many CurseForge requests from your network. Wait about a minute and try again.',
-          });
+          showToast('error', t.curseForgeBusy || 'Too many CurseForge requests from your network. Wait about a minute and try again.');
+          setInstallingId(null);
           return;
         }
         if (info.url) {
@@ -1171,26 +1158,26 @@ export const ModStore: React.FC<ModStoreProps> = ({
           requiredDependencyIds = info.requiredDependencies || [];
         } else if (!info.directAllowed) {
           openExternalUrl(item.webUrl);
-          setNotification({
-            type: 'info',
-            text:
-              language === 'vi'
-                ? (t.thirdPartyNotice || 'Tác giả mod này khóa tải bên thứ ba. Trình duyệt đã mở để bạn tải file và kéo thả vào launcher.')
-                : (t.thirdPartyNotice || 'The author of this mod requires direct web download. Browser opened to download file.'),
-          });
+          showToast(
+            'info',
+            language === 'vi'
+              ? (t.thirdPartyNotice || 'Tác giả mod này khóa tải bên thứ ba. Trình duyệt đã mở để bạn tải file và kéo thả vào launcher.')
+              : (t.thirdPartyNotice || 'The author of this mod requires direct web download. Browser opened to download file.')
+          );
+          setInstallingId(null);
           return;
         }
       }
 
       if (!downloadUrl) {
-        setNotification({
-          type: 'error',
-          text:
-            t.noCompatibleFile ||
+        showToast(
+          'error',
+          t.noCompatibleFile ||
             (language === 'vi'
               ? 'Không tìm thấy tệp tải phù hợp với phiên bản game hiện tại.'
-              : 'No compatible file found for the current game version.'),
-        });
+              : 'No compatible file found for the current game version.')
+        );
+        setInstallingId(null);
         return;
       }
 
@@ -1226,10 +1213,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
       setPendingDeps({ main, deps });
     } catch (err: any) {
       console.error('Install failed:', err);
-      setNotification({
-        type: 'error',
-        text: err?.toString() || t.installFailed || 'Installation failed.',
-      });
+      showToast('error', err?.toString() || t.installFailed || 'Installation failed.');
       setInstallingId(null);
     }
   };
@@ -1387,34 +1371,6 @@ export const ModStore: React.FC<ModStoreProps> = ({
           </p>
         </div>
       </div>
-
-      {/* Notification Toast Banner */}
-      {notification && (
-        <div
-          className={`p-3.5 rounded-2xl border flex items-center justify-between gap-3 text-xs animate-smooth-in ${
-            notification.type === 'success'
-              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              : notification.type === 'error'
-              ? 'bg-red-500/10 border-red-500/30 text-red-300'
-              : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-          }`}
-        >
-          <div className="flex items-center gap-2.5">
-            {notification.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
-            ) : (
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-            )}
-            <span>{notification.text}</span>
-          </div>
-          <button
-            onClick={() => setNotification(null)}
-            className="p-1 hover:bg-white/10 rounded-lg transition text-slate-400 hover:text-white cursor-pointer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
 
       {/* Control Deck (2 Hierarchical Rows):
           Row 1: Profile Picker (enlarged, on left) & Browse vs Installed Switcher (on right)
@@ -3221,10 +3177,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           }
           setIsModpackModalOpen(false);
           setMrpackFilePath('');
-          setNotification({
-            type: 'success',
-            text: `${t.modpackInstalledSuccess || 'Modpack installed successfully:'} ${newInstance.name}`,
-          });
+          showToast('success', `${t.modpackInstalledSuccess || 'Modpack installed successfully:'} ${newInstance.name}`);
         }}
         language={language}
       />

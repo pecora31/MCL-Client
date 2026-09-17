@@ -19,6 +19,7 @@ import { ShareProfileModal } from './components/instances/ShareProfileModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
 import { P2PFloatingWidget } from './components/p2p/P2PFloatingWidget';
+import { ToastStack } from './components/common/ToastStack';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict, ShareManifest } from './types';
 import { invokeCommand, isTauri, checkModConflicts } from './services/api';
 import { filterDismissedConflicts, dismissConflicts } from './services/dismissedModConflicts';
@@ -964,6 +965,9 @@ export const App: React.FC = () => {
         {/* Persistent P2P widget: create/join a direct-connect room from anywhere in the app,
             independent of whatever tab is currently open. */}
         <P2PFloatingWidget language={language} />
+
+        {/* Toast notifications float over the page instead of shoving its layout around */}
+        <ToastStack />
 
         {/* Outer App Frame: Vertical Sidebar + Main Canvas */}
         <div className="relative z-10 flex h-full w-full overflow-hidden">
