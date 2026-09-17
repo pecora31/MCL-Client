@@ -72,6 +72,7 @@ import {
 } from './ModIcons';
 import { InstallModpackModal } from '../instances/InstallModpackModal';
 import { DependencyConfirmModal, type DependencyChoice } from './DependencyConfirmModal';
+import { ModDetailModal } from './ModDetailModal';
 
 export { ModrinthLogo, CurseForgeLogo, getLoaderIcon };
 
@@ -364,6 +365,7 @@ interface ModGridCardProps {
   isInstalled: boolean;
   isDeduplicated: boolean;
   onInstall: (item: AddonItem) => void;
+  onOpenDetail: (item: AddonItem) => void;
   language: Language;
   t: any;
   contentType: AddonContentType;
@@ -375,6 +377,7 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
   isInstalled,
   isDeduplicated,
   onInstall,
+  onOpenDetail,
   language,
   t,
   contentType,
@@ -416,7 +419,10 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
   };
 
   return (
-    <div className="glass-card rounded-2xl border border-white/5 hover:border-white/20 bg-[#18191d]/85 hover:bg-[#1c1e24] transition-all duration-200 hover:shadow-xl hover:shadow-black/30 flex flex-col justify-between overflow-hidden group shadow-sm">
+    <div
+      onClick={() => onOpenDetail(item)}
+      className="glass-card rounded-2xl border border-white/5 hover:border-white/20 bg-[#18191d]/85 hover:bg-[#1c1e24] transition-all duration-200 hover:shadow-xl hover:shadow-black/30 flex flex-col justify-between overflow-hidden group shadow-sm cursor-pointer"
+    >
       {/* Top Banner (176px / h-44) */}
       <div className="h-44 w-full relative overflow-hidden bg-slate-950/80 shrink-0">
         {item.bannerUrl && !imgError ? (
@@ -483,6 +489,7 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
                   rel="noreferrer"
                   onClick={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     openExternalUrl(item.webUrl);
                   }}
                   className="text-[15px] font-bold text-white group-hover:text-[var(--accent-light)] transition truncate leading-snug"
@@ -563,7 +570,10 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
           <div className="flex items-center gap-1.5 shrink-0 pl-2">
             <button
               type="button"
-              onClick={() => onInstall(item)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onInstall(item);
+              }}
               disabled={isInstalling || isInstalled}
               className={`py-1.5 px-2.5 rounded-xl font-bold font-riot text-xs flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
                 isInstalled
@@ -597,6 +607,7 @@ const ModGridCard: React.FC<ModGridCardProps> = ({
               rel="noreferrer"
               onClick={(e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 openExternalUrl(item.webUrl);
               }}
               title={t.viewOfficialWeb || 'View details on official website'}
@@ -782,6 +793,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
   const [loading, setLoading] = useState(false);
   const [installingId, setInstallingId] = useState<string | null>(null);
   const [pendingDeps, setPendingDeps] = useState<{ main: PendingMainInstall; deps: DependencyChoice[] } | null>(null);
+  const [detailItem, setDetailItem] = useState<AddonItem | null>(null);
 
   // Installed Tab Search, Filters, Sorting, View Mode and Pagination
   const [installedSearchQuery, setInstalledSearchQuery] = useState('');
@@ -2201,6 +2213,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                           isInstalled={isInstalled}
                           isDeduplicated={Boolean(isDeduplicated)}
                           onInstall={handleInstall}
+                          onOpenDetail={setDetailItem}
                           language={language}
                           t={t}
                           contentType={contentType}
@@ -2225,7 +2238,8 @@ export const ModStore: React.FC<ModStoreProps> = ({
                       return (
                         <div
                           key={`${item.source}-${item.id}`}
-                          className="glass-card rounded-2xl p-4.5 border border-white/5 hover:border-white/20 bg-slate-900/40 hover:bg-white/[0.04] transition-colors duration-200 hover:shadow-lg hover:shadow-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4 group shadow-sm"
+                          onClick={() => setDetailItem(item)}
+                          className="glass-card rounded-2xl p-4.5 border border-white/5 hover:border-white/20 bg-slate-900/40 hover:bg-white/[0.04] transition-colors duration-200 hover:shadow-lg hover:shadow-black/20 flex flex-col md:flex-row md:items-center justify-between gap-4 group shadow-sm cursor-pointer"
                         >
                           {/* Left: Addon Icon */}
                           <div className="flex items-start md:items-center gap-4 min-w-0 flex-1">
@@ -2335,7 +2349,10 @@ export const ModStore: React.FC<ModStoreProps> = ({
                           <div className="flex items-center gap-2">
                             <button
                               type="button"
-                              onClick={() => handleInstall(item)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInstall(item);
+                              }}
                               disabled={isInstalling || isInstalled}
                               className={`py-2 px-3.5 rounded-xl font-bold font-riot text-xs sm:text-sm flex items-center gap-1.5 transition cursor-pointer shrink-0 ${
                                 isInstalled
@@ -2369,6 +2386,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                               rel="noreferrer"
                               onClick={(e) => {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 openExternalUrl(item.webUrl);
                               }}
                               title={t.viewOfficialWeb || 'View details on official website'}
@@ -3193,6 +3211,23 @@ export const ModStore: React.FC<ModStoreProps> = ({
         onConfirm={(selectedIds) =>
           pendingDeps && finishInstall(pendingDeps.main, pendingDeps.deps.filter((d) => selectedIds.includes(d.id)))
         }
+        language={language}
+      />
+
+      {/* Detail card — opened by clicking a search result, before committing to install */}
+      <ModDetailModal
+        item={detailItem}
+        isInstalling={detailItem ? installingId === detailItem.id : false}
+        isInstalled={
+          detailItem
+            ? Boolean(
+                detailItem.isInstalled ||
+                  installedItems.some((m) => m.name.toLowerCase().includes(detailItem.name.toLowerCase().trim()))
+              )
+            : false
+        }
+        onClose={() => setDetailItem(null)}
+        onInstall={handleInstall}
         language={language}
       />
     </div>

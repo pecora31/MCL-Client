@@ -131,10 +131,15 @@ Mỗi mục ghi: **Trạng thái**, **Mô tả** (người dùng báo cáo gì),
   `src/components/mods/ModStore.tsx`.
 
 ### 9. Thêm thẻ chi tiết/tóm tắt khi bấm vào một mod
-- **Trạng thái**: **CHƯA LÀM** — tính năng mới, chưa thiết kế.
+- **Trạng thái**: Đã làm — chưa release.
 - **Mô tả**: User muốn bấm vào một mod trong kết quả tìm kiếm sẽ mở ra thẻ/modal chi tiết tóm
   tắt (mô tả đầy đủ, ảnh, thông tin phiên bản...) thay vì chỉ có nút Install/link ngoài như hiện
   tại.
+- **Đã làm ở**: `src/components/mods/ModDetailModal.tsx` (mới) — icon, tên, tác giả, badge
+  nguồn (Modrinth/CurseForge), mô tả đầy đủ (không cắt ngắn), số liệu downloads/favorites/ngày
+  cập nhật/environment, danh sách đầy đủ Mod Loader + Categories, nút mở web nguồn và nút
+  Install (dùng chung state với card ngoài danh sách). Bấm vào bất kỳ đâu trên card (trừ nút
+  Install/link ngoài, đã `stopPropagation`) ở cả 2 chế độ xem Grid và List đều mở modal này.
 
 ### 10. Đổi hệ thống thông báo (notification) sang dạng float, không đẩy layout
 - **Trạng thái**: Đã sửa — chưa release.
