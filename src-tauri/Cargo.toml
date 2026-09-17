@@ -49,7 +49,7 @@ axum = { version = "0.7", optional = true }
 axum-server = { version = "0.7", optional = true, features = ["tls-rustls"] }
 rcgen = { version = "0.13", optional = true }
 rustls = { version = "0.23", optional = true, default-features = false, features = ["aws-lc-rs"] }
-rand = { version = "0.8", optional = true }
+rand = "0.8"
 tokio-stream = { version = "0.1", optional = true, features = ["sync"] }
 tower-http = { version = "0.6", optional = true, features = ["cors"] }
 
@@ -77,7 +77,7 @@ remote-setup = ["dep:russh"]
 
 # The agent binary is a separate, opt-in build: the desktop app never links axum, and a
 # plain `cargo build`/`cargo tauri build` for the launcher does not need it resolved.
-agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:rand", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]
+agent = ["dep:axum", "dep:axum-server", "dep:rcgen", "dep:rustls", "dep:tokio-stream", "dep:tower-http", "dep:windows-service"]
 
 [[bin]]
 name = "mcl-client"

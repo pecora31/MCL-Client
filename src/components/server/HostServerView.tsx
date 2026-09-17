@@ -24,7 +24,6 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { RamAllocationField } from '../common/RamAllocationField';
 import { Checkbox } from '../common/Checkbox';
-import { P2PDirectConnectCard } from './P2PDirectConnectCard';
 import { RemoteFileBrowser } from './RemoteFileBrowser';
 import { VmBootstrapWizard } from './VmBootstrapWizard';
 
@@ -78,6 +77,26 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
 
   const instance = instances.find((i) => i.id === selectedId) || null;
   const selectedHost = selectedHostId === LOCAL_HOST_ID ? null : remoteHosts.find((h) => h.id === selectedHostId) || null;
+
+  // RamAllocationField needs a SystemInfo shape; for a remote host that means building one from
+  // the agent's own reported system stats instead of this machine's — mirrors the same
+  // reserved-headroom heuristic get_system_info uses in src-tauri/src/lib.rs, so a remote VM's
+  // slider behaves the same way a local one does instead of falling back to a generic default.
+  const remoteSystemInfo: SystemInfo | null =
+    selectedHost && status?.system
+      ? (() => {
+          const totalRamMb = status.system.memTotalMb;
+          const reservedMb = Math.min(Math.max(totalRamMb / 4, 2048), 8192);
+          const recommendedMaxRamMb = Math.max(totalRamMb - reservedMb, 1024);
+          return {
+            totalRamMb,
+            availableRamMb: Math.max(totalRamMb - status.system.memUsedMb, 0),
+            cpuCount: 1,
+            recommendedMaxRamMb,
+            recommendedRamMb: Math.max(Math.min(recommendedMaxRamMb, 4096), 1024),
+          };
+        })()
+      : null;
 
   useEffect(() => {
     invokeCommand<SystemInfo>('get_system_info').then(setSystemInfo).catch(() => {});
@@ -593,15 +612,6 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
         </div>
       )}
 
-      {/* P2P Direct Connect (NAT Traversal via iroh) */}
-      <div className="max-w-2xl">
-        <P2PDirectConnectCard
-          language={language}
-          activeInstance={instance}
-          serverPort={summary?.serverPort ?? 25565}
-        />
-      </div>
-
       {instance && (
         <div className="max-w-2xl space-y-5">
           {!status?.hasJar ? (
@@ -769,7 +779,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({ instances, langu
                       setMaxRam(v);
                       setMinRam((m) => Math.min(m, v));
                     }}
-                    systemInfo={selectedHost ? null : systemInfo}
+                    systemInfo={selectedHost ? remoteSystemInfo : systemInfo}
                     min={1024}
                     step={512}
                   />

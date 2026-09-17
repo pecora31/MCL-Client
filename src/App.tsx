@@ -18,6 +18,7 @@ import { ModConflictModal } from './components/instances/ModConflictModal';
 import { ShareProfileModal } from './components/instances/ShareProfileModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
+import { P2PFloatingWidget } from './components/p2p/P2PFloatingWidget';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict, ShareManifest } from './types';
 import { invokeCommand, isTauri, checkModConflicts } from './services/api';
 import { readStoredJson, writeStoredJson } from './services/storage';
@@ -952,6 +953,10 @@ export const App: React.FC = () => {
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-3 pointer-events-none" />
         </div>
+
+        {/* Persistent P2P widget: create/join a direct-connect room from anywhere in the app,
+            independent of whatever tab is currently open. */}
+        <P2PFloatingWidget language={language} />
 
         {/* Outer App Frame: Vertical Sidebar + Main Canvas */}
         <div className="relative z-10 flex h-full w-full overflow-hidden">

@@ -19,6 +19,30 @@ use tokio::task::JoinHandle;
 
 pub const ALPN: &[u8] = b"mcl/p2p-tunnel/v1";
 
+/// Where this MCL install's own P2P identity is kept — generated once and reused for every
+/// room, hosted or joined, so a room's ticket (which encodes the NodeID this key produces)
+/// keeps working across app restarts. Endpoint::builder() defaults to a brand new random key
+/// on every call otherwise, which silently invalidates every ticket the moment either side
+/// closes and reopens the app.
+fn identity_key_path() -> std::path::PathBuf {
+    crate::instance_manager::get_launcher_dir().join("p2p-identity.key")
+}
+
+fn load_or_create_secret_key() -> iroh::SecretKey {
+    if let Ok(bytes) = std::fs::read(identity_key_path()) {
+        if let Ok(array) = <[u8; 32]>::try_from(bytes.as_slice()) {
+            return iroh::SecretKey::from_bytes(&array);
+        }
+    }
+    let key = iroh::SecretKey::generate(rand::rngs::OsRng);
+    let path = identity_key_path();
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(&path, key.to_bytes());
+    key
+}
+
 /// A password guess is only counted against the peer that made it once we know their
 /// cryptographic node ID (proven by the QUIC/TLS handshake itself, not the self-reported one
 /// in the JSON payload) — a fresh Ed25519 keypair is cheap for an attacker to generate, but
@@ -207,6 +231,7 @@ pub async fn start_p2p_host(
     });
 
     let endpoint = Endpoint::builder()
+        .secret_key(load_or_create_secret_key())
         .alpns(vec![ALPN.to_vec()])
         .bind()
         .await
@@ -833,6 +858,7 @@ pub async fn start_p2p_client(
     };
 
     let endpoint = Endpoint::builder()
+        .secret_key(load_or_create_secret_key())
         .alpns(vec![ALPN.to_vec()])
         .bind()
         .await
