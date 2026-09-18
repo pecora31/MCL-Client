@@ -12,6 +12,9 @@ export interface GameInstance {
   minRam: number; // in MB
   maxRam: number; // in MB
   jvmArgs?: string;
+  /** Same GC tuning offered for hosted servers, applied to this profile's own launch. */
+  useAikarFlags?: boolean;
+  gcEngine?: 'G1GC' | 'ZGC';
   icon: string;
   serverIp?: string;
   serverPort?: number;

@@ -40,6 +40,13 @@ pub struct GameInstance {
     pub last_played: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub total_play_time: Option<u32>,
+    /// Same tuning as the hosted-server side (`server_host::gc_tuning_args`) — off by default
+    /// since it changes JVM startup behavior (ZGC in particular needs Java 15+), not something
+    /// every existing profile should suddenly pick up.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub use_aikar_flags: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gc_engine: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -60,6 +60,8 @@ fn ensure_loader_client_jar(
 pub fn build_jvm_args(
     min_ram: u32,
     max_ram: u32,
+    use_aikar_flags: bool,
+    gc_engine: Option<&str>,
     custom_jvm_args: Option<&str>,
     extra_jvm_args: &[String],
     natives_dir: &Path,
@@ -71,6 +73,10 @@ pub fn build_jvm_args(
     // Memory arguments
     args.push(format!("-Xms{}M", min_ram));
     args.push(format!("-Xmx{}M", max_ram));
+
+    // Same GC tuning available when hosting a server — a stutter from GC pauses is exactly as
+    // real during single-player/client play as it is on a dedicated server.
+    args.extend(crate::server_host::gc_tuning_args(use_aikar_flags, gc_engine));
 
     // Custom JVM Flags
     if let Some(custom) = custom_jvm_args {
@@ -579,6 +585,8 @@ pub async fn prepare_and_launch(
     let jvm_args = build_jvm_args(
         instance.min_ram,
         instance.max_ram,
+        instance.use_aikar_flags.unwrap_or(false),
+        instance.gc_engine.as_deref(),
         instance.jvm_args.as_deref(),
         &extra_jvm_args,
         &natives_dir,
@@ -1296,7 +1304,9 @@ mod args_builder_tests {
         let args = build_jvm_args(
             2048,
             4096,
-            Some("-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions"),
+            false,
+            None,
+            Some("-Dcustom.flag=1"),
             &extra,
             natives,
             instance_dir,
@@ -1305,11 +1315,23 @@ mod args_builder_tests {
 
         assert!(args.contains(&"-Xms2048M".to_string()));
         assert!(args.contains(&"-Xmx4096M".to_string()));
-        assert!(args.contains(&"-XX:+UseG1GC".to_string()));
-        assert!(args.contains(&"-XX:+UnlockExperimentalVMOptions".to_string()));
+        assert!(args.contains(&"-Dcustom.flag=1".to_string()));
         assert!(args.contains(&"--add-opens".to_string()));
         assert!(args.contains(&"-cp".to_string()));
         assert!(args.contains(&"lib1.jar:lib2.jar".to_string()));
+    }
+
+    #[test]
+    fn client_launch_gets_the_same_gc_tuning_as_a_hosted_server() {
+        let natives = Path::new("/game/natives");
+        let instance_dir = Path::new("/game/instance");
+        let args = build_jvm_args(2048, 4096, true, Some("G1GC"), None, &[], natives, instance_dir, "lib.jar");
+        assert!(args.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(args.contains(&"-XX:MaxGCPauseMillis=200".to_string()));
+
+        let zgc_args = build_jvm_args(2048, 4096, true, Some("ZGC"), None, &[], natives, instance_dir, "lib.jar");
+        assert!(zgc_args.contains(&"-XX:+UseZGC".to_string()));
+        assert!(!zgc_args.contains(&"-XX:+UseG1GC".to_string()));
     }
 
     #[test]
@@ -1337,6 +1359,8 @@ mod args_builder_tests {
             fullscreen: Some(false),
             last_played: None,
             total_play_time: Some(0),
+            use_aikar_flags: None,
+            gc_engine: None,
         };
 
         let instance_dir = Path::new("/inst");

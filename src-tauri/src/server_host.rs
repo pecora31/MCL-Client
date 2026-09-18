@@ -596,16 +596,11 @@ fn looks_like_ready_line(line: &str) -> bool {
     line.contains("Done (")
 }
 
-pub fn build_server_jvm_args(
-    min_ram_mb: u32,
-    max_ram_mb: u32,
-    use_aikar_flags: bool,
-    gc_engine: Option<&str>,
-) -> Vec<String> {
+/// The GC tuning flags alone (no `-Xms`/`-Xmx`), shared between hosting a server and launching
+/// the client itself — the same JVM, the same pause-time problem, so the same tuning applies to
+/// both instead of being duplicated (and able to quietly drift apart) in two places.
+pub fn gc_tuning_args(use_aikar_flags: bool, gc_engine: Option<&str>) -> Vec<String> {
     let mut args = Vec::new();
-    args.push(format!("-Xms{}M", min_ram_mb));
-    args.push(format!("-Xmx{}M", max_ram_mb));
-
     let engine = gc_engine.unwrap_or("G1GC").trim();
     if engine.eq_ignore_ascii_case("ZGC") {
         args.push("-XX:+UseZGC".to_string());
@@ -632,6 +627,19 @@ pub fn build_server_jvm_args(
             "-XX:MaxTenuringThreshold=1".to_string(),
         ]);
     }
+    args
+}
+
+pub fn build_server_jvm_args(
+    min_ram_mb: u32,
+    max_ram_mb: u32,
+    use_aikar_flags: bool,
+    gc_engine: Option<&str>,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    args.push(format!("-Xms{}M", min_ram_mb));
+    args.push(format!("-Xmx{}M", max_ram_mb));
+    args.extend(gc_tuning_args(use_aikar_flags, gc_engine));
 
     args
 }

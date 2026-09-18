@@ -321,6 +321,8 @@ pub async fn install_mrpack(
         custom_dir: None,
         last_played: Some("Just created".to_string()),
         total_play_time: Some(0),
+        use_aikar_flags: None,
+        gc_engine: None,
     };
 
     let mut instances = load_instances();

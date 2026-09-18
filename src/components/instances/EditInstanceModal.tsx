@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Sliders, Save, FolderOpen } from 'lucide-react';
+import { X, Sliders, Save, FolderOpen, AlertCircle } from 'lucide-react';
 
 import type { GameInstance, SystemInfo, JavaInstallation } from '../../types';
 import { invokeCommand } from '../../services/api';
@@ -32,6 +32,8 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
   const [minRam, setMinRam] = useState(2048);
   const [maxRam, setMaxRam] = useState(4096);
   const [jvmArgs, setJvmArgs] = useState('');
+  const [useAikarFlags, setUseAikarFlags] = useState(false);
+  const [gcEngine, setGcEngine] = useState<'G1GC' | 'ZGC'>('G1GC');
   const [enableSkinInGame, setEnableSkinInGame] = useState(true);
   const [javaPath, setJavaPath] = useState('');
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -46,6 +48,8 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       setMinRam(instance.minRam || 2048);
       setMaxRam(instance.maxRam || 4096);
       setJvmArgs(instance.jvmArgs || '');
+      setUseAikarFlags(instance.useAikarFlags ?? false);
+      setGcEngine(instance.gcEngine || 'G1GC');
       setEnableSkinInGame(instance.enableSkinInGame ?? true);
       setWindowWidth(instance.windowWidth ? String(instance.windowWidth) : '');
       setWindowHeight(instance.windowHeight ? String(instance.windowHeight) : '');
@@ -89,6 +93,8 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
       minRam,
       maxRam,
       jvmArgs: jvmArgs.trim() || undefined,
+      useAikarFlags: useAikarFlags || undefined,
+      gcEngine: useAikarFlags || gcEngine === 'ZGC' ? gcEngine : undefined,
       ...javaChoiceToProfile(javaPath),
       windowWidth: finalW,
       windowHeight: finalH,
@@ -176,6 +182,46 @@ export const EditInstanceModal: React.FC<EditInstanceModalProps> = ({
               placeholder="-XX:+UseG1GC -XX:+ParallelRefProcEnabled"
               className="w-full px-4 py-3 rounded-xl bg-[#1a1a1a] border border-white/10 text-sm font-mono text-slate-200 focus:outline-none focus:border-amber-400"
             />
+          </div>
+
+          {/* Garbage collector tuning — the same JVM, the same GC-pause stutter, as hosting a
+              server already offers */}
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="min-w-0 flex-1">
+                <span className="text-sm font-bold text-white block">{t.profileGcEngineTitle || 'Garbage Collector'}</span>
+                <span className="text-xs text-slate-400 mt-0.5 block">
+                  {t.profileGcEngineDesc || 'G1GC is stable and standard. ZGC minimizes GC pause stutter, and needs Java 15 or newer.'}
+                </span>
+              </div>
+              <div className="w-44 shrink-0">
+                <CustomSelect
+                  value={gcEngine}
+                  onChange={(v) => setGcEngine(v)}
+                  options={[
+                    { value: 'G1GC', label: t.hostServerGcG1 || 'G1GC (Default - Recommended)' },
+                    { value: 'ZGC', label: t.hostServerGcZgc || 'ZGC (Ultra Low Latency - Java 17+)' },
+                  ]}
+                />
+              </div>
+            </div>
+            {gcEngine === 'ZGC' && (
+              <div className="flex items-start gap-2 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/25 rounded-lg p-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                <span>{t.profileZgcJavaWarning || 'ZGC needs Java 15 or newer. On an older Java the game will refuse to start.'}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/[0.06] flex items-center justify-between">
+            <div>
+              <span className="text-sm font-bold text-white block">{t.profileAikarFlagsTitle || "Aikar's Flags"}</span>
+              <span className="text-xs text-slate-400 mt-0.5 block">
+                {t.profileAikarFlagsDesc ||
+                  'Tuned G1GC flags that smooth out GC pause stutter. They include AlwaysPreTouch, so the JVM claims the full allocated RAM right at startup.'}
+              </span>
+            </div>
+            <ToggleSwitch size="md" checked={useAikarFlags} onChange={setUseAikarFlags} title={t.profileAikarFlagsTitle} />
           </div>
 
           {/* Skin Synchronization Toggle */}
