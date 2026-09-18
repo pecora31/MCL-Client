@@ -45,7 +45,7 @@ pub struct ModConflict {
 }
 
 /// One declaration of the form "mod X, in versions matching this range".
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Requirement {
     id: String,
     range: serde_json::Value,
@@ -60,7 +60,7 @@ impl Requirement {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ModMetadata {
     id: String,
     name: String,
@@ -497,7 +497,23 @@ fn read_jar(path: &Path) -> Option<ModMetadata> {
     read_archive(&mut archive, &file_name, 0)
 }
 
-fn find_conflicts(mods: &[ModMetadata]) -> Vec<ModConflict> {
+/// Keeps only letters and digits, lower-cased, so "Cloth Config", "cloth-config" and
+/// "cloth_config-13.0.121-fabric.jar" all reduce to the same comparable token regardless of
+/// how a mod's author or a hand-installed jar happens to punctuate its name.
+fn normalize_for_name_match(s: &str) -> String {
+    s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect()
+}
+
+/// Whether some present jar's filename plausibly *is* `id` — the fallback for a dependency
+/// the id-based check above could not confirm. Guards on a minimum length so a short, generic
+/// id (like "api" or "core") cannot match almost anything by accident; a real project slug is
+/// essentially never that short.
+fn a_present_file_plausibly_is(normalized_present: &[String], id: &str) -> bool {
+    let normalized_id = normalize_for_name_match(id);
+    normalized_id.chars().count() >= 4 && normalized_present.iter().any(|f| f.contains(&normalized_id))
+}
+
+fn find_conflicts(mods: &[ModMetadata], normalized_present: &[String]) -> Vec<ModConflict> {
     let mut installed: HashMap<&str, &ModMetadata> = HashMap::new();
     for candidate in mods {
         installed.insert(candidate.id.as_str(), candidate);
@@ -548,9 +564,18 @@ fn find_conflicts(mods: &[ModMetadata]) -> Vec<ModConflict> {
             }
             // Only an absent mod is reported. A present one at the wrong version is left
             // alone: the loader states that case far more precisely than this can.
-            if !installed.contains_key(requirement.id.as_str()) {
-                report("missing", &requirement.id);
+            if installed.contains_key(requirement.id.as_str()) {
+                continue;
             }
+            // The id-based check above only sees mods MCL could parse a manifest out of. A
+            // jar installed by hand from outside MCL's own search is exactly as likely to
+            // satisfy this — modders overwhelmingly keep a project's own name in its
+            // filename — so a plausible filename match is trusted the same way, rather than
+            // warning about a dependency that is very likely actually sitting right there.
+            if a_present_file_plausibly_is(normalized_present, &requirement.id) {
+                continue;
+            }
+            report("missing", &requirement.id);
         }
     }
 
@@ -563,26 +588,108 @@ fn find_conflicts(mods: &[ModMetadata]) -> Vec<ModConflict> {
     conflicts
 }
 
+/// One jar's cached parse result, valid only for the exact size and modified-time it was
+/// read at — either changing means the file underneath may not be the one this was read from.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CachedModEntry {
+    size: u64,
+    modified_unix_secs: u64,
+    metadata: ModMetadata,
+}
+
+/// Keyed by filename, alongside the mods folder it describes. A large modpack (some ship
+/// 300-400 mods) used to mean re-opening and re-unzipping every single jar on every single
+/// launch attempt just to re-derive facts that had not changed since the last one — the
+/// heaviest, and most pointlessly repeated, part of a pre-launch check.
+type ModCache = HashMap<String, CachedModEntry>;
+
+fn mod_cache_path(mods_dir: &Path) -> std::path::PathBuf {
+    mods_dir.join(".mcl-mod-cache.json")
+}
+
+fn load_mod_cache(mods_dir: &Path) -> ModCache {
+    std::fs::read_to_string(mod_cache_path(mods_dir))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn save_mod_cache(mods_dir: &Path, cache: &ModCache) {
+    if let Ok(raw) = serde_json::to_string(cache) {
+        // Best-effort: a failed write just means the next check re-parses from scratch again,
+        // same as before this cache existed at all.
+        let _ = std::fs::write(mod_cache_path(mods_dir), raw);
+    }
+}
+
+fn modified_unix_secs(metadata: &std::fs::Metadata) -> u64 {
+    metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
 pub fn check_instance(instance_id: &str) -> Vec<ModConflict> {
     let mods_dir = get_instance_dir(instance_id).join("mods");
     let Ok(entries) = std::fs::read_dir(&mods_dir) else {
         return Vec::new();
     };
 
+    let mut cache = load_mod_cache(&mods_dir);
+    let mut cache_changed = false;
     let mut metadata = Vec::new();
+    let mut present_file_names: Vec<String> = Vec::new();
+
     for entry in entries.flatten() {
         let path = entry.path();
         // A ".jar.disabled" file is switched off, so it cannot conflict with anything.
         if path.extension().and_then(|e| e.to_str()) != Some("jar") {
             continue;
         }
-        // A jar with no readable metadata is skipped rather than guessed at.
+        let Some(file_name) = path.file_name().and_then(|n| n.to_str()).map(str::to_string) else {
+            continue;
+        };
+        let Ok(fs_meta) = entry.metadata() else { continue };
+        let size = fs_meta.len();
+        let modified = modified_unix_secs(&fs_meta);
+        present_file_names.push(file_name.clone());
+
+        if let Some(cached) = cache.get(&file_name) {
+            if cached.size == size && cached.modified_unix_secs == modified {
+                metadata.push(cached.metadata.clone());
+                continue;
+            }
+        }
+
+        // A jar with no readable metadata is skipped rather than guessed at, and nothing is
+        // cached for it — it may simply be mid-download or mid-copy right now.
         if let Some(parsed) = read_jar(&path) {
+            cache.insert(
+                file_name,
+                CachedModEntry { size, modified_unix_secs: modified, metadata: parsed.clone() },
+            );
+            cache_changed = true;
             metadata.push(parsed);
         }
     }
 
-    find_conflicts(&metadata)
+    // Forgets jars that were renamed or removed since the last check, so this file does not
+    // grow forever across a modpack's lifetime.
+    let present: std::collections::HashSet<&str> = present_file_names.iter().map(String::as_str).collect();
+    let before = cache.len();
+    cache.retain(|name, _| present.contains(name.as_str()));
+    cache_changed |= cache.len() != before;
+
+    if cache_changed {
+        save_mod_cache(&mods_dir, &cache);
+    }
+
+    let normalized_present: Vec<String> =
+        present_file_names.iter().map(|f| normalize_for_name_match(f.trim_end_matches(".jar"))).collect();
+
+    find_conflicts(&metadata, &normalized_present)
 }
 
 #[cfg(test)]
@@ -659,11 +766,11 @@ mod tests {
         };
         let mut bobby = meta("bobby", &[], &[], &[]);
         bobby.version = Some("5.3".to_string());
-        assert!(find_conflicts(&[sodium.clone(), bobby]).is_empty());
+        assert!(find_conflicts(&[sodium.clone(), bobby], &[]).is_empty());
 
         let mut old_bobby = meta("bobby", &[], &[], &[]);
         old_bobby.version = Some("5.2.0".to_string());
-        let found = find_conflicts(&[sodium, old_bobby]);
+        let found = find_conflicts(&[sodium, old_bobby], &[]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].kind, "breaks");
     }
@@ -673,7 +780,7 @@ mod tests {
         let mut create = meta("create", &[], &[], &["flywheel"]);
         // Create ships flywheel inside its own jar
         create.provides = vec!["flywheel".to_string()];
-        assert!(find_conflicts(&[create]).is_empty());
+        assert!(find_conflicts(&[create], &[]).is_empty());
     }
 
     #[test]
@@ -685,22 +792,43 @@ mod tests {
     #[test]
     fn reports_a_declared_break_only_when_the_other_mod_is_installed() {
         let both = vec![meta("sodium", &["optifabric"], &[], &[]), meta("optifabric", &[], &[], &[])];
-        let found = find_conflicts(&both);
+        let found = find_conflicts(&both, &[]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].kind, "breaks");
         assert_eq!(found[0].target_id, "optifabric");
 
         let alone = vec![meta("sodium", &["optifabric"], &[], &[])];
-        assert!(find_conflicts(&alone).is_empty());
+        assert!(find_conflicts(&alone, &[]).is_empty());
     }
 
     #[test]
     fn reports_missing_dependencies_but_not_the_loader_itself() {
         let mods = vec![meta("create", &[], &[], &["minecraft", "fabricloader", "flywheel"])];
-        let found = find_conflicts(&mods);
+        let found = find_conflicts(&mods, &[]);
         assert_eq!(found.len(), 1);
         assert_eq!(found[0].kind, "missing");
         assert_eq!(found[0].target_id, "flywheel");
+    }
+
+    #[test]
+    fn a_hand_installed_jar_with_a_matching_name_quiets_a_missing_warning() {
+        // The dependency's manifest couldn't be parsed (or was never MCL's own install), but
+        // a jar plausibly named after it is sitting right there in the mods folder.
+        let mods = vec![meta("create", &[], &[], &["flywheel"])];
+        let present = vec![normalize_for_name_match("flywheel-fabric-1.21-1.0.5.jar")];
+        assert!(find_conflicts(&mods, &present).is_empty());
+
+        // No plausible filename present: still reported, same as before.
+        assert_eq!(find_conflicts(&mods, &[]).len(), 1);
+    }
+
+    #[test]
+    fn a_short_generic_id_is_not_matched_against_an_unrelated_filename() {
+        // "rapidsync" contains "api" as a plain substring, which is exactly the false match
+        // the length guard exists to prevent for a short, generic required id.
+        let mods = vec![meta("create", &[], &[], &["api"])];
+        let present = vec![normalize_for_name_match("rapidsync-fabric-1.0.jar")];
+        assert_eq!(find_conflicts(&mods, &present).len(), 1);
     }
 
     #[test]
@@ -710,7 +838,7 @@ mod tests {
             meta("b", &["c"], &[], &[]),
             meta("c", &[], &[], &[]),
         ];
-        let found = find_conflicts(&mods);
+        let found = find_conflicts(&mods, &[]);
         assert_eq!(found[0].kind, "breaks");
     }
 

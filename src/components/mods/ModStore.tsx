@@ -1277,6 +1277,12 @@ export const ModStore: React.FC<ModStoreProps> = ({
     }
   };
 
+  // Lower-cased once per `installedItems` change instead of once per browse-card render: with
+  // a large modpack (~400 installed mods) the "already installed?" check below used to call
+  // `.toLowerCase()` on every installed mod's name for every visible browse card, on every
+  // render — allocating thousands of throwaway strings for data that had not actually changed.
+  const installedNamesLower = useMemo(() => installedItems.map((m) => m.name.toLowerCase()), [installedItems]);
+
   // Filtered and Sorted installed addons
   const filteredAndSortedInstalled = useMemo(() => {
     let result = [...installedItems];
@@ -2197,9 +2203,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                       const isInstalling = installingId === item.id;
                       const isInstalled =
                         item.isInstalled ||
-                        installedItems.some((m) =>
-                          m.name.toLowerCase().includes(item.name.toLowerCase().trim())
-                        );
+                        installedNamesLower.some((name) => name.includes(item.name.toLowerCase().trim()));
 
                       const isDeduplicated =
                         (item.sources && item.sources.length > 1) ||
@@ -2227,9 +2231,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
                       const isInstalling = installingId === item.id;
                       const isInstalled =
                         item.isInstalled ||
-                        installedItems.some((m) =>
-                          m.name.toLowerCase().includes(item.name.toLowerCase().trim())
-                        );
+                        installedNamesLower.some((name) => name.includes(item.name.toLowerCase().trim()));
 
                       const isDeduplicated =
                         (item.sources && item.sources.length > 1) ||
@@ -3218,7 +3220,7 @@ export const ModStore: React.FC<ModStoreProps> = ({
           detailItem
             ? Boolean(
                 detailItem.isInstalled ||
-                  installedItems.some((m) => m.name.toLowerCase().includes(detailItem.name.toLowerCase().trim()))
+                  installedNamesLower.some((name) => name.includes(detailItem.name.toLowerCase().trim()))
               )
             : false
         }

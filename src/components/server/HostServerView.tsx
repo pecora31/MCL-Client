@@ -59,6 +59,8 @@ const MAX_LOG_LINES = 500;
 /** Long enough to collapse a burst of console output, short enough to still read as live. */
 const LOG_FLUSH_MS = 120;
 
+const SELECTED_HOST_STORAGE_KEY = 'mcl_host_server_selected_host';
+
 type ServerTab = 'dashboard' | 'console' | 'config' | 'backups' | 'files';
 
 const getLoaderBadgeColor = (loader: string) => {
@@ -127,7 +129,17 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   const t = getTranslation(language);
   const [selectedId, setSelectedId] = useState<string>(instances[0]?.id || '');
   const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([]);
-  const [selectedHostId, setSelectedHostId] = useState<string>(LOCAL_HOST_ID);
+  // This view remounts from scratch every time the player navigates back to Server
+  // Management (its parent only renders it while that tab is active), so without this the
+  // selected host silently reset to "This Computer" on every visit — remembered here the same
+  // way the active server in Overview already is.
+  const [selectedHostId, setSelectedHostIdState] = useState<string>(
+    () => localStorage.getItem(SELECTED_HOST_STORAGE_KEY) || LOCAL_HOST_ID
+  );
+  const setSelectedHostId = (id: string) => {
+    setSelectedHostIdState(id);
+    localStorage.setItem(SELECTED_HOST_STORAGE_KEY, id);
+  };
   const [isBootstrapOpen, setIsBootstrapOpen] = useState(false);
   const [isSyncingMods, setIsSyncingMods] = useState(false);
   const [backups, setBackups] = useState<BackupInfo[]>([]);
