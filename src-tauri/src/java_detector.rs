@@ -94,7 +94,7 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
 
     if javas.is_empty() {
         return (
-            "javaw.exe".to_string(),
+            java_command_name().to_string(),
             0,
             "No Java runtime found on this system. Please install Java.".to_string(),
         );
@@ -146,6 +146,31 @@ pub fn find_best_java_for_version(game_version: &str) -> (String, u32, String) {
     )
 }
 
+/// The bare command name a fresh `javaw.exe`/`java` would be spawned as when nothing more
+/// specific is known — never a real answer on its own, only what `PATH` lookup falls back to.
+/// A hosted server always wants the console-attached binary (never `javaw`, Windows' windowless
+/// variant, which is fine for the client GUI but not for a process whose stdout/stdin this
+/// launcher needs to pipe).
+fn java_command_name() -> &'static str {
+    if cfg!(windows) {
+        "java.exe"
+    } else {
+        "java"
+    }
+}
+
+/// Every filename this platform's JDKs/JREs ship their console-attached `java` binary under,
+/// checked in order. `javaw.exe` is included on Windows too (it's what the client launch path
+/// has historically preferred, for no console flash), but `java.exe` is what a hosted server
+/// actually needs — see `java_command_name`.
+fn java_binary_names() -> &'static [&'static str] {
+    if cfg!(windows) {
+        &["javaw.exe", "java.exe"]
+    } else {
+        &["java"]
+    }
+}
+
 pub fn detect_installed_javas() -> Vec<JavaInstallation> {
     let mut results: Vec<JavaInstallation> = Vec::new();
     let mut visited_paths = std::collections::HashSet::new();
@@ -155,24 +180,42 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
         check_and_add(&PathBuf::from(java_home), &mut results, &mut visited_paths);
     }
 
-    // Common Windows search directories
-    let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
-    let program_files_x86 = std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| "C:\\Program Files (x86)".to_string());
-
-    let candidates = vec![
-        PathBuf::from(&program_files).join("Common Files").join("Oracle").join("Java").join("javapath"),
-        PathBuf::from(&program_files).join("Java"),
-        PathBuf::from(&program_files).join("Eclipse Adoptium"),
-        PathBuf::from(&program_files).join("Microsoft"),
-        PathBuf::from(&program_files).join("BellSoft"),
-        PathBuf::from(&program_files).join("Zulu"),
-        PathBuf::from(&program_files_x86).join("Java"),
-        // Runtimes this launcher downloaded itself
+    let mut candidates = vec![
+        // Runtimes this launcher downloaded itself — the one location that matters on every
+        // platform, since it's where a VPS running the headless agent keeps whatever Java it
+        // fetched for itself.
         crate::java_runtime::runtime_root(),
     ];
 
-    // Query where.exe javaw — but detect actual version
-    if let Ok(output) = hidden_command("where.exe").arg("javaw").output() {
+    if cfg!(windows) {
+        let program_files = std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".to_string());
+        let program_files_x86 =
+            std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| "C:\\Program Files (x86)".to_string());
+        candidates.extend([
+            PathBuf::from(&program_files).join("Common Files").join("Oracle").join("Java").join("javapath"),
+            PathBuf::from(&program_files).join("Java"),
+            PathBuf::from(&program_files).join("Eclipse Adoptium"),
+            PathBuf::from(&program_files).join("Microsoft"),
+            PathBuf::from(&program_files).join("BellSoft"),
+            PathBuf::from(&program_files).join("Zulu"),
+            PathBuf::from(&program_files_x86).join("Java"),
+        ]);
+    } else {
+        // Where a distro's package manager (apt, dnf, pacman) puts OpenJDK, and where
+        // update-alternatives keeps the version currently selected — the layout `apt install
+        // default-jre`/`openjdk-*-jre` leaves behind, which is what the VM Bootstrap Wizard
+        // installs on a fresh VPS.
+        candidates.extend([
+            PathBuf::from("/usr/lib/jvm"),
+            PathBuf::from("/usr/lib64/jvm"),
+            PathBuf::from("/opt/java"),
+        ]);
+    }
+
+    // Whatever `java` resolves to on PATH, however it's set up — package manager, manual
+    // install, update-alternatives. `where.exe` is Windows-only; `which` is its Unix analogue.
+    let path_lookup = if cfg!(windows) { ("where.exe", "javaw") } else { ("which", "java") };
+    if let Ok(output) = hidden_command(path_lookup.0).arg(path_lookup.1).output() {
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
@@ -182,10 +225,7 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
                     let p_str = path_buf.to_string_lossy().to_string();
                     if !visited_paths.contains(&p_str) {
                         visited_paths.insert(p_str.clone());
-                        // Try to detect actual version from the sibling java.exe
-                        let java_exe = path_buf.with_file_name("java.exe");
-                        let (major, ver_str, is_64_bit) =
-                            detect_version_from_executable(&java_exe, "System PATH");
+                        let (major, ver_str, is_64_bit) = detect_version_from_executable(&path_buf, "System PATH");
                         results.push(JavaInstallation {
                             path: p_str,
                             major_version: major,
@@ -204,7 +244,7 @@ pub fn detect_installed_javas() -> Vec<JavaInstallation> {
                 let p = entry.path();
                 if p.is_file() {
                     let file_name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                    if file_name.eq_ignore_ascii_case("javaw.exe") || file_name.eq_ignore_ascii_case("java.exe") {
+                    if java_binary_names().iter().any(|name| file_name.eq_ignore_ascii_case(name)) {
                         if let Some(bin_parent) = p.parent().and_then(|bin| bin.parent()) {
                             check_and_add(bin_parent, &mut results, &mut visited_paths);
                         }
@@ -224,14 +264,8 @@ fn check_and_add(
     results: &mut Vec<JavaInstallation>,
     visited: &mut std::collections::HashSet<String>,
 ) {
-    let javaw_path = dir.join("bin").join("javaw.exe");
-    let java_path = dir.join("bin").join("java.exe");
-
-    let exe_path = if javaw_path.exists() {
-        javaw_path
-    } else if java_path.exists() {
-        java_path
-    } else {
+    let bin_dir = dir.join("bin");
+    let Some(exe_path) = java_binary_names().iter().map(|name| bin_dir.join(name)).find(|p| p.exists()) else {
         return;
     };
 
@@ -242,8 +276,7 @@ fn check_and_add(
     visited.insert(path_str.clone());
 
     let folder_name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
-    let java_exe = dir.join("bin").join("java.exe");
-    let (major, version_str, is_64_bit) = detect_version_from_executable(&java_exe, folder_name);
+    let (major, version_str, is_64_bit) = detect_version_from_executable(&exe_path, folder_name);
 
     results.push(JavaInstallation {
         path: path_str,
@@ -367,6 +400,34 @@ mod folder_name_heuristic_tests {
         // explicit checks below 21 were added, nothing matched it and it fell through to
         // the generic 21 default anyway.
         assert_ne!(parse_version_from_folder_name("jdk-25.0.1").0, 21);
+    }
+}
+
+#[cfg(test)]
+mod platform_binary_name_tests {
+    use super::{java_binary_names, java_command_name};
+
+    #[test]
+    fn never_hands_a_windows_only_name_to_a_non_windows_process_spawn() {
+        // The bug this guards: a Linux VPS running mcl-agent used to be handed "javaw.exe" as
+        // its "nothing found" fallback and blindly tried to spawn it — which fails with a raw
+        // "No such file or directory", since that filename doesn't exist, or make sense, off
+        // Windows. Every name this module can ever hand to `Command::new` must fit the target
+        // it's compiled for.
+        if cfg!(windows) {
+            assert!(java_command_name().ends_with(".exe"));
+            assert!(java_binary_names().iter().all(|n| n.ends_with(".exe")));
+        } else {
+            assert_eq!(java_command_name(), "java");
+            assert_eq!(java_binary_names(), &["java"]);
+        }
+    }
+
+    #[test]
+    fn the_hosting_fallback_is_console_attached_not_the_windowless_client_variant() {
+        // A hosted server's stdout/stdin has to be piped and read line by line; `javaw.exe` is
+        // the windowless variant the client launch path prefers instead, for no console flash.
+        assert_ne!(java_command_name(), "javaw.exe");
     }
 }
 

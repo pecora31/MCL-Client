@@ -95,6 +95,20 @@ pub async fn get_loader_meta(
     for attempt in 1..=META_FETCH_ATTEMPTS {
         match client.get(&url).send().await {
             Ok(resp) => {
+                // A non-2xx here almost always means the loader/game version pairing itself is
+                // bad (most often a pre-release loader build the project has since pruned from
+                // its meta service) rather than a network problem, so this is never retried —
+                // the body is the exact reason, a plain JSON string like
+                // `"no loader version found for 0.20.0-beta.9"`, and is worth surfacing over the
+                // opaque "failed to parse" a struct-shaped deserialize would report instead.
+                if !resp.status().is_success() {
+                    let body = resp.text().await.unwrap_or_default();
+                    let reason = serde_json::from_str::<String>(&body).unwrap_or(body);
+                    return Err(format!(
+                        "{} loader {} isn't available for Minecraft {} ({} said: {}). Pick a different loader version.",
+                        endpoints.display_name, loader_version, game_version, endpoints.display_name, reason
+                    ));
+                }
                 return resp
                     .json::<FabricLoaderResponse>()
                     .await

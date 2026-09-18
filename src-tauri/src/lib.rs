@@ -451,6 +451,44 @@ fn find_best_java(game_version: String) -> (String, u32, String) {
     java_detector::find_best_java_for_version(&game_version)
 }
 
+/// `find_best_java`, but for hosting: when this machine has no fitting Java at all (major
+/// version 0), it downloads one instead of handing back a placeholder path like `javaw.exe`
+/// with nothing behind it — the exact mistake that used to make Start fail with a raw OS error
+/// ("No such file or directory") instead of ever explaining what was actually missing.
+#[tauri::command]
+async fn find_or_download_java_for_hosting(
+    app_handle: tauri::AppHandle,
+    game_version: String,
+    auto_download_java: bool,
+) -> Result<(String, u32, String), String> {
+    use tauri::Emitter;
+    let found = java_detector::find_best_java_for_version(&game_version);
+    if found.1 != 0 {
+        return Ok(found);
+    }
+    if !auto_download_java {
+        return Err(found.2);
+    }
+
+    let required = java_detector::required_java_major(&game_version);
+    let _ = app_handle.emit(
+        "server-log",
+        format!(
+            "[MCL] Java {} is not on this computer yet. Downloading Eclipse Temurin {} (about 40-55 MB)...",
+            required, required
+        ),
+    );
+    let exe = java_runtime::download_java(&app_handle, required)
+        .await
+        .map_err(|e| format!("Could not download Java {}: {}", required, e))?;
+    forget_detected_javas();
+    Ok((
+        exe.to_string_lossy().to_string(),
+        required,
+        format!("Using Java {} (Eclipse Temurin, downloaded by the launcher)", required),
+    ))
+}
+
 #[tauri::command]
 async fn ping_minecraft_server(host: String, port: u16) -> ServerStatus {
     server_ping::ping_server(&host, port).await
@@ -846,6 +884,7 @@ pub fn run() {
             remote_agent::remote_agent_download_file,
             detect_java,
             find_best_java,
+            find_or_download_java_for_hosting,
             get_system_info,
             get_lan_ip,
             install_local_skin,

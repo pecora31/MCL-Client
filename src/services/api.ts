@@ -69,6 +69,7 @@ export const TAURI_COMMANDS = [
   'select_save_path',
   'detect_java',
   'find_best_java',
+  'find_or_download_java_for_hosting',
   'get_system_info',
   'get_lan_ip',
   'install_local_skin',

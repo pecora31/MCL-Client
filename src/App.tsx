@@ -1176,6 +1176,7 @@ export const App: React.FC = () => {
                           instances={instances}
                           language={language}
                           onOpenCreateModal={() => setIsCreateModalOpen(true)}
+                          autoDownloadJava={settings.autoDownloadJava}
                         />
                       )}
                       </Suspense>

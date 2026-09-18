@@ -47,6 +47,9 @@ interface HostServerViewProps {
   instances: GameInstance[];
   language: Language;
   onOpenCreateModal: () => void;
+  /** Whether Start may download a Java runtime when this machine has none that fits, mirroring
+   *  the same setting Play already uses. */
+  autoDownloadJava: boolean;
 }
 
 /** A stand-in for the desktop app's own PID map, used only to key the "already running" check. */
@@ -119,6 +122,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   instances,
   onOpenCreateModal,
   language,
+  autoDownloadJava,
 }) => {
   const t = getTranslation(language);
   const [selectedId, setSelectedId] = useState<string>(instances[0]?.id || '');
@@ -243,6 +247,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
       setStatus(null);
       return;
     }
+    const requestedFor = `${selectedHostId}:${selectedId}`;
     try {
       let s: HostedServerStatus;
       if (selectedHost) {
@@ -250,12 +255,30 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
       } else {
         s = await invokeCommand<HostedServerStatus>('get_hosted_server_status', { instanceId: instance.id });
       }
+      // The player may have switched profile or host while this was in flight — an answer that
+      // arrives after that must not overwrite what's now on screen with the wrong host's status.
+      if (`${currentHostIdRef.current}:${currentInstanceIdRef.current}` !== requestedFor) return;
       setStatus(s);
+      // Only clears an error this same polling loop put up — an error from Start/Stop/Prepare
+      // is left alone, since a routine status read succeeding says nothing about whether that
+      // action worked.
+      if (statusFetchFailedRef.current) {
+        statusFetchFailedRef.current = false;
+        setError('');
+      }
       if (s.hasJar && !loadedPropertiesForRef.current) {
         loadProperties(s.serverDir);
       }
     } catch (err) {
+      if (`${currentHostIdRef.current}:${currentInstanceIdRef.current}` !== requestedFor) return;
       console.warn('Could not read hosted server status:', err);
+      // Surfaced rather than left silent: a status fetch that keeps failing (agent unreachable,
+      // TLS cert mismatch) used to leave whatever the previous host showed frozen on screen,
+      // with nothing telling the player their VM's actual status was never loaded.
+      if (selectedHost) {
+        statusFetchFailedRef.current = true;
+        setError(String(err));
+      }
     }
   };
 
@@ -281,7 +304,13 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
 
   useEffect(() => {
     setError('');
+    statusFetchFailedRef.current = false;
     setEulaAccepted(false);
+    // Cleared rather than left in place: leaving the previous host's status on screen while the
+    // new one loads meant a failed fetch below (network hiccup, agent still coming up) silently
+    // kept showing whatever the last selection had prepared — including its dashboard tabs, for
+    // a VM that had never been set up at all.
+    setStatus(null);
     // Forget the properties loaded for the previous profile/host so the next status read
     // fetches the ones belonging to this pair.
     loadedPropertiesForRef.current = '';
@@ -295,6 +324,10 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   currentInstanceIdRef.current = selectedId;
   /// "<hostId>:<instanceId>" whose server.properties is currently in `summary`, or "" for none.
   const loadedPropertiesForRef = useRef('');
+  /// Whether the error currently on screen came from refreshStatus itself, so a later
+  /// successful poll knows it is safe to clear (and an unrelated Start/Stop/Prepare error knows
+  /// it is not).
+  const statusFetchFailedRef = useRef(false);
 
   // A starting server (mod loading especially) emits console lines faster than a screen can
   // show them, and one state update per line would re-render this whole view hundreds of times
@@ -480,8 +513,13 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
       if (selectedHost) {
         await remoteAgent.start(selectedHost, { minRam, maxRam, useAikarFlags, gcEngine, autoRestart });
       } else {
-        const [javaBin] = await invokeCommand<[string, number, string]>('find_best_java', {
+        // Downloads a Java runtime when this machine has none that fits, the same as starting
+        // the game itself does — a hosted server used to be handed a bare "javaw.exe" with no
+        // real path behind it in that case, which failed to spawn with a raw OS error instead
+        // of ever explaining that Java was the actual problem.
+        const [javaBin] = await invokeCommand<[string, number, string]>('find_or_download_java_for_hosting', {
           gameVersion: instance.gameVersion,
+          autoDownloadJava,
         });
         await invokeCommand('start_hosted_server', {
           instanceId: instance.id,
