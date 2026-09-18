@@ -348,3 +348,43 @@ export const getLoaderIcon = (loaderId?: string, className = 'w-3.5 h-3.5'): Rea
       return <Box className={className} />;
   }
 };
+
+/**
+ * Returns the authentic brand color for a mod loader
+ */
+export const getLoaderColor = (loaderId?: string): string => {
+  if (!loaderId) return '#94a3b8';
+  switch (loaderId.toLowerCase()) {
+    case 'vanilla':
+    case 'minecraft':
+      return '#48bb78';
+    case 'fabric':
+      return '#dbb78e';
+    case 'forge':
+      return '#dfa863';
+    case 'neoforge':
+      return '#fa8231';
+    case 'quilt':
+      return '#c56cf0';
+    case 'bta':
+    case 'bta-babric':
+      return '#2ed573';
+    case 'liteloader':
+      return '#70a1ff';
+    case 'ornithe':
+      return '#54a0ff';
+    case 'rift':
+      return '#818cf8';
+    case 'nilloader':
+      return '#ff6b81';
+    case 'risugami':
+    case 'modloader':
+      return '#a78bfa';
+    case 'optifine':
+      return '#e63946';
+    case 'iris':
+      return '#38bdf8';
+    default:
+      return '#94a3b8';
+  }
+};

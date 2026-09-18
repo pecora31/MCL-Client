@@ -152,11 +152,39 @@ pub async fn remote_agent_prepare(
 struct StartBody {
     min_ram: u32,
     max_ram: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    java_bin: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    use_aikar_flags: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    gc_engine: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    auto_restart: Option<bool>,
 }
 
 #[tauri::command]
-pub async fn remote_agent_start(host: RemoteHostConfig, min_ram: u32, max_ram: u32) -> Result<(), String> {
-    post_no_content(&host, "/v1/start", &StartBody { min_ram, max_ram }).await
+pub async fn remote_agent_start(
+    host: RemoteHostConfig,
+    min_ram: u32,
+    max_ram: u32,
+    java_bin: Option<String>,
+    use_aikar_flags: Option<bool>,
+    gc_engine: Option<String>,
+    auto_restart: Option<bool>,
+) -> Result<(), String> {
+    post_no_content(
+        &host,
+        "/v1/start",
+        &StartBody {
+            min_ram,
+            max_ram,
+            java_bin,
+            use_aikar_flags,
+            gc_engine,
+            auto_restart,
+        },
+    )
+    .await
 }
 
 #[tauri::command]

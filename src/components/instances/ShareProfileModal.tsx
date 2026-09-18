@@ -107,13 +107,11 @@ export const ShareProfileModal: React.FC<ShareProfileModalProps> = ({
       <div className="w-full max-w-xl bg-[#121212] rounded-3xl border border-white/10 shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/[0.08] bg-[#161616]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-              {isShare ? (
-                <Share2 className="w-5 h-5" />
-              ) : (
-                <Download className="w-5 h-5" />
-              )}
-            </div>
+            {isShare ? (
+              <Share2 className="w-6 h-6 text-amber-400 shrink-0" />
+            ) : (
+              <Download className="w-6 h-6 text-amber-400 shrink-0" />
+            )}
             <div>
               <h2 className="text-lg font-bold text-white font-riot tracking-wide">
                 {isShare ? t.shareTitle || 'Share this profile' : t.importTitle || 'Import a profile'}

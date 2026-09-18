@@ -14,7 +14,7 @@ mod remote_agent;
 pub mod remote_files;
 pub mod server_config;
 pub mod server_host;
-mod server_ping;
+pub(crate) mod server_ping;
 
 // Peer-to-peer rooms pull in iroh and its ~190 transitive crates, which only the desktop app
 // ever uses — the agent binary builds with the feature off and gets a matching stub instead,
@@ -162,6 +162,9 @@ fn start_hosted_server(
     java_bin: String,
     min_ram: u32,
     max_ram: u32,
+    use_aikar_flags: Option<bool>,
+    gc_engine: Option<String>,
+    auto_restart: Option<bool>,
 ) -> Result<(), String> {
     use tauri::Emitter;
     let instance = require_instance(&instance_id)?;
@@ -174,6 +177,9 @@ fn start_hosted_server(
         &java_bin,
         min_ram,
         max_ram,
+        use_aikar_flags.unwrap_or(false),
+        gc_engine.as_deref(),
+        auto_restart.unwrap_or(false),
         move |line| {
             let _ = app_handle.emit("server-log", line);
         },

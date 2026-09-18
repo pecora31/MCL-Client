@@ -3,12 +3,16 @@ import { Terminal, Languages, Check, ChevronDown } from 'lucide-react';
 import { isTauri, invokeCommand } from '../../services/api';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { getTranslation, type Language } from '../../locales/i18n';
+import type { Account } from '../../types';
 
 interface TitleBarProps {
   onOpenConsole?: () => void;
   isRunning?: boolean;
   language: Language;
   onChangeLanguage: (lang: Language) => void;
+  account?: Account;
+  onUpdateAccount?: (updated: Account) => void;
+  onNavigateSkin?: () => void;
 }
 
 const LANGUAGES: { code: Language; label: string; flag: string }[] = [
@@ -105,7 +109,19 @@ export const TitleBar: React.FC<TitleBarProps> = ({
       {/* Right Controls */}
       <div className="flex items-center h-full titlebar-no-drag">
         {/* Utility buttons */}
-        <div className="flex items-center gap-1 pr-2">
+        <div className="flex items-center gap-2 pr-2">
+          {/* Logs */}
+          {onOpenConsole && (
+            <button
+              onClick={onOpenConsole}
+              title={t.viewLogs}
+              className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-[#949ba4] hover:text-[#dbdee1] hover:bg-white/10 flex items-center gap-1 transition tracking-wide cursor-pointer h-5"
+            >
+              <Terminal className="w-3 h-3 text-amber-400" />
+              <span>{t.viewLogs}</span>
+            </button>
+          )}
+
           {/* Language Dropdown */}
           <div ref={langDropdownRef} className="relative">
             <button
@@ -161,18 +177,6 @@ export const TitleBar: React.FC<TitleBarProps> = ({
               </div>
             )}
           </div>
-
-          {/* Logs */}
-          {onOpenConsole && (
-            <button
-              onClick={onOpenConsole}
-              title={t.viewLogs}
-              className="px-1.5 py-0.5 rounded text-[11px] font-semibold text-[#949ba4] hover:text-[#dbdee1] hover:bg-white/10 flex items-center gap-1 transition tracking-wide cursor-pointer h-5"
-            >
-              <Terminal className="w-3 h-3 text-amber-400" />
-              <span>{t.viewLogs}</span>
-            </button>
-          )}
 
           <div className="w-px h-3 bg-white/10 mx-0.5" />
         </div>

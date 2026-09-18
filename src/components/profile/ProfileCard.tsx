@@ -24,8 +24,9 @@ interface ProfileCardProps {
   onClose: () => void;
   account: Account;
   onUpdateAccount: (updated: Account) => void;
-  onNavigateSkin: () => void;
+  onNavigateSkin?: () => void;
   language?: Language;
+  position?: 'top-right' | 'bottom-left';
 }
 
 // Preset banner gradients that look sleek and futuristic
@@ -121,6 +122,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
   onUpdateAccount,
   onNavigateSkin,
   language = 'vi',
+  position = 'top-right',
 }) => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [showBannerDrawer, setShowBannerDrawer] = useState(false);
@@ -282,9 +284,13 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         aria-hidden="true"
       />
 
-      {/* Floating Stack: Mini Banner Box (Top) + Profile Popout Card (Bottom) */}
+      {/* Floating Stack: Mini Banner Box + Profile Popout Card */}
       <div
-        className="fixed left-[88px] bottom-3 z-[90] w-[310px] select-none flex flex-col justify-end pointer-events-none"
+        className={`fixed z-[90] w-[315px] select-none flex flex-col pointer-events-none ${
+          position === 'top-right'
+            ? 'right-8 top-[104px] justify-start'
+            : 'left-[88px] bottom-3 justify-end'
+        }`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Hidden File Inputs for Avatar & Banner */}
@@ -303,8 +309,8 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           className="hidden pointer-events-none"
         />
 
-        {/* Floating Mini Banner Picker Box (Positioned cleanly ABOVE the profile card) */}
-        {showBannerDrawer && (
+        {/* Floating Mini Banner Picker Box (Positioned ABOVE card when bottom-left) */}
+        {position !== 'top-right' && showBannerDrawer && (
           <div
             className="pointer-events-auto mb-2 w-full rounded-2xl bg-[#141518]/98 border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-2xl p-3 space-y-2.5 animate-fadeIn text-slate-100"
             onClick={(e) => e.stopPropagation()}
@@ -367,7 +373,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
 
         {/* Main Floating Profile Card */}
         <div
-          className="pointer-events-auto w-full rounded-2xl bg-[#141518]/98 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl overflow-hidden select-none animate-profilePopout text-slate-100"
+          className="pointer-events-auto w-full rounded-2xl bg-[#141518]/98 border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.85)] backdrop-blur-2xl overflow-hidden select-none animate-fadeIn text-slate-100"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Profile Card Header Banner */}
@@ -700,8 +706,70 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           )}
         </div>
       </div>
-    </div>
-  </>
+
+        {/* Floating Mini Banner Picker Box (Positioned BELOW card when top-right) */}
+        {position === 'top-right' && showBannerDrawer && (
+          <div
+            className="pointer-events-auto mt-2 w-full rounded-2xl bg-[#141518]/98 border border-white/15 shadow-[0_16px_40px_rgba(0,0,0,0.85)] backdrop-blur-2xl p-3 space-y-2.5 animate-fadeIn text-slate-100"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between text-[11px] text-slate-300 font-semibold">
+              <span className="flex items-center gap-1.5">
+                <Palette className="w-3.5 h-3.5 text-[var(--accent-color)]" />
+                <span>{t.selectBannerTheme || 'Select banner theme:'}</span>
+              </span>
+              <button
+                onClick={() => setShowBannerDrawer(false)}
+                className="w-5 h-5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white flex items-center justify-center text-xs transition cursor-pointer"
+                title={t.close || 'Close'}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Presets Row */}
+            <div className="grid grid-cols-8 gap-1.5">
+              {BANNER_PRESETS.map((preset) => {
+                const isSelected = account.customBanner === preset.style;
+                return (
+                  <button
+                    key={preset.id}
+                    onClick={() => handleSelectPresetBanner(preset.style)}
+                    title={preset.name}
+                    className={`h-6 rounded-lg border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                      isSelected
+                        ? 'border-white scale-105 shadow-[0_0_8px_rgba(255,255,255,0.7)]'
+                        : 'border-white/15 hover:scale-105 hover:border-white/40'
+                    }`}
+                    style={{ background: preset.style }}
+                  />
+                );
+              })}
+            </div>
+
+            {/* Custom upload button */}
+            <div className="pt-0.5 flex items-center gap-2">
+              <button
+                onClick={() => bannerInputRef.current?.click()}
+                className="flex-1 py-1.5 px-2.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-[11px] font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-98"
+              >
+                <Upload className="w-3 h-3 text-[var(--accent-color)]" />
+                <span>{t.uploadImage || 'Upload image'}</span>
+              </button>
+              {account.customBanner && (
+                <button
+                  onClick={handleRemoveBanner}
+                  className="p-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-400 text-xs transition cursor-pointer"
+                  title={t.resetDefault || 'Reset to default'}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </>
   );
 };
 

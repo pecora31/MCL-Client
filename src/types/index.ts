@@ -308,6 +308,15 @@ export interface ServerPropertiesSummary {
   motd: string;
   /** What players actually connect to, and what P2P Direct Connect tunnels through. */
   serverPort: number;
+  gamemode: 'survival' | 'creative' | 'adventure' | 'spectator';
+  viewDistance: number;
+  simulationDistance: number;
+  allowNether: boolean;
+  spawnProtection: number;
+  hardcore: boolean;
+  levelSeed: string;
+  /** The world folder the server loads. Read-only: the config editor never writes it back. */
+  levelName: string;
 }
 
 /** "starting" covers everything from process launch until the world finishes loading;
@@ -319,6 +328,18 @@ export interface HostedServerStatus {
   state: HostedServerState;
   hasJar: boolean;
   serverDir: string;
+  uptimeSeconds?: number;
+  /** Resident memory of the whole java process, not the heap alone, so it can exceed `-Xmx`. */
+  processMemoryMb?: number;
+  /** The `-Xmx` the server was started with. */
+  maxRamMb?: number;
+  /** From the server's own "Can't keep up!" warning. Absent means it hasn't complained lately. */
+  lagBehindMs?: number;
+  lagReportedSecondsAgo?: number;
+  onlinePlayers?: number;
+  maxPlayers?: number;
+  playerList?: string[];
+  worldSizeBytes?: number;
   /** Only present when this status came from a remote agent (local hosting has no need for its own machine's stats here). */
   system?: SystemStats;
 }

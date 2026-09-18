@@ -7,6 +7,11 @@ import { getTranslation, type Language } from '../../locales/i18n';
 import { ToggleSwitch } from '../common/ToggleSwitch';
 import { ServerConfigModal } from '../server/ServerConfigModal';
 
+/** How often the sweep runs, which is also how often the server on screen is re-pinged. */
+const PING_SWEEP_MS = 30000;
+/** How stale a server not currently on screen may get before the sweep re-pings it. */
+const BACKGROUND_PING_TTL_MS = 60000;
+
 interface ServerHubProps {
   instances: GameInstance[];
   selectedInstanceId: string;
@@ -109,14 +114,28 @@ export const ServerHub: React.FC<ServerHubProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Background-ping ALL saved servers so chips are always populated
+  // One sweep keeps every saved server's chip populated, including the one open in the detail
+  // card. The card's server is refreshed on every pass; the rest only once their last reading
+  // has gone stale, so a long server list does not turn into a constant stream of pings.
+  const lastPingedAtRef = useRef<Record<string, number>>({});
+  // Read inside the sweep so changing the selection does not tear down and restart it.
+  const selectedServerIdRef = useRef(currentSavedServer?.id);
+  selectedServerIdRef.current = currentSavedServer?.id;
   useEffect(() => {
     let cancelled = false;
-    const pingAll = async () => {
-      for (const srv of savedServers) {
+    const sweep = async () => {
+      // Freshest first, since that is the one actually being looked at.
+      const queue = [...savedServers].sort((a, b) =>
+        a.id === selectedServerIdRef.current ? -1 : b.id === selectedServerIdRef.current ? 1 : 0,
+      );
+      for (const srv of queue) {
         if (cancelled) break;
+        const isSelected = srv.id === selectedServerIdRef.current;
+        const age = Date.now() - (lastPingedAtRef.current[srv.id] || 0);
+        if (!isSelected && age < BACKGROUND_PING_TTL_MS) continue;
         try {
           const status = await pingServer(srv.ip, srv.port || 25565);
+          lastPingedAtRef.current[srv.id] = Date.now();
           if (!cancelled) {
             setServerPingMap((prev) => ({ ...prev, [srv.id]: status }));
           }
@@ -125,8 +144,8 @@ export const ServerHub: React.FC<ServerHubProps> = ({
         }
       }
     };
-    pingAll();
-    const interval = setInterval(pingAll, 60000);
+    sweep();
+    const interval = setInterval(sweep, PING_SWEEP_MS);
     return () => {
       cancelled = true;
       clearInterval(interval);
@@ -199,37 +218,32 @@ export const ServerHub: React.FC<ServerHubProps> = ({
   // Delete server confirmation modal state
   const [serverToDelete, setServerToDelete] = useState<SavedServer | null>(null);
 
-  const [serverStatus, setServerStatus] = useState<ServerStatus>({
+  // Derived from the one ping cache rather than pinged separately: the selected server used to
+  // be polled by its own timer as well, so it got pinged twice as often as every other one.
+  const serverStatus: ServerStatus = (currentSavedServer && serverPingMap[currentSavedServer.id]) || {
     ip: currentSavedServer?.ip || '',
     port: currentSavedServer?.port || 25565,
     online: false,
-  });
+  };
 
   const displayIp = currentSavedServer
     ? `${currentSavedServer.ip}${currentSavedServer.port && currentSavedServer.port !== 25565 ? `:${currentSavedServer.port}` : ''}`
     : (serverStatus.ip ? `${serverStatus.ip}${serverStatus.port && serverStatus.port !== 25565 ? `:${serverStatus.port}` : ''}` : '');
 
+  /// The Refresh button. The background sweep keeps every server's chip current on its own, so
+  /// this only re-pings the one on screen.
   const handleRefreshPing = async () => {
-    if (!currentSavedServer) {
-      setServerStatus({ ip: '', port: 25565, online: false });
-      return;
-    }
+    if (!currentSavedServer) return;
     setIsPinging(true);
     try {
       const status = await pingServer(currentSavedServer.ip, currentSavedServer.port);
-      setServerStatus(status);
+      setServerPingMap((prev) => ({ ...prev, [currentSavedServer.id]: status }));
     } catch {
-      // Keep existing
+      // Keep whatever the last sweep found.
     } finally {
       setIsPinging(false);
     }
   };
-
-  useEffect(() => {
-    handleRefreshPing();
-    const interval = setInterval(handleRefreshPing, 30000);
-    return () => clearInterval(interval);
-  }, [currentSavedServer?.ip, currentSavedServer?.port]);
 
   const handleCopyIp = (e?: React.MouseEvent) => {
     e?.stopPropagation();
@@ -818,9 +832,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                 <div className="glass-panel rounded-2xl p-4 border border-white/[0.08] shadow-xl space-y-3">
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-2.5">
-                      <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 flex items-center justify-center text-[var(--accent-color)] shrink-0">
-                        <Server className="w-4 h-4" />
-                      </div>
+                      <Server className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
                       <div>
                         <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
                           <span>{t.savedServersCount}</span>
@@ -1152,9 +1164,7 @@ export const ServerHub: React.FC<ServerHubProps> = ({
                   {/* Top Bar: Active Server Name & Refresh button */}
                   <div className="flex items-center justify-between gap-3 border-b border-white/5 pb-3">
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-9 h-9 rounded-xl bg-[var(--accent-color)]/10 border border-[var(--accent-color)]/20 text-[var(--accent-color)] flex items-center justify-center shrink-0">
-                        <Activity className="w-4 h-4" />
-                      </div>
+                      <Activity className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
                       <div className="min-w-0">
                         <div className="text-[11px] text-slate-400 font-semibold tracking-wider uppercase">{t.serverStatus}</div>
                         <h3 className="text-base font-bold text-white tracking-wide truncate">

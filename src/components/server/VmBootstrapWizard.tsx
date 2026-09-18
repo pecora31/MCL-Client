@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Loader2, X, KeyRound, Lock, Server } from 'lucide-react';
+import { Loader2, X, KeyRound, Lock, Server, AlertCircle } from 'lucide-react';
 import { invokeCommand } from '../../services/api';
 import { type RemoteHost } from '../../services/remoteAgent';
 import type { BootstrapRequest, BootstrapOutcome, BootstrapProgressEvent, BootstrapCredentialsEvent } from '../../types';
@@ -35,8 +35,17 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   const [displayName, setDisplayName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
 
+  // 'manual' skips SSH entirely — for an agent that's already installed and running somewhere
+  // (a distro the wizard's Java/ufw/apt steps don't support, or simply already set up by hand).
+  const [entryMode, setEntryMode] = useState<'auto' | 'manual'>('auto');
+  const [manualUrl, setManualUrl] = useState('');
+  const [manualToken, setManualToken] = useState('');
+  const [manualCertPem, setManualCertPem] = useState('');
+
   const hasCredential = authMethod === 'key' ? Boolean(privateKeyPath) : password.length > 0;
   const canStart = Boolean(host.trim()) && hasCredential && isValidPort(port) && isValidPort(agentPort);
+  const canSaveManual =
+    Boolean(displayName.trim()) && Boolean(manualUrl.trim()) && Boolean(manualToken.trim()) && Boolean(manualCertPem.trim());
 
   const [phase, setPhase] = useState<WizardPhase>('form');
   const [log, setLog] = useState<string[]>([]);
@@ -93,6 +102,17 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
     };
     setPhase('done');
     onInstalled(newHost);
+  };
+
+  const handleSaveManual = () => {
+    if (!canSaveManual) return;
+    onInstalled({
+      id: Date.now().toString(),
+      name: displayName.trim(),
+      url: manualUrl.trim(),
+      token: manualToken.trim(),
+      certPem: manualCertPem.trim(),
+    });
   };
 
   const handleStart = async () => {
@@ -169,7 +189,11 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
         <div className="px-5 py-4 border-b border-white/10 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Server className="w-4 h-4 text-[var(--accent-color)]" />
-            <span className="text-sm font-bold text-white">{t.hostServerBootstrapTitle || 'Set Up a New VM Automatically'}</span>
+            <span className="text-sm font-bold text-white">
+              {entryMode === 'manual'
+                ? t.hostServerBootstrapManualTitle || 'Add an Existing Agent'
+                : t.hostServerBootstrapTitle || 'Set Up a New VM Automatically'}
+            </span>
           </div>
           <button
             type="button"
@@ -182,7 +206,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
         </div>
 
         <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar">
-          {phase === 'form' && (
+          {phase === 'form' && entryMode === 'auto' && (
             <>
               <div className="grid grid-cols-2 gap-3">
                 <input
@@ -276,18 +300,27 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                 {showAdvanced ? t.hostServerBootstrapHideAdvanced || 'Hide advanced' : t.hostServerBootstrapShowAdvanced || 'Advanced'}
               </button>
               {showAdvanced && (
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    {t.hostServerBootstrapAgentPort || 'Agent port'}
-                  </label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="8642"
-                    value={agentPortText}
-                    onChange={(e) => setAgentPortText(e.target.value.replace(/[^0-9]/g, ''))}
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
-                  />
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      {t.hostServerBootstrapAgentPort || 'Agent port'}
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="8642"
+                      value={agentPortText}
+                      onChange={(e) => setAgentPortText(e.target.value.replace(/[^0-9]/g, ''))}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setEntryMode('manual')}
+                    className="text-xs font-semibold text-[var(--accent-light)] hover:underline cursor-pointer"
+                  >
+                    {t.hostServerBootstrapManualLink || 'Already have an agent running? Enter its details manually'}
+                  </button>
                 </div>
               )}
 
@@ -298,6 +331,64 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                 className="w-full btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
               >
                 {t.hostServerBootstrapConnect || 'Connect & Install'}
+              </button>
+            </>
+          )}
+
+          {phase === 'form' && entryMode === 'manual' && (
+            <>
+              <div className="flex items-start gap-2 text-xs text-slate-400 bg-white/[0.03] border border-white/[0.06] rounded-lg p-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-[var(--accent-color)]" />
+                <span>
+                  {t.hostServerRemoteWarning ||
+                    "The agent prints its address, bearer token and certificate path the first time it runs — paste that certificate file's contents below so MCL knows it's really talking to your server."}
+                </span>
+              </div>
+
+              <input
+                type="text"
+                placeholder={t.hostServerRemoteNamePlaceholder || 'Name (e.g. My VPS)'}
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+              <input
+                type="text"
+                placeholder={t.hostServerRemoteUrlPlaceholder || 'https://host:8642'}
+                value={manualUrl}
+                onChange={(e) => setManualUrl(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+              <input
+                type="password"
+                placeholder={t.hostServerRemoteTokenPlaceholder || 'Bearer token (printed when the agent first starts)'}
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"
+              />
+              <textarea
+                placeholder={t.hostServerRemoteCertPlaceholder || '-----BEGIN CERTIFICATE-----\n... (paste agent-cert.pem here) ...\n-----END CERTIFICATE-----'}
+                value={manualCertPem}
+                onChange={(e) => setManualCertPem(e.target.value)}
+                rows={4}
+                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-xs font-mono text-white focus:outline-none focus:border-[var(--accent-color)] resize-none"
+              />
+
+              <button
+                type="button"
+                onClick={() => setEntryMode('auto')}
+                className="text-xs font-semibold text-slate-400 hover:text-white cursor-pointer"
+              >
+                {t.hostServerBootstrapAutoLink || 'Back to automatic setup'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveManual}
+                disabled={!canSaveManual}
+                className="w-full btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
+              >
+                {t.btnSave || 'Save'}
               </button>
             </>
           )}

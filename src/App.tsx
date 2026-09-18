@@ -9,7 +9,7 @@ import { EditInstanceModal } from './components/instances/EditInstanceModal';
 import { DeleteProfileModal } from './components/instances/DeleteProfileModal';
 import { StorageCleanupModal } from './components/settings/StorageCleanupModal';
 import { STEVE_SKIN_BASE64 } from './components/skin/presetSkins';
-import defaultBgImage from './assets/1834105-final.webp';
+import defaultBgImage from './assets/wh40k.webp';
 import { resetLauncherData } from './services/localData';
 import { ConsoleModal } from './components/common/ConsoleModal';
 import { UpdateNotice } from './components/common/UpdateNotice';
@@ -18,15 +18,15 @@ import { ModConflictModal } from './components/instances/ModConflictModal';
 import { ShareProfileModal } from './components/instances/ShareProfileModal';
 import { OnboardingModal } from './components/onboarding/OnboardingModal';
 import { BackgroundCustomizerModal } from './components/home/BackgroundCustomizerModal';
-import { P2PFloatingWidget } from './components/p2p/P2PFloatingWidget';
 import { ToastStack } from './components/common/ToastStack';
 import type { GameInstance, Account, LauncherSettings, LaunchProgress, SavedServer, ModConflict, ShareManifest } from './types';
 import { invokeCommand, isTauri, checkModConflicts } from './services/api';
 import { filterDismissedConflicts, dismissConflicts } from './services/dismissedModConflicts';
 import { readStoredJson, writeStoredJson } from './services/storage';
 import { listen } from '@tauri-apps/api/event';
-import type { Language } from './locales/i18n';
-import { X } from 'lucide-react';
+import { loadLanguage, subscribeToLanguageLoad, type Language } from './locales/i18n';
+import { X, User } from 'lucide-react';
+import { ProfileCard } from './components/profile/ProfileCard';
 
 // The heaviest screens (Skin Studio carries a whole 3D engine) load when their tab is first
 // opened instead of holding up startup, and are warmed in the background once the app is up.
@@ -227,7 +227,8 @@ export const App: React.FC = () => {
     const colorPalette = validPalettes.includes(parsed.colorPalette) ? parsed.colorPalette : 'rose';
     // The built default background's filename carries a hash of its contents, so a saved copy
     // of that URL stops resolving whenever the image changes; point it at today's file instead.
-    const customBgImage = /\/1834105-final[.-]/.test(parsed.customBgImage || '')
+    // Older names stay listed so someone still carrying a previous default moves to the current one.
+    const customBgImage = /\/(wh40k|1834105-final)[.-]/.test(parsed.customBgImage || '')
       ? defaultBgImage
       : parsed.customBgImage;
     return {
@@ -244,6 +245,17 @@ export const App: React.FC = () => {
     const saved = localStorage.getItem('mcl_lang') as Language;
     return saved || 'en';
   });
+
+  // Every language other than English loads as its own chunk, so the first render after a switch
+  // can still be showing English. This re-renders the tree once the real table has arrived.
+  const [, setLanguageRevision] = useState(0);
+  useEffect(() => {
+    const unsubscribe = subscribeToLanguageLoad(() => setLanguageRevision((n) => n + 1));
+    return unsubscribe;
+  }, []);
+  useEffect(() => {
+    loadLanguage(language);
+  }, [language]);
 
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState<boolean>(() => {
     return localStorage.getItem('mcl_onboarding_completed') === 'true';
@@ -262,6 +274,7 @@ export const App: React.FC = () => {
   const [sharingInstanceId, setSharingInstanceId] = useState<string>('');
   const [isConsoleOpen, setIsConsoleOpen] = useState(false);
   const [isBackgroundModalOpen, setIsBackgroundModalOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // Runtime states
   const [isRunning, setIsRunning] = useState(false);
@@ -962,10 +975,6 @@ export const App: React.FC = () => {
           <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-transparent z-3 pointer-events-none" />
         </div>
 
-        {/* Persistent P2P widget: create/join a direct-connect room from anywhere in the app,
-            independent of whatever tab is currently open. */}
-        <P2PFloatingWidget language={language} />
-
         {/* Toast notifications float over the page instead of shoving its layout around */}
         <ToastStack />
 
@@ -990,6 +999,47 @@ export const App: React.FC = () => {
               language={language}
               onChangeLanguage={handleChangeLanguage}
             />
+
+            {/* Top-Right Player Profile Capsule (Floating below head bar, thick & prominent) */}
+            {account && (
+              <div className="absolute top-[50px] right-8 z-30 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen((prev) => !prev)}
+                  className={`h-12 pl-2 pr-5 rounded-2xl flex items-center gap-3 transition-colors duration-150 cursor-pointer border select-none group ${
+                    isProfileOpen
+                      ? 'bg-[#202228] border-[var(--accent-color)]/60 text-white shadow-[0_8px_24px_rgba(0,0,0,0.6)]'
+                      : 'bg-[#181a1f]/92 hover:bg-[#22252c]/98 border-white/15 hover:border-white/30 text-white shadow-[0_8px_24px_rgba(0,0,0,0.6)] backdrop-blur-xl'
+                  }`}
+                  title={account.username}
+                >
+                  {/* Circular Avatar: Prominent & Clean */}
+                  <div className="w-8.5 h-8.5 rounded-full overflow-hidden shrink-0 flex items-center justify-center bg-black/90 border border-white/10 shadow-inner group-hover:border-white/25 transition-colors">
+                    {account.avatarCustom ? (
+                      <img src={account.avatarCustom} alt={account.username} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-5 h-5 text-white" strokeWidth={2.2} />
+                    )}
+                  </div>
+
+                  {/* Username */}
+                  <span className="text-sm font-bold text-white tracking-wide truncate max-w-[140px] select-none">
+                    {account.username}
+                  </span>
+                </button>
+
+                {/* Profile Card Popout Dropdown */}
+                <ProfileCard
+                  isOpen={isProfileOpen}
+                  onClose={() => setIsProfileOpen(false)}
+                  account={account}
+                  onUpdateAccount={setAccount}
+                  onNavigateSkin={() => setCurrentTab('skin')}
+                  language={language}
+                  position="top-right"
+                />
+              </div>
+            )}
 
             {/* Persistent Home Screen Canvas */}
             <main className="flex-1 flex overflow-hidden bg-transparent relative">

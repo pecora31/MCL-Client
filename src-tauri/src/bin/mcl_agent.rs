@@ -192,11 +192,7 @@ async fn get_status(State(state): State<Arc<AppState>>) -> ApiResult<AgentStatus
     let system = collect_system_stats(&state.system);
     let Some(spec) = read_spec(&state) else {
         return Ok(Json(AgentStatusResponse {
-            status: HostedServerStatus {
-                state: server_host::ServerState::Stopped,
-                has_jar: false,
-                server_dir: state.server_dir().to_string_lossy().to_string(),
-            },
+            status: HostedServerStatus::stopped(state.server_dir().to_string_lossy().to_string()),
             system,
         }));
     };
@@ -262,6 +258,12 @@ struct StartRequest {
     /// Defaults to whatever java this host has installed for the profile's Minecraft
     /// version — most operators will never need to set this.
     java_bin: Option<String>,
+    #[serde(default)]
+    use_aikar_flags: bool,
+    #[serde(default)]
+    gc_engine: Option<String>,
+    #[serde(default)]
+    auto_restart: bool,
 }
 
 #[derive(Serialize)]
@@ -285,6 +287,9 @@ async fn start(State(state): State<Arc<AppState>>, Json(body): Json<StartRequest
         &java_bin,
         body.min_ram,
         body.max_ram,
+        body.use_aikar_flags,
+        body.gc_engine.as_deref(),
+        body.auto_restart,
         move |line| {
             let _ = log_tx.send(line);
         },

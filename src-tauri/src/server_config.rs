@@ -20,12 +20,24 @@ fn defaults() -> ServerPropertiesSummary {
         max_players: 20,
         motd: "A Minecraft Server".to_string(),
         server_port: 25565,
+        gamemode: "survival".to_string(),
+        view_distance: 10,
+        simulation_distance: 10,
+        allow_nether: true,
+        spawn_protection: 16,
+        hardcore: false,
+        level_seed: "".to_string(),
+        level_name: "world".to_string(),
     }
 }
 
 pub fn read_server_properties(dir: &str) -> Result<ServerPropertiesSummary, String> {
-    let raw = fs::read_to_string(Path::new(dir).join(FILE_NAME))
-        .map_err(|_| format!("No server.properties found in {}", dir))?;
+    let path = Path::new(dir).join(FILE_NAME);
+    if !path.exists() {
+        return Ok(defaults());
+    }
+    let raw = fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
     let map = parse_properties(&raw);
     let mut summary = defaults();
     if let Some(v) = map.get("online-mode") {
@@ -53,6 +65,36 @@ pub fn read_server_properties(dir: &str) -> Result<ServerPropertiesSummary, Stri
             summary.server_port = n;
         }
     }
+    if let Some(v) = map.get("gamemode") {
+        summary.gamemode = v.clone();
+    }
+    if let Some(v) = map.get("view-distance") {
+        if let Ok(n) = v.parse() {
+            summary.view_distance = n;
+        }
+    }
+    if let Some(v) = map.get("simulation-distance") {
+        if let Ok(n) = v.parse() {
+            summary.simulation_distance = n;
+        }
+    }
+    if let Some(v) = map.get("allow-nether") {
+        summary.allow_nether = v == "true";
+    }
+    if let Some(v) = map.get("spawn-protection") {
+        if let Ok(n) = v.parse() {
+            summary.spawn_protection = n;
+        }
+    }
+    if let Some(v) = map.get("hardcore") {
+        summary.hardcore = v == "true";
+    }
+    if let Some(v) = map.get("level-seed") {
+        summary.level_seed = v.clone();
+    }
+    if let Some(v) = map.get("level-name").filter(|v| !v.trim().is_empty()) {
+        summary.level_name = v.clone();
+    }
     Ok(summary)
 }
 
@@ -71,9 +113,16 @@ pub fn read_level_name(dir: &Path) -> String {
 }
 
 pub fn write_server_properties(dir: &str, summary: &ServerPropertiesSummary) -> Result<(), String> {
-    let path = Path::new(dir).join(FILE_NAME);
-    let raw = fs::read_to_string(&path)
-        .map_err(|_| format!("No server.properties found in {}", dir))?;
+    // Only ever writes into a directory a server was actually prepared in — creating one here
+    // would scatter a lone server.properties into whatever path happened to be selected.
+    let dir_path = Path::new(dir);
+    if !dir_path.is_dir() {
+        return Err(format!("No server directory at {}", dir_path.display()));
+    }
+    let path = dir_path.join(FILE_NAME);
+    // A prepared server that has not been started yet has no server.properties on disk; the
+    // settings the player picks before that first launch still have to be saved somewhere.
+    let raw = fs::read_to_string(&path).unwrap_or_default();
 
     let mut updates = HashMap::new();
     updates.insert("online-mode".to_string(), summary.online_mode.to_string());
@@ -83,6 +132,13 @@ pub fn write_server_properties(dir: &str, summary: &ServerPropertiesSummary) -> 
     updates.insert("max-players".to_string(), summary.max_players.to_string());
     updates.insert("motd".to_string(), summary.motd.clone());
     updates.insert("server-port".to_string(), summary.server_port.to_string());
+    updates.insert("gamemode".to_string(), summary.gamemode.clone());
+    updates.insert("view-distance".to_string(), summary.view_distance.to_string());
+    updates.insert("simulation-distance".to_string(), summary.simulation_distance.to_string());
+    updates.insert("allow-nether".to_string(), summary.allow_nether.to_string());
+    updates.insert("spawn-protection".to_string(), summary.spawn_protection.to_string());
+    updates.insert("hardcore".to_string(), summary.hardcore.to_string());
+    updates.insert("level-seed".to_string(), summary.level_seed.clone());
 
     fs::write(&path, apply_updates(&raw, &updates)).map_err(|e| e.to_string())
 }
@@ -197,6 +253,44 @@ level-name=world
         assert!(summary.online_mode);
         assert_eq!(summary.difficulty, "easy");
         assert_eq!(summary.max_players, 20);
+        assert_eq!(summary.gamemode, "survival");
+        assert_eq!(summary.view_distance, 10);
+        assert_eq!(summary.simulation_distance, 10);
+        assert!(summary.allow_nether);
+        assert_eq!(summary.spawn_protection, 16);
+        assert!(!summary.hardcore);
+        assert_eq!(summary.level_seed, "");
+    }
+
+    #[test]
+    fn reads_and_writes_extended_properties() {
+        let dir = std::env::temp_dir().join("mcl-server-config-test-extended");
+        let _ = fs::create_dir_all(&dir);
+        let path = dir.join(FILE_NAME);
+        fs::write(
+            &path,
+            "gamemode=creative\nview-distance=16\nsimulation-distance=12\nallow-nether=false\nspawn-protection=32\nhardcore=true\nlevel-seed=123456789\n",
+        ).unwrap();
+
+        let parsed = read_server_properties(&dir.to_string_lossy()).unwrap();
+        assert_eq!(parsed.gamemode, "creative");
+        assert_eq!(parsed.view_distance, 16);
+        assert_eq!(parsed.simulation_distance, 12);
+        assert!(!parsed.allow_nether);
+        assert_eq!(parsed.spawn_protection, 32);
+        assert!(parsed.hardcore);
+        assert_eq!(parsed.level_seed, "123456789");
+
+        let mut updated = parsed;
+        updated.gamemode = "adventure".to_string();
+        updated.view_distance = 24;
+        write_server_properties(&dir.to_string_lossy(), &updated).unwrap();
+
+        let reread = read_server_properties(&dir.to_string_lossy()).unwrap();
+        assert_eq!(reread.gamemode, "adventure");
+        assert_eq!(reread.view_distance, 24);
+
+        let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]

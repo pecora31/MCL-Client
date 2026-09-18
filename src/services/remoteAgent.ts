@@ -54,6 +54,10 @@ export interface RemotePrepareRequest {
 export interface RemoteStartRequest {
   minRam: number;
   maxRam: number;
+  javaBin?: string;
+  useAikarFlags?: boolean;
+  gcEngine?: string;
+  autoRestart?: boolean;
 }
 
 export const remoteAgent = {
@@ -67,7 +71,15 @@ export const remoteAgent = {
       acceptEula: body.acceptEula,
     }),
   start: (host: RemoteHost, body: RemoteStartRequest) =>
-    invokeCommand<void>('remote_agent_start', { host: toHostArg(host), minRam: body.minRam, maxRam: body.maxRam }),
+    invokeCommand<void>('remote_agent_start', {
+      host: toHostArg(host),
+      minRam: body.minRam,
+      maxRam: body.maxRam,
+      javaBin: body.javaBin,
+      useAikarFlags: body.useAikarFlags,
+      gcEngine: body.gcEngine,
+      autoRestart: body.autoRestart,
+    }),
   stop: (host: RemoteHost) => invokeCommand<void>('remote_agent_stop', { host: toHostArg(host) }),
   getProperties: (host: RemoteHost) =>
     invokeCommand<ServerPropertiesSummary>('remote_agent_get_properties', { host: toHostArg(host) }),

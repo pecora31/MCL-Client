@@ -56,6 +56,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
                 motd: Some("Cannot reach the server".to_string()),
                 ping_ms: None,
                 favicon: None,
+                player_sample: None,
             };
         }
     };
@@ -105,6 +106,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
             motd: Some("Minecraft Server".to_string()),
             ping_ms: Some(ping_ms),
             favicon: None,
+            player_sample: None,
         };
     }
 
@@ -129,6 +131,13 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
             let version_name = val["version"]["name"].as_str().map(|s| s.to_string());
             let players_online = val["players"]["online"].as_u64().map(|v| v as u32);
             let players_max = val["players"]["max"].as_u64().map(|v| v as u32);
+            let player_sample = val["players"]["sample"]
+                .as_array()
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|p| p["name"].as_str().map(|s| s.to_string()))
+                        .collect::<Vec<String>>()
+                });
             
             let motd = if let Some(desc_str) = val["description"].as_str() {
                 Some(desc_str.to_string())
@@ -150,6 +159,7 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
                 motd,
                 ping_ms: Some(ping_ms),
                 favicon,
+                player_sample,
             };
         }
     }
@@ -165,5 +175,6 @@ pub async fn ping_server(host: &str, port: u16) -> ServerStatus {
         motd: Some("Minecraft Server".to_string()),
         ping_ms: Some(ping_ms),
         favicon: None,
+        player_sample: None,
     }
 }

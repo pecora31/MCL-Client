@@ -80,6 +80,8 @@ pub struct ServerStatus {
     pub ping_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub favicon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_sample: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -146,5 +148,16 @@ pub struct ServerPropertiesSummary {
     pub motd: String,
     /// What players actually connect to, and what P2P Direct Connect tunnels through.
     pub server_port: u16,
+    pub gamemode: String,
+    pub view_distance: u32,
+    pub simulation_distance: u32,
+    pub allow_nether: bool,
+    pub spawn_protection: u32,
+    pub hardcore: bool,
+    pub level_seed: String,
+    /// The world folder this server loads. Read-only here: renaming it would point the server
+    /// at a different (or empty) world, so `write_server_properties` deliberately leaves it be.
+    pub level_name: String,
 }
+
 

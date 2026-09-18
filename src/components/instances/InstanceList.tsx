@@ -196,9 +196,7 @@ export const InstanceList: React.FC<InstanceListProps> = ({
       {/* Default Game Storage Directory Bar (At the very top of Profile Menu) */}
       <div className="rounded-2xl bg-white/[0.03] border border-white/[0.08] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-inner">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-10 h-10 rounded-xl bg-[var(--accent-bg)] border border-[var(--accent-border)] text-[var(--accent-color)] flex items-center justify-center shrink-0">
-            <HardDrive className="w-5 h-5" />
-          </div>
+          <HardDrive className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
           <div className="min-w-0">
             <div className="text-xs font-bold font-riot text-slate-300 uppercase tracking-wider">
               {t.defaultDirLabel}

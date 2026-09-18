@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, AlertTriangle, Check, ShieldAlert, Layers, HardDrive } from 'lucide-react';
+import { Trash2, AlertTriangle, Check, ShieldAlert, Layers, HardDrive, X } from 'lucide-react';
 import type { GameInstance } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 
@@ -58,25 +58,34 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
-      <div className="glass-panel w-full max-w-xl rounded-3xl border border-red-500/25 shadow-2xl overflow-hidden animate-scaleUp bg-[#121212]">
+      <div className="w-full max-w-xl rounded-3xl border border-white/10 shadow-2xl overflow-hidden animate-scaleUp bg-[#121212] flex flex-col">
         {/* Modal Header */}
-        <div className="p-6 border-b border-white/[0.08] flex items-center gap-4 bg-red-500/[0.04]">
-          <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
-            <Trash2 className="w-6 h-6" />
+        <div className="px-6 py-4.5 border-b border-white/[0.08] flex items-center justify-between bg-[#161616]">
+          <div className="flex items-center gap-3">
+            <Trash2 className="w-6 h-6 text-red-400 shrink-0" />
+            <div>
+              <h2 className="text-lg font-bold font-riot text-white tracking-wide leading-tight">
+                {t.modalDeleteProfileTitle}
+              </h2>
+              <p className="text-sm text-slate-400 mt-0.5">{t.modalDeleteProfileSub}</p>
+            </div>
           </div>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-bold font-riot text-white tracking-wide">{t.modalDeleteProfileTitle}</h2>
-            <p className="text-sm text-slate-400 mt-0.5">{t.modalDeleteProfileSub}</p>
-          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-9 h-9 rounded-xl bg-[#2a2b2f]/90 hover:bg-[#383a40] text-white border border-white/10 shadow-lg flex items-center justify-center transition-all duration-150 active:scale-90 cursor-pointer shrink-0"
+            title="Close"
+          >
+            <X className="w-4.5 h-4.5 text-white" strokeWidth={3} />
+          </button>
         </div>
 
         <div className="p-6 space-y-5">
           {/* Target Profile Card */}
-          <div className="p-4.5 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3.5 min-w-0">
-              <div className="w-11 h-11 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-riot font-bold shrink-0">
-                <Layers className="w-5 h-5" />
-              </div>
+          <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Layers className="w-5 h-5 text-amber-400 shrink-0" />
               <div className="min-w-0">
                 <h4 className="text-base font-bold text-white truncate">{instance.name}</h4>
                 <div className="flex items-center gap-2 text-xs text-slate-400 mt-0.5 font-medium">
@@ -95,18 +104,18 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
           </div>
 
           {/* Primary Deletion Warning */}
-          <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 text-sm text-red-300 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+          <div className="p-4 rounded-2xl bg-[var(--accent-bg)] border border-[var(--accent-border)] text-sm text-slate-300 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-[var(--accent-color)] shrink-0 mt-0.5" />
             <div className="leading-relaxed">
-              <strong className="font-semibold text-red-200">{t.deleteProfileWarningPermanent || 'Permanently delete profile data: '}</strong>
+              <strong className="font-semibold text-white">{t.deleteProfileWarningPermanent || 'Permanently delete profile data: '}</strong>
               {t.deleteProfileWarning}
             </div>
           </div>
 
           {/* Thorough Deletion Section */}
-          <div className="p-4.5 rounded-2xl bg-black/30 border border-white/5 space-y-3">
+          <div className="p-4.5 rounded-2xl bg-white/[0.02] border border-white/[0.06] space-y-3">
             <div className="flex items-center gap-2 text-[13px] font-bold text-slate-200 uppercase tracking-wider">
-              <HardDrive className="w-4 h-4 text-amber-400" />
+              <HardDrive className="w-4.5 h-4.5 text-[var(--accent-color)] shrink-0" />
               <span>{t.thoroughDeleteTitle}</span>
             </div>
 
@@ -128,7 +137,7 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
               </div>
               <div className="text-sm leading-snug">
                 <span className="font-semibold text-slate-200 group-hover:text-white transition">
-                  {t.deleteVersionJarOption} <strong className="text-amber-400">{instance.gameVersion}</strong>
+                  {t.deleteVersionJarOption} <strong className="text-[var(--accent-color)]">{instance.gameVersion}</strong>
                 </span>
                 <p className="text-xs text-slate-400 mt-1 leading-relaxed">
                   {t.deleteProfileJarDesc || 'Delete client JAR file (~30MB) and JSON configs downloaded for this version.'}
@@ -138,8 +147,8 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
 
             {/* Smart Dependency Warning */}
             {deleteVersionFiles && hasDependencies && (
-              <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-300 flex items-start gap-2.5 animate-fadeIn">
-                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-xl bg-[var(--accent-bg)] border border-[var(--accent-border)] text-xs text-slate-300 flex items-start gap-2.5 animate-fadeIn">
+                <AlertTriangle className="w-4 h-4 text-[var(--accent-color)] shrink-0 mt-0.5" />
                 <div className="leading-relaxed">
                   {t.deleteVersionWarningInUse.replace(
                     '{profiles}',
@@ -150,8 +159,8 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
             )}
 
             {deleteVersionFiles && !hasDependencies && (
-              <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 flex items-start gap-2.5 animate-fadeIn">
-                <Check className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-xl bg-[var(--accent-bg)] border border-[var(--accent-border)] text-xs text-slate-300 flex items-start gap-2.5 animate-fadeIn">
+                <Check className="w-4 h-4 text-[var(--accent-color)] shrink-0 mt-0.5" />
                 <div className="leading-relaxed">{t.deleteVersionSafe}</div>
               </div>
             )}
@@ -159,12 +168,12 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
         </div>
 
         {/* Modal Actions */}
-        <div className="p-6 border-t border-white/[0.08] flex items-center justify-end gap-3 bg-[#161616]/50">
+        <div className="px-6 py-4.5 border-t border-white/[0.08] flex items-center justify-end gap-3 bg-[#161616]">
           <button
             type="button"
             onClick={onClose}
             disabled={isDeleting}
-            className="px-5 py-2.5 rounded-xl border border-white/10 hover:bg-white/5 text-sm font-semibold text-slate-300 transition cursor-pointer"
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-slate-400 hover:text-white transition cursor-pointer"
           >
             {t.btnCancel}
           </button>
@@ -173,7 +182,7 @@ export const DeleteProfileModal: React.FC<DeleteProfileModalProps> = ({
             type="button"
             onClick={handleDelete}
             disabled={isDeleting}
-            className="px-6 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white text-sm font-bold font-riot flex items-center gap-2 shadow-lg shadow-red-500/20 transition disabled:opacity-50 cursor-pointer active:scale-95"
+            className="px-6 py-2.5 rounded-xl bg-rose-600/85 hover:bg-rose-600 border border-rose-500/30 text-white text-sm font-bold font-riot flex items-center gap-2 shadow-none transition disabled:opacity-50 cursor-pointer active:scale-95"
           >
             <Trash2 className="w-4 h-4" />
             <span>{isDeleting ? t.deletingProfile : t.btnDeleteProfile}</span>

@@ -112,9 +112,7 @@ export const InstallModpackModal: React.FC<InstallModpackModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/[0.08] bg-[#161616]">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
-              <Package className="w-5 h-5" />
-            </div>
+            <Package className="w-6 h-6 text-amber-400 shrink-0" />
             <div>
               <h3 className="text-lg font-bold font-riot text-white tracking-wide">
                 {t.installModpackTitle || 'Install Modpack (.mrpack)'}

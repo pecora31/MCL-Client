@@ -10,9 +10,9 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{ChildStdin, Stdio};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,12 +24,89 @@ pub enum ServerState {
     Crashed,
 }
 
+/// Long on purpose: the scan walks every region file in the world, so it has to stay far rarer
+/// than the status poll that triggers it.
+const WORLD_SIZE_TTL: Duration = Duration::from_secs(300);
+
+/// How long a reported overload still counts as "currently lagging".
+const LAG_REPORT_TTL: Duration = Duration::from_secs(60);
+
+/// Restarting past this many crashes in a row would just be a loop around a broken jar or mod.
+const MAX_CONSECUTIVE_CRASHES: u32 = 3;
+const RESTART_DELAY: Duration = Duration::from_secs(10);
+
+#[derive(Clone)]
 struct RunningEntry {
     pid: u32,
     state: ServerState,
     /// Set right before a stop is requested (gracefully or by force), so the wait thread can
     /// tell an intentional shutdown apart from the process dying on its own.
     expected_stop: bool,
+    /// Set when a stop is requested while no process is alive, which is the window a pending
+    /// auto-restart sleeps in. `expected_stop` cannot carry this: the crash handler clears it,
+    /// and `stop_server` returns early on a dead process before it would ever be set.
+    restart_cancelled: bool,
+    started_at: Option<Instant>,
+    max_ram_mb: u32,
+    consecutive_crashes: u32,
+    last_crash_time: Option<Instant>,
+    cached_world_size_bytes: Option<u64>,
+    world_size_cached_at: Option<Instant>,
+    cached_online_players: Option<u32>,
+    cached_max_players: Option<u32>,
+    cached_player_list: Option<Vec<String>>,
+    cached_ping_ms: Option<u64>,
+    slp_cached_at: Option<Instant>,
+    cached_process_memory_mb: Option<u32>,
+    process_memory_cached_at: Option<Instant>,
+    /// How far behind the server reported itself the last time it logged "Can't keep up!", and
+    /// when that was. This is the only lag signal vanilla actually emits — a status ping cannot
+    /// measure tick rate, so nothing here is inferred from one.
+    last_lag_behind_ms: Option<u64>,
+    last_lag_at: Option<Instant>,
+}
+
+impl RunningEntry {
+    fn new(pid: u32, state: ServerState, max_ram_mb: u32) -> Self {
+        Self {
+            pid,
+            state,
+            expected_stop: false,
+            restart_cancelled: false,
+            started_at: if state == ServerState::Running { Some(Instant::now()) } else { None },
+            max_ram_mb,
+            consecutive_crashes: 0,
+            last_crash_time: None,
+            cached_world_size_bytes: None,
+            world_size_cached_at: None,
+            cached_online_players: None,
+            cached_max_players: None,
+            cached_player_list: None,
+            cached_ping_ms: None,
+            slp_cached_at: None,
+            cached_process_memory_mb: None,
+            process_memory_cached_at: None,
+            last_lag_behind_ms: None,
+            last_lag_at: None,
+        }
+    }
+
+    /// Wipes everything measured about a previous run, so a restarted server never shows the
+    /// old run's uptime, player list or world size while the new one is still coming up.
+    fn reset_run_metrics(&mut self) {
+        self.started_at = None;
+        self.cached_world_size_bytes = None;
+        self.world_size_cached_at = None;
+        self.cached_online_players = None;
+        self.cached_max_players = None;
+        self.cached_player_list = None;
+        self.cached_ping_ms = None;
+        self.slp_cached_at = None;
+        self.cached_process_memory_mb = None;
+        self.process_memory_cached_at = None;
+        self.last_lag_behind_ms = None;
+        self.last_lag_at = None;
+    }
 }
 
 /// One entry per server directory (as a string) rather than an instance id, so the same map
@@ -101,7 +178,9 @@ fn reconcile_from_disk(server_dir: &Path, key: &str) -> ServerState {
     };
     if pid != 0 && is_process_alive(pid) {
         with_running(|m| {
-            m.insert(key.to_string(), RunningEntry { pid, state: ServerState::Running, expected_stop: false });
+            // A server adopted from a pid file was started by some earlier process, so its
+            // `-Xmx` is not knowable here — 0 reports it as unknown rather than inventing one.
+            m.insert(key.to_string(), RunningEntry::new(pid, ServerState::Running, 0));
         });
         ServerState::Running
     } else {
@@ -116,6 +195,125 @@ pub struct HostedServerStatus {
     pub state: ServerState,
     pub has_jar: bool,
     pub server_dir: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uptime_seconds: Option<u64>,
+    /// Resident memory of the java process, which is the whole process (heap + metaspace +
+    /// thread stacks + GC overhead), not the heap alone — so it can legitimately read higher
+    /// than the configured `-Xmx`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub process_memory_mb: Option<u32>,
+    /// The `-Xmx` this server was started with.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_ram_mb: Option<u32>,
+    /// Milliseconds the server last reported itself running behind, from its own "Can't keep
+    /// up!" warning, and how long ago that was. Absent means it has not complained recently.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lag_behind_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lag_reported_seconds_ago: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online_players: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_players: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub player_list: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub world_size_bytes: Option<u64>,
+}
+
+impl HostedServerStatus {
+    pub fn stopped(server_dir: String) -> Self {
+        Self {
+            state: ServerState::Stopped,
+            has_jar: false,
+            server_dir,
+            uptime_seconds: None,
+            process_memory_mb: None,
+            max_ram_mb: None,
+            lag_behind_ms: None,
+            lag_reported_seconds_ago: None,
+            online_players: None,
+            max_players: None,
+            player_list: None,
+            world_size_bytes: None,
+        }
+    }
+}
+
+/// Pulls the milliseconds out of the server's own overload warning, which vanilla logs as
+/// "Can't keep up! Is the server overloaded? Running 2145ms or 42 ticks behind" (older builds
+/// word the tail as "Running 2145ms behind, skipping 42 tick(s)"). Returning `None` for every
+/// other line is what keeps this the only source of the lag figure — the status ping carries
+/// no tick-rate information, so none is invented from it.
+fn parse_lag_behind_ms(line: &str) -> Option<u64> {
+    if !line.contains("Can't keep up") {
+        return None;
+    }
+    let rest = line.split("Running ").nth(1)?;
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    if digits.is_empty() || !rest[digits.len()..].starts_with("ms") {
+        return None;
+    }
+    digits.parse().ok()
+}
+
+fn get_process_memory_mb(pid: u32) -> Option<u32> {
+    let mut sys = sysinfo::System::new();
+    let sysinfo_pid = sysinfo::Pid::from(pid as usize);
+    sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[sysinfo_pid]), true);
+    sys.process(sysinfo_pid).map(|p| (p.memory() / (1024 * 1024)) as u32)
+}
+
+fn calculate_folder_size(dir: &Path) -> u64 {
+    walkdir::WalkDir::new(dir)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter_map(|e| e.metadata().ok())
+        .filter(|m| m.is_file())
+        .map(|m| m.len())
+        .sum()
+}
+
+fn refresh_world_size(key: String, world_dir: PathBuf) {
+    std::thread::spawn(move || {
+        let size = calculate_folder_size(&world_dir);
+        with_running(|m| {
+            if let Some(entry) = m.get_mut(&key) {
+                entry.cached_world_size_bytes = Some(size);
+                entry.world_size_cached_at = Some(Instant::now());
+            }
+        });
+    });
+}
+
+fn refresh_slp_metrics(key: String, port: u16) {
+    let task = async move {
+        let status = crate::server_ping::ping_server("127.0.0.1", port).await;
+        with_running(|m| {
+            if let Some(entry) = m.get_mut(&key) {
+                if entry.state == ServerState::Running {
+                    entry.cached_online_players = status.players_online;
+                    entry.cached_max_players = status.players_max;
+                    entry.cached_player_list = status.player_sample;
+                    entry.cached_ping_ms = status.ping_ms;
+                    entry.slp_cached_at = Some(Instant::now());
+                }
+            }
+        });
+    };
+
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        handle.spawn(task);
+    } else {
+        std::thread::spawn(move || {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build();
+            if let Ok(rt) = rt {
+                rt.block_on(task);
+            }
+        });
+    }
 }
 
 pub fn get_status(
@@ -129,10 +327,127 @@ pub fn get_status(
         Some(state) => state,
         None => reconcile_from_disk(server_dir, &key),
     };
+
+    if state != ServerState::Running {
+        return HostedServerStatus {
+            state,
+            has_jar: is_prepared(server_dir, loader, game_version, loader_version),
+            server_dir: key,
+            uptime_seconds: None,
+            process_memory_mb: None,
+            max_ram_mb: None,
+            lag_behind_ms: None,
+            lag_reported_seconds_ago: None,
+            online_players: None,
+            max_players: None,
+            player_list: None,
+            world_size_bytes: None,
+        };
+    }
+
+    let mut needs_world_size_refresh = false;
+    let mut needs_slp_refresh = false;
+
+    #[derive(Default)]
+    struct Metrics {
+        uptime_seconds: Option<u64>,
+        process_memory_mb: Option<u32>,
+        max_ram_mb: Option<u32>,
+        lag_behind_ms: Option<u64>,
+        lag_reported_seconds_ago: Option<u64>,
+        world_size_bytes: Option<u64>,
+        online_players: Option<u32>,
+        max_players: Option<u32>,
+        player_list: Option<Vec<String>>,
+    }
+
+    let metrics = with_running(|m| {
+        let Some(entry) = m.get_mut(&key) else {
+            return Metrics::default();
+        };
+        let pid = entry.pid;
+        if pid == 0 {
+            return Metrics::default();
+        }
+
+        let now = Instant::now();
+
+        // Resident memory of the java process, refreshed at most every 3s.
+        if entry
+            .process_memory_cached_at
+            .map(|t| now.duration_since(t) > Duration::from_secs(3))
+            .unwrap_or(true)
+        {
+            if let Some(mem) = get_process_memory_mb(pid) {
+                entry.cached_process_memory_mb = Some(mem);
+            }
+            entry.process_memory_cached_at = Some(now);
+        }
+
+        // Walking a multi-gigabyte world competes with the server for the same disk, so this
+        // stays rare — the figure moves slowly enough that a stale one costs nothing.
+        if entry
+            .world_size_cached_at
+            .map(|t| now.duration_since(t) > WORLD_SIZE_TTL)
+            .unwrap_or(true)
+        {
+            entry.world_size_cached_at = Some(now); // also the in-flight guard
+            needs_world_size_refresh = true;
+        }
+
+        if entry
+            .slp_cached_at
+            .map(|t| now.duration_since(t) > Duration::from_secs(10))
+            .unwrap_or(true)
+        {
+            entry.slp_cached_at = Some(now); // also the in-flight guard
+            needs_slp_refresh = true;
+        }
+
+        // A complaint from an hour ago says nothing about how the server is running now.
+        let lag = entry
+            .last_lag_at
+            .filter(|t| now.duration_since(*t) <= LAG_REPORT_TTL)
+            .map(|t| now.duration_since(t).as_secs());
+
+        Metrics {
+            uptime_seconds: entry.started_at.map(|t| t.elapsed().as_secs()),
+            process_memory_mb: entry.cached_process_memory_mb,
+            max_ram_mb: (entry.max_ram_mb > 0).then_some(entry.max_ram_mb),
+            lag_behind_ms: lag.and(entry.last_lag_behind_ms),
+            lag_reported_seconds_ago: lag,
+            world_size_bytes: entry.cached_world_size_bytes,
+            online_players: entry.cached_online_players,
+            max_players: entry.cached_max_players,
+            player_list: entry.cached_player_list.clone(),
+        }
+    });
+
+    // Run background metric refreshes completely outside the lock
+    if needs_world_size_refresh {
+        let world_dir = server_dir.join(crate::server_config::read_level_name(server_dir));
+        refresh_world_size(key.clone(), world_dir);
+    }
+    if needs_slp_refresh {
+        let port = crate::server_config::read_server_properties(&key)
+            .map(|p| p.server_port)
+            .unwrap_or(25565);
+        refresh_slp_metrics(key.clone(), port);
+    }
+
     HostedServerStatus {
         state,
         has_jar: is_prepared(server_dir, loader, game_version, loader_version),
         server_dir: key,
+        uptime_seconds: metrics.uptime_seconds,
+        process_memory_mb: metrics.process_memory_mb,
+        max_ram_mb: metrics.max_ram_mb,
+        lag_behind_ms: metrics.lag_behind_ms,
+        lag_reported_seconds_ago: metrics.lag_reported_seconds_ago,
+        online_players: metrics.online_players,
+        max_players: metrics.max_players,
+        player_list: metrics.player_list,
+        world_size_bytes: metrics.world_size_bytes,
     }
 }
 
@@ -281,19 +596,70 @@ fn looks_like_ready_line(line: &str) -> bool {
     line.contains("Done (")
 }
 
-/// Starts the server already prepared in `server_dir`, calling `on_log` with each console
-/// line as it's produced. The desktop app forwards those as `server-log` Tauri events; the
-/// agent fans them out to whichever HTTP clients are currently watching its log stream.
-pub fn start_server(
-    server_dir: &Path,
-    loader: &str,
-    game_version: &str,
-    loader_version: Option<&str>,
-    java_bin: &str,
+pub fn build_server_jvm_args(
     min_ram_mb: u32,
     max_ram_mb: u32,
-    on_log: impl Fn(String) + Send + Sync + 'static,
+    use_aikar_flags: bool,
+    gc_engine: Option<&str>,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    args.push(format!("-Xms{}M", min_ram_mb));
+    args.push(format!("-Xmx{}M", max_ram_mb));
+
+    let engine = gc_engine.unwrap_or("G1GC").trim();
+    if engine.eq_ignore_ascii_case("ZGC") {
+        args.push("-XX:+UseZGC".to_string());
+        args.push("-XX:+UnlockExperimentalVMOptions".to_string());
+        args.push("-XX:+AlwaysPreTouch".to_string());
+    } else if use_aikar_flags {
+        args.extend([
+            "-XX:+UseG1GC".to_string(),
+            "-XX:+ParallelRefProcEnabled".to_string(),
+            "-XX:MaxGCPauseMillis=200".to_string(),
+            "-XX:+UnlockExperimentalVMOptions".to_string(),
+            "-XX:+DisableExplicitGC".to_string(),
+            "-XX:+AlwaysPreTouch".to_string(),
+            "-XX:G1NewSizePercent=30".to_string(),
+            "-XX:G1MaxNewSizePercent=40".to_string(),
+            "-XX:G1ReservePercent=20".to_string(),
+            "-XX:G1HeapWastePercent=5".to_string(),
+            "-XX:G1MixedGCCountTarget=4".to_string(),
+            "-XX:InitiatingHeapOccupancyPercent=15".to_string(),
+            "-XX:G1MixedGCLiveThresholdPercent=90".to_string(),
+            "-XX:G1RSetUpdatingPauseTimePercent=5".to_string(),
+            "-XX:SurvivorRatio=32".to_string(),
+            "-XX:+PerfDisableSharedMem".to_string(),
+            "-XX:MaxTenuringThreshold=1".to_string(),
+        ]);
+    }
+
+    args
+}
+
+#[derive(Clone)]
+struct ServerLaunchSpec {
+    server_dir: PathBuf,
+    loader: String,
+    game_version: String,
+    loader_version: Option<String>,
+    java_bin: String,
+    min_ram_mb: u32,
+    max_ram_mb: u32,
+    use_aikar_flags: bool,
+    gc_engine: Option<String>,
+    auto_restart: bool,
+}
+
+fn start_server_internal(
+    spec: ServerLaunchSpec,
+    on_log: Arc<dyn Fn(String) + Send + Sync + 'static>,
 ) -> Result<(), String> {
+    let server_dir = &spec.server_dir;
+    let loader = &spec.loader;
+    let game_version = &spec.game_version;
+    let loader_version = spec.loader_version.as_deref();
+    let java_bin = &spec.java_bin;
+
     if !is_prepared(server_dir, loader, game_version, loader_version) {
         return Err("No server prepared for this profile yet.".to_string());
     }
@@ -303,17 +669,24 @@ pub fn start_server(
     }
 
     let mut cmd = crate::hidden_process::hidden_command(java_bin);
-    cmd.arg(format!("-Xms{}M", min_ram_mb));
-    cmd.arg(format!("-Xmx{}M", max_ram_mb));
-    match loader {
+    let jvm_args = build_server_jvm_args(
+        spec.min_ram_mb,
+        spec.max_ram_mb,
+        spec.use_aikar_flags,
+        spec.gc_engine.as_deref(),
+    );
+    cmd.args(&jvm_args);
+
+    match loader.as_str() {
         "forge" | "neoforge" => {
-            // Mirrors the run.bat/run.sh the installer itself generates: java expanded
-            // with the installer's own argfile, which already carries the main class,
-            // classpath and mod-loader arguments.
             let loader_version = loader_version
                 .ok_or_else(|| "This profile has no loader version selected.".to_string())?;
-            let args_file =
-                crate::minecraft_core::forge::server_args_file(loader, game_version, loader_version, &server_dir.join("libraries"));
+            let args_file = crate::minecraft_core::forge::server_args_file(
+                loader,
+                game_version,
+                loader_version,
+                &server_dir.join("libraries"),
+            );
             cmd.arg(format!("@{}", args_file.to_string_lossy()));
             cmd.arg("--nogui");
         }
@@ -337,17 +710,23 @@ pub fn start_server(
         });
     }
     with_running(|m| {
-        m.insert(key.clone(), RunningEntry { pid, state: ServerState::Starting, expected_stop: false });
+        let entry = m.entry(key.clone()).or_insert_with(|| RunningEntry::new(pid, ServerState::Starting, spec.max_ram_mb));
+        entry.pid = pid;
+        entry.state = ServerState::Starting;
+        entry.expected_stop = false;
+        entry.restart_cancelled = false;
+        entry.max_ram_mb = spec.max_ram_mb;
+        entry.reset_run_metrics();
     });
     let _ = std::fs::write(pid_file_path(server_dir), pid.to_string());
 
-    let on_log = std::sync::Arc::new(on_log);
+    let on_log_filter = on_log.clone();
     for (pipe, watch_for_ready) in [
         (child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), true),
         (child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>), false),
     ] {
         let Some(pipe) = pipe else { continue };
-        let on_log = on_log.clone();
+        let on_log = on_log_filter.clone();
         let key = key.clone();
         std::thread::spawn(move || {
             for line in BufReader::new(pipe).lines().map_while(Result::ok) {
@@ -356,7 +735,16 @@ pub fn start_server(
                         if let Some(entry) = m.get_mut(&key) {
                             if entry.state == ServerState::Starting {
                                 entry.state = ServerState::Running;
+                                entry.started_at = Some(Instant::now());
                             }
+                        }
+                    });
+                }
+                if let Some(behind_ms) = parse_lag_behind_ms(&line) {
+                    with_running(|m| {
+                        if let Some(entry) = m.get_mut(&key) {
+                            entry.last_lag_behind_ms = Some(behind_ms);
+                            entry.last_lag_at = Some(Instant::now());
                         }
                     });
                 }
@@ -366,27 +754,132 @@ pub fn start_server(
     }
 
     let pid_path = pid_file_path(server_dir);
+    let spec_clone = spec.clone();
+    let on_log_wait = on_log.clone();
+    let key_wait = key.clone();
     std::thread::spawn(move || {
         let exit = child.wait();
         let _ = std::fs::remove_file(&pid_path);
         with_stdin(|m| {
-            m.remove(&key);
+            m.remove(&key_wait);
         });
-        with_running(|m| {
-            let expected = m.get(&key).map(|e| e.expected_stop).unwrap_or(false);
+
+        enum Action {
+            Stopped,
+            CrashNoRestart,
+            CrashRestart { attempt: u32 },
+            CrashMaxExceeded,
+        }
+
+        let action = with_running(|m| {
+            let entry = match m.get_mut(&key_wait) {
+                Some(e) => e,
+                None => return Action::Stopped,
+            };
+            let expected = entry.expected_stop;
             let crashed = !expected && !matches!(exit, Ok(status) if status.success());
-            m.insert(
-                key.clone(),
-                RunningEntry {
-                    pid: 0,
-                    state: if crashed { ServerState::Crashed } else { ServerState::Stopped },
-                    expected_stop: false,
-                },
-            );
+            entry.pid = 0;
+            entry.expected_stop = false;
+            entry.restart_cancelled = false;
+
+            if !crashed {
+                entry.state = ServerState::Stopped;
+                entry.consecutive_crashes = 0;
+                return Action::Stopped;
+            }
+
+            entry.state = ServerState::Crashed;
+            if !spec_clone.auto_restart {
+                return Action::CrashNoRestart;
+            }
+
+            let now = Instant::now();
+            if let Some(last_time) = entry.last_crash_time {
+                if now.duration_since(last_time) > Duration::from_secs(60) {
+                    entry.consecutive_crashes = 0;
+                }
+            }
+            entry.last_crash_time = Some(now);
+            entry.consecutive_crashes += 1;
+
+            if entry.consecutive_crashes <= MAX_CONSECUTIVE_CRASHES {
+                Action::CrashRestart { attempt: entry.consecutive_crashes }
+            } else {
+                Action::CrashMaxExceeded
+            }
         });
+
+        match action {
+            Action::CrashRestart { attempt } => {
+                on_log_wait(format!(
+                    "[MCL] Server stopped unexpectedly. Restarting in {}s (attempt {}/{}). Press Stop to cancel.",
+                    RESTART_DELAY.as_secs(),
+                    attempt,
+                    MAX_CONSECUTIVE_CRASHES
+                ));
+                // Polled rather than slept through in one go, so a Stop pressed during the
+                // countdown takes effect within a second instead of being noticed too late.
+                let deadline = Instant::now() + RESTART_DELAY;
+                let mut cancelled = false;
+                while Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(500));
+                    cancelled = with_running(|m| {
+                        m.get(&key_wait)
+                            .map(|e| e.restart_cancelled || e.expected_stop || e.pid != 0)
+                            .unwrap_or(true)
+                    });
+                    if cancelled {
+                        break;
+                    }
+                }
+                if cancelled {
+                    on_log_wait("[MCL] Automatic restart cancelled.".to_string());
+                } else {
+                    let _ = start_server_internal(spec_clone, on_log_wait);
+                }
+            }
+            Action::CrashMaxExceeded => {
+                on_log_wait(format!(
+                    "[MCL] Server crashed {} times in a row. Automatic restart is off until you start it again — check the crash report or a misbehaving mod.",
+                    MAX_CONSECUTIVE_CRASHES
+                ));
+            }
+            Action::CrashNoRestart | Action::Stopped => {}
+        }
     });
 
     Ok(())
+}
+
+/// Starts the server already prepared in `server_dir`, calling `on_log` with each console
+/// line as it's produced. The desktop app forwards those as `server-log` Tauri events; the
+/// agent fans them out to whichever HTTP clients are currently watching its log stream.
+pub fn start_server(
+    server_dir: &Path,
+    loader: &str,
+    game_version: &str,
+    loader_version: Option<&str>,
+    java_bin: &str,
+    min_ram_mb: u32,
+    max_ram_mb: u32,
+    use_aikar_flags: bool,
+    gc_engine: Option<&str>,
+    auto_restart: bool,
+    on_log: impl Fn(String) + Send + Sync + 'static,
+) -> Result<(), String> {
+    let spec = ServerLaunchSpec {
+        server_dir: server_dir.to_path_buf(),
+        loader: loader.to_string(),
+        game_version: game_version.to_string(),
+        loader_version: loader_version.map(|s| s.to_string()),
+        java_bin: java_bin.to_string(),
+        min_ram_mb,
+        max_ram_mb,
+        use_aikar_flags,
+        gc_engine: gc_engine.map(|s| s.to_string()),
+        auto_restart,
+    };
+    start_server_internal(spec, Arc::new(on_log))
 }
 
 /// Writes a line to the running server's console, exactly as if it had been typed at the
@@ -437,7 +930,16 @@ pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
         pid = with_running(|m| m.get(&key).map(|e| e.pid).unwrap_or(0));
     }
     if pid == 0 {
-        return Ok(false);
+        // No process to signal, but a crashed server may be counting down to an automatic
+        // restart right now, and Stop has to call that off — otherwise it comes back anyway.
+        let cancelled = with_running(|m| match m.get_mut(&key) {
+            Some(entry) => {
+                entry.restart_cancelled = true;
+                entry.state == ServerState::Crashed
+            }
+            None => false,
+        });
+        return Ok(cancelled);
     }
 
     with_running(|m| {
@@ -476,7 +978,13 @@ pub fn stop_server(server_dir: &Path) -> Result<bool, String> {
     // `start_server` does for one this process spawned itself — that has to happen here.
     let _ = std::fs::remove_file(pid_file_path(server_dir));
     with_running(|m| {
-        m.insert(key, RunningEntry { pid: 0, state: ServerState::Stopped, expected_stop: false });
+        if let Some(entry) = m.get_mut(&key) {
+            entry.pid = 0;
+            entry.state = ServerState::Stopped;
+            entry.expected_stop = false;
+        } else {
+            m.insert(key, RunningEntry::new(0, ServerState::Stopped, 0));
+        }
     });
 
     Ok(true)
@@ -549,5 +1057,74 @@ mod tests {
 
         assert_eq!(status.state, ServerState::Running);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lag_is_read_only_from_the_servers_own_overload_warning() {
+        assert_eq!(
+            parse_lag_behind_ms(
+                "[12:34:56] [Server thread/WARN]: Can't keep up! Is the server overloaded? Running 2145ms or 42 ticks behind"
+            ),
+            Some(2145)
+        );
+        // The older wording the same warning used to have.
+        assert_eq!(
+            parse_lag_behind_ms(
+                "Can't keep up! Did the system time change, or is the server overloaded? Running 5000ms behind, skipping 100 tick(s)"
+            ),
+            Some(5000)
+        );
+        // An ordinary line carries no tick-rate information, and none may be invented for it.
+        assert_eq!(parse_lag_behind_ms("[12:34:56] [Server thread/INFO]: Done (21.5s)! For help, type \"help\""), None);
+        assert_eq!(parse_lag_behind_ms("Running 2145ms behind"), None);
+    }
+
+    #[test]
+    fn stopping_a_crashed_server_cancels_a_pending_restart() {
+        let dir = std::env::temp_dir().join("mcl-server-host-test-cancel-restart");
+        let _ = std::fs::create_dir_all(&dir);
+        let key = dir_key(&dir);
+        with_running(|m| {
+            let mut entry = RunningEntry::new(0, ServerState::Crashed, 2048);
+            entry.state = ServerState::Crashed;
+            m.insert(key.clone(), entry);
+        });
+
+        assert_eq!(stop_server(&dir), Ok(true));
+        assert!(with_running(|m| m.get(&key).map(|e| e.restart_cancelled).unwrap_or(false)));
+
+        with_running(|m| {
+            m.remove(&key);
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn test_build_server_jvm_args_default() {
+        let args = build_server_jvm_args(1024, 2048, false, None);
+        assert_eq!(args, vec!["-Xms1024M", "-Xmx2048M"]);
+    }
+
+    #[test]
+    fn test_build_server_jvm_args_aikar_flags() {
+        let args = build_server_jvm_args(2048, 4096, true, Some("G1GC"));
+        assert!(args.contains(&"-Xms2048M".to_string()));
+        assert!(args.contains(&"-Xmx4096M".to_string()));
+        assert!(args.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(args.contains(&"-XX:MaxGCPauseMillis=200".to_string()));
+        assert!(args.contains(&"-XX:G1NewSizePercent=30".to_string()));
+        assert!(args.contains(&"-XX:+AlwaysPreTouch".to_string()));
+    }
+
+    #[test]
+    fn test_build_server_jvm_args_zgc() {
+        let args = build_server_jvm_args(4096, 8192, true, Some("ZGC"));
+        assert!(args.contains(&"-Xms4096M".to_string()));
+        assert!(args.contains(&"-Xmx8192M".to_string()));
+        assert!(args.contains(&"-XX:+UseZGC".to_string()));
+        assert!(args.contains(&"-XX:+AlwaysPreTouch".to_string()));
+        // ZGC should NOT contain G1GC specific flags
+        assert!(!args.contains(&"-XX:+UseG1GC".to_string()));
+        assert!(!args.contains(&"-XX:G1NewSizePercent=30".to_string()));
     }
 }
