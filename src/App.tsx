@@ -172,6 +172,11 @@ const CJK_FONT_FAMILIES: Partial<Record<Language, string>> = {
   ko: 'Noto+Sans+KR',
 };
 
+// Bump the id to restyle every existing install once more; the key holds whichever restyle that
+// install has already been through.
+const LOOK_MIGRATION_KEY = 'mcl_look_migration';
+const LOOK_MIGRATION_ID = 'v0.11.1';
+
 const DEFAULT_SETTINGS: LauncherSettings = {
   defaultMinRam: 2048,
   defaultMaxRam: 4096,
@@ -231,7 +236,7 @@ export const App: React.FC = () => {
     const customBgImage = /\/(wh40k|1834105-final)[.-]/.test(parsed.customBgImage || '')
       ? defaultBgImage
       : parsed.customBgImage;
-    return {
+    const settings = {
       ...DEFAULT_SETTINGS,
       ...parsed,
       colorPalette,
@@ -239,6 +244,15 @@ export const App: React.FC = () => {
       customBgImage,
       bgType: parsed.bgType || (parsed.customBgImage ? 'image' : 'video'),
     };
+
+    // A one-off restyle applied the first time this version runs: everyone lands on the new
+    // background and palette once, whatever they had before. Changing either afterwards sticks,
+    // because the marker below means this never runs a second time.
+    if (localStorage.getItem(LOOK_MIGRATION_KEY) !== LOOK_MIGRATION_ID) {
+      localStorage.setItem(LOOK_MIGRATION_KEY, LOOK_MIGRATION_ID);
+      return { ...settings, bgType: 'image' as const, customBgImage: defaultBgImage, colorPalette: 'slate' as const };
+    }
+    return settings;
   });
 
   const [language, setLanguage] = useState<Language>(() => {
