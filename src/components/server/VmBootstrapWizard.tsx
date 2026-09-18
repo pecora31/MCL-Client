@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { Loader2, X, KeyRound, Server } from 'lucide-react';
+import { Loader2, X, KeyRound, Lock, Server } from 'lucide-react';
 import { invokeCommand } from '../../services/api';
 import { type RemoteHost } from '../../services/remoteAgent';
 import type { BootstrapRequest, BootstrapOutcome, BootstrapProgressEvent, BootstrapCredentialsEvent } from '../../types';
@@ -26,12 +26,17 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
   // points that actually need a numeric port (validation, disabling Connect, the request body).
   const [portText, setPortText] = useState('22');
   const [username, setUsername] = useState('ubuntu');
+  const [authMethod, setAuthMethod] = useState<'key' | 'password'>('key');
   const [privateKeyPath, setPrivateKeyPath] = useState('');
+  const [password, setPassword] = useState('');
   const [agentPortText, setAgentPortText] = useState('8642');
   const port = Number(portText);
   const agentPort = Number(agentPortText);
   const [displayName, setDisplayName] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+
+  const hasCredential = authMethod === 'key' ? Boolean(privateKeyPath) : password.length > 0;
+  const canStart = Boolean(host.trim()) && hasCredential && isValidPort(port) && isValidPort(agentPort);
 
   const [phase, setPhase] = useState<WizardPhase>('form');
   const [log, setLog] = useState<string[]>([]);
@@ -92,7 +97,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
 
   const handleStart = async () => {
     if (runningRef.current) return;
-    if (!host.trim() || !privateKeyPath || !isValidPort(port) || !isValidPort(agentPort)) return;
+    if (!canStart) return;
     runningRef.current = true;
     setPhase('running');
     setLog([]);
@@ -104,16 +109,20 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
       host: host.trim(),
       port,
       username: username.trim() || 'ubuntu',
-      privateKeyPath,
+      ...(authMethod === 'key' ? { privateKeyPath } : { password }),
       agentPort,
     };
 
     try {
       const outcome = await invokeCommand<BootstrapOutcome>('vm_bootstrap_start', { streamId: streamIdRef.current, req });
       if (!isMountedRef.current) return;
+      // The password only ever needed to reach this one call — nothing about it is kept once
+      // the connection has been made, successfully or not.
+      setPassword('');
       finish(outcome);
     } catch (err) {
       if (!isMountedRef.current) return;
+      setPassword('');
       setError(String(err));
       setPhase('error');
     } finally {
@@ -200,16 +209,56 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={pickPrivateKey}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-left flex items-center gap-2 cursor-pointer hover:bg-white/10 transition"
-              >
-                <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
-                <span className={privateKeyPath ? 'text-white truncate' : 'text-slate-500'}>
-                  {privateKeyPath || t.hostServerBootstrapPickKey || 'Choose private key file...'}
-                </span>
-              </button>
+              <div className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-white/5 border border-white/10">
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod('key')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                    authMethod === 'key' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {t.hostServerBootstrapAuthKey || 'Private key'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAuthMethod('password')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition ${
+                    authMethod === 'password' ? 'bg-white/10 text-white' : 'text-slate-400 hover:text-white'
+                  }`}
+                >
+                  {t.hostServerBootstrapAuthPassword || 'Password'}
+                </button>
+              </div>
+
+              {authMethod === 'key' ? (
+                <button
+                  type="button"
+                  onClick={pickPrivateKey}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-left flex items-center gap-2 cursor-pointer hover:bg-white/10 transition"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span className={privateKeyPath ? 'text-white truncate' : 'text-slate-500'}>
+                    {privateKeyPath || t.hostServerBootstrapPickKey || 'Choose private key file...'}
+                  </span>
+                </button>
+              ) : (
+                <div className="space-y-1">
+                  <div className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-400 shrink-0" />
+                    <input
+                      type="password"
+                      placeholder={t.hostServerBootstrapPasswordPlaceholder || 'SSH password'}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="flex-1 min-w-0 bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+                    />
+                  </div>
+                  <p className="text-[11px] text-slate-500 px-1">
+                    {t.hostServerBootstrapPasswordNotStored ||
+                      "Used only for this setup — MCL doesn't save it."}
+                  </p>
+                </div>
+              )}
 
               <input
                 type="text"
@@ -245,7 +294,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
               <button
                 type="button"
                 onClick={handleStart}
-                disabled={!host.trim() || !privateKeyPath || !isValidPort(port) || !isValidPort(agentPort)}
+                disabled={!canStart}
                 className="w-full btn-primary px-4 py-2.5 rounded-xl text-sm font-bold cursor-pointer active:scale-95 transition disabled:opacity-40"
               >
                 {t.hostServerBootstrapConnect || 'Connect & Install'}

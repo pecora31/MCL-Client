@@ -327,7 +327,8 @@ export interface BootstrapRequest {
   host: string;
   port: number;
   username: string;
-  privateKeyPath: string;
+  privateKeyPath?: string;
+  password?: string;
   agentPort: number;
 }
 

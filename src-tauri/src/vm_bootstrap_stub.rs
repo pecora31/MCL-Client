@@ -5,14 +5,29 @@
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
-#[derive(Debug, Deserialize)]
+#[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BootstrapRequest {
     pub host: String,
     pub port: u16,
     pub username: String,
-    pub private_key_path: String,
+    pub private_key_path: Option<String>,
+    pub password: Option<String>,
     pub agent_port: u16,
+}
+
+// Same reasoning as the real module's hand-rolled Debug: never print the password in the clear.
+impl std::fmt::Debug for BootstrapRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BootstrapRequest")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("private_key_path", &self.private_key_path)
+            .field("password", &self.password.as_ref().map(|_| "***"))
+            .field("agent_port", &self.agent_port)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
