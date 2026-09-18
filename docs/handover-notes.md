@@ -123,7 +123,69 @@ Theo thỏa thuận thiết kế kiến trúc, hệ thống tài khoản sử d�
 
 ## 6. Trạng Thái Kiểm Thử (Verification Status)
 - **Rust Backend**:
-  - `cargo test --manifest-path src-tauri/Cargo.toml` -> **76/76 unit tests pass 100% (0 errors, 0 warnings)**.
+  - `cargo test --manifest-path src-tauri/Cargo.toml` -> **115/115 unit tests pass 100% (0 errors, 0 warnings)**.
 - **Frontend TypeScript**:
   - `npx tsc --noEmit` -> **Thành công 100% (0 errors)**.
+
+---
+
+## 7. Đặc Tả Kỹ Thuật Cho Claude: Nâng Cấp Backend Server Metrics & Cấu Hình Máy Chủ Mở Rộng
+
+Tài liệu này tóm tắt kiến trúc và các trường dữ liệu cần mở rộng ở tầng Rust Backend (`src-tauri/src/`) để phục vụ giao diện Dashboard Quản Lý Server kiểu Enterprise Web UI (như Pterodactyl / BisectHosting):
+
+### 7.1. Mở Rộng Chỉ Số Trạng Thái & Hiệu Năng Runtime (`HostedServerStatus`)
+Tập tin liên quan: `src-tauri/src/server_host.rs`, `src-tauri/src/remote_agent.rs`, `src/types/index.ts`.
+
+Bổ sung các trường tùy chọn vào struct `HostedServerStatus`:
+```rust
+pub struct HostedServerStatus {
+    pub state: HostedServerState,
+    pub has_jar: bool,
+    pub server_dir: String,
+    // --- Bổ sung các trường đo lường mới bên dưới ---
+    pub uptime_seconds: Option<u64>,       // Số giây server chạy liên tục kể từ lúc sang state 'Running'
+    pub jvm_heap_used_mb: Option<u32>,     // RAM thực tế process Java đang sử dụng (lấy qua sysinfo theo PID)
+    pub jvm_heap_max_mb: Option<u32>,      // RAM tối đa được cấp phát (-Xmx)
+    pub tps: Option<f32>,                  // Ticks Per Second (chuẩn 20.0, đo qua SLP ping query nội bộ hoặc log)
+    pub online_players: Option<u32>,       // Số người chơi đang kết nối (từ server ping SLP)
+    pub max_players: Option<u32>,          // Giới hạn người chơi
+    pub player_list: Option<Vec<String>>,  // Tên các người chơi đang online
+    pub world_size_bytes: Option<u64>,     // Dung lượng thư mục world/ trên đĩa
+    pub system: Option<SystemMetrics>,     // Đã có sẵn cho remote agent
+}
+```
+
+### 7.2. Mở Rộng Thuộc Tính Cấu Hình Game (`server_config.rs` & `server.properties`)
+Tập tin liên quan: `src-tauri/src/server_config.rs`, `src-tauri/src/remote_agent.rs`.
+
+Bổ sung các thiết lập thông dụng mà game thủ hay dùng vào struct `ServerPropertiesSummary`:
+- `gamemode`: String (`"survival"` | `"creative"` | `"adventure"` | `"spectator"`).
+- `view_distance`: u32 (tầm nhìn chunk, mặc định 10).
+- `simulation_distance`: u32 (tầm tính toán AI/entity, mặc định 10).
+- `allow_nether`: bool (mặc định true).
+- `spawn_protection`: u32 (bán kính block bảo vệ spawn, mặc định 16).
+- `motd`: String (Message of the Day hiển thị ngoài danh sách server).
+- `hardcore`: bool (chế độ 1 mạng, chết là spectator vĩnh viễn).
+- `level_seed`: String (hạt giống thế giới).
+- `rcon_enabled`: bool và `rcon_port`: u16 (cổng điều khiển từ xa).
+
+### 7.3. Tối Ưu Hóa Tham Số Khởi Chạy JVM (Aikar's Flags & GC Engine)
+Tập tin liên quan: `src-tauri/src/server_host.rs`, `src-tauri/src/minecraft_core/launcher.rs`.
+
+- **Aikar's Flags**: Khi khởi chạy server Minecraft, bổ sung cờ `use_aikar_flags: bool`. Nếu bật, tự động chèn bộ cờ G1GC tối ưu của Aikar vào lệnh chạy Java:
+  ```text
+  -XX:+UseG1GC -XX:+ParallelRefProcEnabled -XX:MaxGCPauseMillis=200
+  -XX:+UnlockExperimentalVMOptions -XX:+DisableExplicitGC -XX:+AlwaysPreTouch
+  -XX:G1NewSizePercent=30 -XX:G1MaxNewSizePercent=40 -XX:G1ReservePercent=20
+  -XX:G1HeapWastePercent=5 -XX:G1MixedGCCountTarget=4 -XX:InitiatingHeapOccupancyPercent=15
+  -XX:G1MixedGCLiveThresholdPercent=90 -XX:G1RSetUpdatingPauseTimePercent=5
+  -XX:SurvivorRatio=32 -XX:+PerfDisableSharedMem -XX:MaxTenuringThreshold=1
+  ```
+- **Lựa chọn Garbage Collector**: Hỗ trợ chuyển đổi giữa `G1GC` (Java 17-21) và `ZGC` (Java 21+ Generational ZGC cho máy nhiều RAM).
+
+### 7.4. Tự Động Phục Hồi Khi Máy Chủ Bị Crash (Auto-Restart on Crash)
+- Trong luồng giám sát tiến trình của `server_host.rs`:
+  - Nếu process thoát với exit code khác 0 (hoặc không có yêu cầu stop chủ động từ người dùng), ghi nhận state `Crashed`.
+  - Nếu cờ `auto_restart_on_crash` được bật trong cấu hình, hẹn giờ 10 giây và tự động gọi lại hàm start server để phục hồi thế giới cho người chơi.
+
 
