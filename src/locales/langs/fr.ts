@@ -446,6 +446,8 @@ const fr: Partial<Translation> = {
   updateRestarting: "Redémarrage du launcher…",
   updateRetry: "Réessayer",
   discordRpcDesc: "Affiche le profil et la version en cours de jeu dans votre statut Discord. Ignoré si Discord n'est pas lancé.",
+  minimizeToTrayTitle: "Réduire dans la barre système au lieu de fermer",
+  minimizeToTrayDesc: "Le bouton de fermeture masque la fenêtre au lieu de quitter, donc tout ce qui tourne encore (un serveur hébergé, une salle P2P) continue. Faites un clic droit sur l’icône de la barre système pour vraiment quitter.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'Tous les mods, configurations et mondes de ce profil seront stockés isolément dans ce dossier.',
   customSkin: 'Skin personnalisé',

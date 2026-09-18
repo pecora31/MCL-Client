@@ -258,8 +258,22 @@ pub async fn start_p2p_host(
         .await
         .map_err(|e| format!("Failed to bind P2P host endpoint: {}", e))?;
 
-    // Allow brief time for discovery / STUN
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    // `node_addr()` itself already properly awaits direct addresses becoming known, but it
+    // reads the relay URL with a non-blocking `.get()` — if the relay handshake (a fresh
+    // negotiation every time this endpoint binds, so slower right after an app restart than
+    // it was mid-session) has not finished yet, that comes back `None` and the ticket this
+    // room hands out ends up with no relay fallback at all. Direct addresses alone only
+    // connect peers who can reach each other without one — normally not true across two
+    // different home networks — so a ticket minted in that window looks valid but silently
+    // cannot be joined from outside the host's own LAN. Explicitly waiting for the relay
+    // (bounded, so a genuinely relay-less network still starts the room instead of hanging)
+    // replaces the fixed guess this used to make instead.
+    if tokio::time::timeout(Duration::from_secs(8), endpoint.home_relay().initialized())
+        .await
+        .is_err()
+    {
+        log::warn!("P2P host: no relay connected after 8s, starting the room without one");
+    }
 
     let node_addr = endpoint
         .node_addr()

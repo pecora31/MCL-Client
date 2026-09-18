@@ -445,6 +445,8 @@ const es: Partial<Translation> = {
   updateRestarting: "Reiniciando el launcher…",
   updateRetry: "Reintentar",
   discordRpcDesc: "Muestra el perfil y la versión que estás jugando en tu estado de Discord. Se ignora si Discord no está abierto.",
+  minimizeToTrayTitle: "Minimizar a la bandeja en lugar de cerrar",
+  minimizeToTrayDesc: "El botón de cerrar oculta la ventana en lugar de salir, así que lo que siga en marcha (un servidor alojado, una sala P2P) continúa. Haz clic derecho en el icono de la bandeja para salir de verdad.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'Todos los mods, configuraciones y mundos de este perfil se guardarán de forma aislada en esta ruta.',
   customSkin: 'Aspecto personalizado',

@@ -468,6 +468,8 @@ const vi: Partial<Translation> = {
   updateRestarting: "Đang khởi động lại launcher…",
   updateRetry: "Thử lại",
   discordRpcDesc: "Hiện profile và phiên bản bạn đang chơi lên trạng thái Discord. Bỏ qua nếu Discord không chạy.",
+  minimizeToTrayTitle: "Thu nhỏ xuống khay hệ thống thay vì đóng",
+  minimizeToTrayDesc: "Nút đóng sẽ ẩn cửa sổ thay vì thoát hẳn, nên những gì đang chạy — server đang host, phòng P2P — vẫn tiếp tục. Nhấp chuột phải vào biểu tượng khay hệ thống để thoát hẳn.",
   discordRpcTitle: "Trạng thái Discord (Rich Presence)",
   customDirHint: 'Tài nguyên, mods, cấu hình và saves của profile này sẽ được lưu biệt lập tại đây.',
   customSkin: 'Skin Tùy Chỉnh',

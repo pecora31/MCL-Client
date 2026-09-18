@@ -446,6 +446,8 @@ const ja: Partial<Translation> = {
   updateRestarting: "ランチャーを再起動しています…",
   updateRetry: "再試行",
   discordRpcDesc: "プレイ中のプロファイルとバージョンを Discord のステータスに表示します。Discord が起動していない場合は無視されます。",
+  minimizeToTrayTitle: "閉じる代わりにトレイに最小化",
+  minimizeToTrayDesc: "閉じるボタンはウィンドウを非表示にするだけで終了はしません。ホスト中のサーバーや P2P ルームはそのまま動作し続けます。本当に終了するには、トレイアイコンを右クリックしてください。",
   discordRpcTitle: "Discord リッチプレゼンス",
   customDirHint: 'このプロファイルのすべてのMod、設定、セーブデータはこのパスに独立して保存されます。',
   customSkin: 'カスタムスキン',

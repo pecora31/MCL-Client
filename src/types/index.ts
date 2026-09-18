@@ -257,6 +257,10 @@ export interface LauncherSettings {
   bgOpacity: number;
   bgBlur?: number;
   launchBehavior: LaunchBehavior;
+  /** Whether the close button hides the window to the system tray instead of quitting —
+   *  defaults on, since quitting used to be the one action that could silently end a P2P
+   *  room or a hosted server someone else was still using, with no way to undo it. */
+  minimizeToTrayOnClose: boolean;
   /** Publish the equipped skin so other MCL players see it. Off keeps it local to this player. */
   shareSkin: boolean;
   /** Download the Java a Minecraft version needs when no installed one is new enough. */

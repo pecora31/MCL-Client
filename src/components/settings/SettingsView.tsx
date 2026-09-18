@@ -19,6 +19,7 @@ import {
   Share2,
   ChevronDown,
   Coffee,
+  Minimize2,
 } from 'lucide-react';
 import type {
   LauncherSettings,
@@ -141,6 +142,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const handleToggleDiscordRpc = () => {
     const updated = { ...formData, enableDiscordRpc: !formData.enableDiscordRpc };
+    setFormData(updated);
+    onSaveSettings(updated);
+  };
+
+  const handleToggleMinimizeToTray = () => {
+    const updated = { ...formData, minimizeToTrayOnClose: !formData.minimizeToTrayOnClose };
     setFormData(updated);
     onSaveSettings(updated);
   };
@@ -522,6 +529,31 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onChange={handleToggleDiscordRpc}
                 size="md"
                 title={t.discordRpcTitle}
+              />
+            </div>
+          </div>
+
+          {/* Minimize to tray on close */}
+          <div className="glass-panel rounded-2xl p-5 border border-white/5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2.5">
+                <Minimize2 className="w-5 h-5 text-[var(--accent-color)] shrink-0" />
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-wide">
+                    {t.minimizeToTrayTitle || 'Minimize to tray instead of closing'}
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    {t.minimizeToTrayDesc ||
+                      'The close button hides the window instead of quitting, so anything still running — a hosted server, a P2P room — keeps going. Right-click the tray icon to actually quit.'}
+                  </p>
+                </div>
+              </div>
+
+              <ToggleSwitch
+                checked={!!formData.minimizeToTrayOnClose}
+                onChange={handleToggleMinimizeToTray}
+                size="md"
+                title={t.minimizeToTrayTitle}
               />
             </div>
           </div>

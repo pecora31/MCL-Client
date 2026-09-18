@@ -446,6 +446,8 @@ const de: Partial<Translation> = {
   updateRestarting: "Launcher wird neu gestartet…",
   updateRetry: "Erneut versuchen",
   discordRpcDesc: "Zeigt das gespielte Profil und die Version in deinem Discord-Status an. Wird ignoriert, wenn Discord nicht läuft.",
+  minimizeToTrayTitle: "Beim Schließen in die Taskleiste minimieren",
+  minimizeToTrayDesc: "Die Schaltfläche „Schließen“ blendet das Fenster nur aus, statt das Programm zu beenden — ein gehosteter Server oder ein P2P-Raum läuft also weiter. Zum tatsächlichen Beenden mit der rechten Maustaste auf das Taskleistensymbol klicken.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'Alle Mods, Konfigurationen und Welten dieses Profils werden isoliert in diesem Pfad gespeichert.',
   customSkin: 'Benutzerdefinierter Skin',

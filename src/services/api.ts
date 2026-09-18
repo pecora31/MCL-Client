@@ -96,6 +96,7 @@ export const TAURI_COMMANDS = [
   'app_minimize',
   'app_hide',
   'app_close',
+  'set_minimize_to_tray_on_close',
   'set_window_size',
   'p2p_start_host',
   'p2p_stop_host',

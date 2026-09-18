@@ -41,6 +41,8 @@ use models::{
 use server_host::HostedServerStatus;
 use base64::Engine as _;
 use tauri::Manager;
+use tauri::tray::TrayIconBuilder;
+use tauri::menu::{Menu, MenuItem};
 use std::sync::{Mutex, OnceLock};
 
 static CACHED_JAVAS: OnceLock<Mutex<Vec<JavaInstallation>>> = OnceLock::new();
@@ -56,6 +58,18 @@ pub(crate) fn forget_detected_javas() {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .clear();
+}
+
+/// Whether the close button hides the window instead of quitting — mirrors the frontend's own
+/// `minimizeToTrayOnClose` setting (localStorage-backed, so Rust cannot read it directly), kept
+/// in sync by `set_minimize_to_tray_on_close`, called once at startup and again on every change.
+/// Defaults to on: closing the window used to be the one action in the whole app that could
+/// silently end a P2P room someone else is mid-session in, with no undo.
+static MINIMIZE_TO_TRAY_ON_CLOSE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+#[tauri::command]
+fn set_minimize_to_tray_on_close(enabled: bool) {
+    MINIMIZE_TO_TRAY_ON_CLOSE.store(enabled, std::sync::atomic::Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -836,7 +850,56 @@ pub fn run() {
                 *lock = javas;
             });
 
+            // A tray icon so closing the window (see the CloseRequested handler below) has
+            // somewhere to go besides quitting outright, and a way back — this is what makes
+            // that behavior "minimize to tray" instead of just silently eating the close
+            // button. Without it, a P2P room or a hosted server the player forgot about would
+            // keep running invisibly with no way to reach the window again short of relaunching.
+            let show_item = MenuItem::with_id(app, "show", "Show MCL Client", true, None::<&str>)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit MCL Client", true, None::<&str>)?;
+            let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+            let mut tray_builder = TrayIconBuilder::new().menu(&tray_menu).tooltip("MCL Client");
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            tray_builder
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "quit" => app.exit(0),
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                })
+                .build(app)?;
+
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                if window.label() == "main"
+                    && MINIMIZE_TO_TRAY_ON_CLOSE.load(std::sync::atomic::Ordering::Relaxed)
+                {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_instances,
@@ -911,6 +974,7 @@ pub fn run() {
             app_minimize,
             app_hide,
             app_close,
+            set_minimize_to_tray_on_close,
             set_window_size,
             p2p_start_host,
             p2p_stop_host,

@@ -446,6 +446,8 @@ const ko: Partial<Translation> = {
   updateRestarting: "런처를 다시 시작하는 중…",
   updateRetry: "다시 시도",
   discordRpcDesc: "플레이 중인 프로필과 버전을 디스코드 상태에 표시합니다. 디스코드가 실행 중이 아니면 무시됩니다.",
+  minimizeToTrayTitle: "닫는 대신 트레이로 최소화",
+  minimizeToTrayDesc: "닫기 버튼은 창을 숨길 뿐 종료하지 않으므로, 호스팅 중인 서버나 P2P 방 등 실행 중인 작업이 계속됩니다. 실제로 종료하려면 트레이 아이콘을 마우스 오른쪽 버튼으로 클릭하세요.",
   discordRpcTitle: "디스코드 활동 상태",
   customDirHint: '이 프로필의 모든 모드, 설정 및 월드 저장은 이 경로에 독립적으로 저장됩니다.',
   customSkin: '사용자 지정 스킨',

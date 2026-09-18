@@ -186,6 +186,7 @@ const DEFAULT_SETTINGS: LauncherSettings = {
   customBgImage: defaultBgImage,
   bgOpacity: 0.3,
   launchBehavior: 'keep',
+  minimizeToTrayOnClose: true,
   shareSkin: true,
   autoDownloadJava: true,
   enableDiscordRpc: true,
@@ -387,6 +388,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     writeStoredJson('mcl_settings', settings);
   }, [settings]);
+
+  // The close-vs-hide decision is made in Rust (it has to intercept the native window close
+  // event), which cannot read this setting out of local storage itself — so this pushes it down
+  // instead, once at startup and again on every change.
+  useEffect(() => {
+    if (!isTauri()) return;
+    invokeCommand('set_minimize_to_tray_on_close', { enabled: settings.minimizeToTrayOnClose }).catch(() => {});
+  }, [settings.minimizeToTrayOnClose]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
 

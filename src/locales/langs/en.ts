@@ -468,6 +468,8 @@ const en = {
   updateRestarting: "Restarting the launcher…",
   updateRetry: "Try again",
   discordRpcDesc: "Show the profile and version you are playing on your Discord status. Ignored when Discord is not running.",
+  minimizeToTrayTitle: "Minimize to tray instead of closing",
+  minimizeToTrayDesc: "The close button hides the window instead of quitting, so anything still running — a hosted server, a P2P room — keeps going. Right-click the tray icon to actually quit.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'All mods, configs, and saves of this profile will be stored isolated in this path.',
   customSkin: 'customSkin',

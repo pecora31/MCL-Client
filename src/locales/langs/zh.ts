@@ -446,6 +446,8 @@ const zh: Partial<Translation> = {
   updateRestarting: "正在重启启动器…",
   updateRetry: "重试",
   discordRpcDesc: "在 Discord 状态中显示你正在玩的配置和版本。未运行 Discord 时自动忽略。",
+  minimizeToTrayTitle: "关闭时最小化到托盘",
+  minimizeToTrayDesc: "关闭按钮会隐藏窗口而不是退出程序，因此正在运行的内容（托管的服务器、P2P 房间）会继续运行。右键点击托盘图标即可真正退出。",
   discordRpcTitle: "Discord 游戏状态",
   customDirHint: '此配置的所有模组、设置和世界存档都将独立存储在此路径下。',
   customSkin: '自定义皮肤',
