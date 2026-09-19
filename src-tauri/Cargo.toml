@@ -1,7 +1,7 @@
 [package]
 name = "mcl-client"
 default-run = "mcl-client"
-version = "0.12.2"
+version = "0.12.3"
 description = "Custom Minecraft Launcher with high performance optimization, direct server connection, and unified profile management."
 authors = ["pecora31"]
 license = "GPL-3.0"
