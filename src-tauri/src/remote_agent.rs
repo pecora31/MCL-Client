@@ -217,7 +217,11 @@ pub async fn remote_agent_set_properties(host: RemoteHostConfig, summary: Server
 #[serde(rename_all = "camelCase")]
 struct RemoteModFile {
     name: String,
+    // Agents up to v0.12.1 sent this as "size_bytes" (the struct was missing its camelCase
+    // rename), which made every sync against a VM that already had mods fail to decode. It is
+    // never read, so it is optional and accepts either spelling instead of failing on it.
     #[allow(dead_code)]
+    #[serde(default, alias = "size_bytes")]
     size_bytes: u64,
 }
 

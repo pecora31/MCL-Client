@@ -338,6 +338,7 @@ async fn set_properties(
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ModFile {
     name: String,
     size_bytes: u64,

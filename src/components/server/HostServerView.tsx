@@ -128,14 +128,21 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
 }) => {
   const t = getTranslation(language);
   const [selectedId, setSelectedId] = useState<string>(instances[0]?.id || '');
-  const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>([]);
+  // Read synchronously (it is only a localStorage read) rather than in a mount effect: the
+  // selected host below is restored on the very first render, and with the list still empty
+  // that render resolved the remembered VM to "no such host", fell back to This Computer, and
+  // fetched *its* status — which has no server prepared — so the Set up card came back every
+  // visit even for a VM that was already fully installed and running.
+  const [remoteHosts, setRemoteHosts] = useState<RemoteHost[]>(() => loadRemoteHosts());
   // This view remounts from scratch every time the player navigates back to Server
   // Management (its parent only renders it while that tab is active), so without this the
   // selected host silently reset to "This Computer" on every visit — remembered here the same
   // way the active server in Overview already is.
-  const [selectedHostId, setSelectedHostIdState] = useState<string>(
-    () => localStorage.getItem(SELECTED_HOST_STORAGE_KEY) || LOCAL_HOST_ID
-  );
+  const [selectedHostId, setSelectedHostIdState] = useState<string>(() => {
+    const saved = localStorage.getItem(SELECTED_HOST_STORAGE_KEY);
+    // A VM removed since last time falls back to this computer instead of pointing at nothing.
+    return saved && loadRemoteHosts().some((h) => h.id === saved) ? saved : LOCAL_HOST_ID;
+  });
   const setSelectedHostId = (id: string) => {
     setSelectedHostIdState(id);
     localStorage.setItem(SELECTED_HOST_STORAGE_KEY, id);
@@ -245,7 +252,6 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   useEffect(() => {
     invokeCommand<SystemInfo>('get_system_info').then(setSystemInfo).catch(() => {});
     invokeCommand<string | null>('get_lan_ip').then(setLanIp).catch(() => {});
-    setRemoteHosts(loadRemoteHosts());
   }, []);
 
   useEffect(() => {
