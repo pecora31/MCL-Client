@@ -452,6 +452,7 @@ const es: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "Parámetros G1GC optimizados que suavizan los tirones por el GC. Incluyen AlwaysPreTouch, por lo que la JVM ocupa toda la RAM asignada al iniciar.",
   profileZgcJavaWarning: "ZGC necesita Java 15 o superior. Con un Java más antiguo el juego no arrancará.",
+  hostServerRestartToApply: "Guardado. Reinicia el servidor para que los cambios surtan efecto.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'Todos los mods, configuraciones y mundos de este perfil se guardarán de forma aislada en esta ruta.',
   customSkin: 'Aspecto personalizado',

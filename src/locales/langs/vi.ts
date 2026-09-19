@@ -475,6 +475,7 @@ const vi: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "Bộ cờ G1GC tối ưu giúp giảm giật do dọn rác. Kèm AlwaysPreTouch nên JVM chiếm trọn RAM đã cấp ngay khi khởi động.",
   profileZgcJavaWarning: "ZGC cần Java 15 trở lên. Game sẽ không khởi động được trên Java cũ hơn.",
+  hostServerRestartToApply: "Đã lưu. Hãy khởi động lại server để các thay đổi có hiệu lực.",
   discordRpcTitle: "Trạng thái Discord (Rich Presence)",
   customDirHint: 'Tài nguyên, mods, cấu hình và saves của profile này sẽ được lưu biệt lập tại đây.',
   customSkin: 'Skin Tùy Chỉnh',

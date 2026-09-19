@@ -453,6 +453,7 @@ const ja: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "GC 停止によるカクつきを緩和する、調整済みの G1GC フラグです。AlwaysPreTouch を含むため、起動時に割り当て RAM を全て確保します。",
   profileZgcJavaWarning: "ZGC には Java 15 以降が必要です。それより古い Java ではゲームが起動しません。",
+  hostServerRestartToApply: "保存しました。変更を反映するにはサーバーを再起動してください。",
   discordRpcTitle: "Discord リッチプレゼンス",
   customDirHint: 'このプロファイルのすべてのMod、設定、セーブデータはこのパスに独立して保存されます。',
   customSkin: 'カスタムスキン',

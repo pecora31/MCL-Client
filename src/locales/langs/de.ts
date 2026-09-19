@@ -453,6 +453,7 @@ const de: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "Optimierte G1GC-Flags, die GC-bedingte Ruckler glätten. Sie enthalten AlwaysPreTouch, daher belegt die JVM beim Start den gesamten zugewiesenen RAM.",
   profileZgcJavaWarning: "ZGC benötigt Java 15 oder neuer. Mit älterem Java startet das Spiel nicht.",
+  hostServerRestartToApply: "Gespeichert. Starte den Server neu, damit die Änderungen wirksam werden.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'Alle Mods, Konfigurationen und Welten dieses Profils werden isoliert in diesem Pfad gespeichert.',
   customSkin: 'Benutzerdefinierter Skin',

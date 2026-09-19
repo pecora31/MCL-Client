@@ -453,6 +453,7 @@ const ko: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "GC 정지로 인한 끊김을 완화하는 조정된 G1GC 플래그입니다. AlwaysPreTouch가 포함되어 시작 시 할당된 RAM을 모두 차지합니다.",
   profileZgcJavaWarning: "ZGC는 Java 15 이상이 필요합니다. 더 낮은 버전에서는 게임이 시작되지 않습니다.",
+  hostServerRestartToApply: "저장했습니다. 변경 사항을 적용하려면 서버를 다시 시작하세요.",
   discordRpcTitle: "디스코드 활동 상태",
   customDirHint: '이 프로필의 모든 모드, 설정 및 월드 저장은 이 경로에 독립적으로 저장됩니다.',
   customSkin: '사용자 지정 스킨',

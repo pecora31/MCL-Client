@@ -453,6 +453,7 @@ const zh: Partial<Translation> = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "经过调优的 G1GC 参数，可平滑 GC 停顿造成的卡顿。其中包含 AlwaysPreTouch，因此 JVM 启动时即占用全部已分配内存。",
   profileZgcJavaWarning: "ZGC 需要 Java 15 或更高版本。在更旧的 Java 上游戏将无法启动。",
+  hostServerRestartToApply: "已保存。请重启服务器使更改生效。",
   discordRpcTitle: "Discord 游戏状态",
   customDirHint: '此配置的所有模组、设置和世界存档都将独立存储在此路径下。',
   customSkin: '自定义皮肤',

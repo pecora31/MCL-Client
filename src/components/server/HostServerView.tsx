@@ -171,7 +171,39 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   const [useAikarFlags, setUseAikarFlags] = useState(true);
   const [gcEngine, setGcEngine] = useState<'G1GC' | 'ZGC'>('G1GC');
   const [autoRestart, setAutoRestart] = useState(false);
+
+  // RAM, GC and restart choices are consumed at Start, not written to server.properties, so
+  // Save never covered them and they lived only in component state: every visit to this view
+  // remounted it, reset them to the defaults, and the next Start ran with those instead of what
+  // had been picked. Kept per profile-and-host, since a VM and this computer differ in RAM.
+  const launchSettingsKey = `mcl_host_launch:${selectedHostId}:${selectedId}`;
+  useEffect(() => {
+    let saved: Partial<{ minRam: number; maxRam: number; useAikarFlags: boolean; gcEngine: 'G1GC' | 'ZGC'; autoRestart: boolean }> = {};
+    try {
+      saved = JSON.parse(localStorage.getItem(launchSettingsKey) || '{}');
+    } catch {
+      saved = {};
+    }
+    setMinRam(saved.minRam ?? 1024);
+    setMaxRam(saved.maxRam ?? 2048);
+    setUseAikarFlags(saved.useAikarFlags ?? true);
+    setGcEngine(saved.gcEngine === 'ZGC' ? 'ZGC' : 'G1GC');
+    setAutoRestart(saved.autoRestart ?? false);
+  }, [launchSettingsKey]);
+  const persistLaunchSettings = (patch: Partial<{ minRam: number; maxRam: number; useAikarFlags: boolean; gcEngine: 'G1GC' | 'ZGC'; autoRestart: boolean }>) => {
+    try {
+      localStorage.setItem(
+        launchSettingsKey,
+        JSON.stringify({ minRam, maxRam, useAikarFlags, gcEngine, autoRestart, ...patch })
+      );
+    } catch {
+      // Storage unavailable: the choice still applies for this visit.
+    }
+  };
   const [isSavedSuccess, setIsSavedSuccess] = useState(false);
+  // Minecraft only reads server.properties at startup, so a save made while it is running is
+  // on disk but not in effect yet — which looked exactly like "the setting was not applied".
+  const [savedWhileRunning, setSavedWhileRunning] = useState(false);
 
   // UI state for navigation and custom dropdowns
   const [activeTab, setActiveTab] = useState<ServerTab>('dashboard');
@@ -583,6 +615,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
         await invokeCommand('write_server_properties', { dir: status.serverDir, summary });
       }
       setIsSavedSuccess(true);
+      setSavedWhileRunning(status.state === 'running' || status.state === 'starting');
       setTimeout(() => setIsSavedSuccess(false), 2500);
     } catch (err) {
       setError(String(err));
@@ -1580,6 +1613,11 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                         </>
                       )}
                     </button>
+                    {savedWhileRunning && status?.state !== 'stopped' && (
+                      <span className="text-xs text-amber-300 basis-full">
+                        {t.hostServerRestartToApply || 'Saved. Restart the server for these changes to take effect.'}
+                      </span>
+                    )}
                   </div>
 
                   {/* Section 1: Cấp Phát RAM & Hiệu Năng JVM */}
@@ -1597,8 +1635,10 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                         <RamAllocationField
                           value={maxRam}
                           onChange={(v) => {
+                            const nextMin = Math.min(minRam, v);
                             setMaxRam(v);
-                            setMinRam((m) => Math.min(m, v));
+                            setMinRam(nextMin);
+                            persistLaunchSettings({ maxRam: v, minRam: nextMin });
                           }}
                           systemInfo={selectedHost ? remoteSystemInfo : systemInfo}
                           min={1024}
@@ -1620,7 +1660,10 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                         <div className="w-48 shrink-0">
                           <CustomSelect
                             value={gcEngine}
-                            onChange={(v) => setGcEngine(v)}
+                            onChange={(v) => {
+                              setGcEngine(v);
+                              persistLaunchSettings({ gcEngine: v });
+                            }}
                             options={gcEngineOptions}
                           />
                         </div>
@@ -1646,7 +1689,14 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                               'Tuned G1GC flags for servers. They include AlwaysPreTouch, so the JVM claims the full allocated RAM at startup.'}
                           </p>
                         </div>
-                        <ToggleSwitch checked={useAikarFlags} onChange={setUseAikarFlags} size="md" />
+                        <ToggleSwitch
+                          checked={useAikarFlags}
+                          onChange={(v) => {
+                            setUseAikarFlags(v);
+                            persistLaunchSettings({ useAikarFlags: v });
+                          }}
+                          size="md"
+                        />
                       </div>
 
                       {/* Auto Restart Toggle */}
@@ -1659,7 +1709,14 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                             {t.hostServerAutoRestartDesc || 'Tự động bật lại server sau 10 giây nếu bị crash (tối đa 3 lần/phút)'}
                           </p>
                         </div>
-                        <ToggleSwitch checked={autoRestart} onChange={setAutoRestart} size="md" />
+                        <ToggleSwitch
+                          checked={autoRestart}
+                          onChange={(v) => {
+                            setAutoRestart(v);
+                            persistLaunchSettings({ autoRestart: v });
+                          }}
+                          size="md"
+                        />
                       </div>
                     </div>
                   </div>

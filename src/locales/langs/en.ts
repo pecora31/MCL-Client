@@ -475,6 +475,7 @@ const en = {
   profileAikarFlagsTitle: "Aikar's Flags",
   profileAikarFlagsDesc: "Tuned G1GC flags that smooth out GC pause stutter. They include AlwaysPreTouch, so the JVM claims the full allocated RAM right at startup.",
   profileZgcJavaWarning: "ZGC needs Java 15 or newer. On an older Java the game will refuse to start.",
+  hostServerRestartToApply: "Saved. Restart the server for these changes to take effect.",
   discordRpcTitle: "Discord Rich Presence",
   customDirHint: 'All mods, configs, and saves of this profile will be stored isolated in this path.',
   customSkin: 'customSkin',
