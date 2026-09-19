@@ -39,9 +39,9 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 animate-fadeIn">
-      <div className="w-full max-w-4xl h-[650px] rounded-3xl bg-[#090b10] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-4xl h-[650px] rounded-3xl bg-[#0e0e0e] border border-white/10 shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/10 bg-[#0d1017]">
+        <div className="flex items-center justify-between px-6 py-4.5 border-b border-white/10 bg-[#131313]">
           <div className="flex items-center gap-2.5">
             <Terminal className="w-5 h-5 text-amber-400" />
             <h3 className="text-base font-bold font-riot text-white">{t.consoleTitle || 'Console Logs'}</h3>
@@ -83,7 +83,7 @@ export const ConsoleModal: React.FC<ConsoleModalProps> = ({
         </div>
 
         {/* Console output */}
-        <div className="flex-1 p-5 overflow-y-auto font-mono text-[13px] text-slate-300 space-y-1 bg-[#06080e] select-text custom-scrollbar">
+        <div className="flex-1 p-5 overflow-y-auto font-mono text-[13px] text-slate-300 space-y-1 bg-[#0a0a0a] select-text custom-scrollbar">
           {logs.length === 0 ? (
             <div className="text-slate-600 italic">{t.noLogsYet || 'No logs yet... Ready to capture game events.'}</div>
           ) : (

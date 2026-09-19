@@ -970,3 +970,9 @@ input[type="range"]::-moz-range-thumb {
   -webkit-backdrop-filter: none !important;
 }
 
+
+/* A range input that shows how far it has been dragged: the part behind the thumb takes the
+   accent colour. --fill is set inline from the input's own value. */
+input[type="range"].range-filled {
+  background: linear-gradient(to right, var(--accent-color) var(--fill, 0%), rgba(255, 255, 255, 0.1) var(--fill, 0%));
+}
