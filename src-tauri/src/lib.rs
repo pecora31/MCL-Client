@@ -117,6 +117,28 @@ fn write_server_properties(dir: String, summary: ServerPropertiesSummary) -> Res
     server_config::write_server_properties(&dir, &summary)
 }
 
+#[tauri::command]
+fn get_whitelist(dir: String) -> Vec<server_config::WhitelistEntry> {
+    server_config::read_whitelist(&dir)
+}
+
+#[tauri::command]
+fn add_whitelist_player(dir: String, name: String) -> Result<Vec<server_config::WhitelistEntry>, String> {
+    let entries = server_config::add_to_whitelist(&dir, &name)?;
+    // Best-effort: makes an already-running server pick the new entry up immediately, the same
+    // as typing `whitelist reload` yourself. A stopped server just reads the file fresh at its
+    // next start, so a failure here (nothing running to reload) is not itself an error.
+    let _ = server_host::send_command(std::path::Path::new(&dir), "whitelist reload");
+    Ok(entries)
+}
+
+#[tauri::command]
+fn remove_whitelist_player(dir: String, name: String) -> Result<Vec<server_config::WhitelistEntry>, String> {
+    let entries = server_config::remove_from_whitelist(&dir, &name)?;
+    let _ = server_host::send_command(std::path::Path::new(&dir), "whitelist reload");
+    Ok(entries)
+}
+
 fn require_instance(instance_id: &str) -> Result<GameInstance, String> {
     instance_manager::get_instance(instance_id)
         .ok_or_else(|| format!("No profile found with id {}", instance_id))
@@ -917,6 +939,9 @@ pub fn run() {
             execute_storage_cleanup,
             read_server_properties,
             write_server_properties,
+            get_whitelist,
+            add_whitelist_player,
+            remove_whitelist_player,
             get_hosted_server_status,
             prepare_hosted_server,
             start_hosted_server,
@@ -928,6 +953,9 @@ pub fn run() {
             remote_agent::remote_agent_stop,
             remote_agent::remote_agent_get_properties,
             remote_agent::remote_agent_set_properties,
+            remote_agent::remote_agent_get_whitelist,
+            remote_agent::remote_agent_add_whitelist_player,
+            remote_agent::remote_agent_remove_whitelist_player,
             remote_agent::remote_agent_sync_mods,
             remote_agent::remote_agent_send_command,
             remote_agent::remote_agent_start_log_stream,

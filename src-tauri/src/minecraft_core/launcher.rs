@@ -792,20 +792,12 @@ pub async fn prepare_and_launch(
     Ok(())
 }
 
-/// The UUID an offline-mode server assigns this name: MD5 of "OfflinePlayer:<name>" stamped as a
-/// version 3 UUID, exactly Java's `UUID.nameUUIDFromBytes`. Minecraft files a world's
-/// advancements and stats under the player's UUID even in singleplayer, so a UUID that changed
-/// every launch made each session start them over; this one stays the same for the same name,
-/// and matches what servers use for that player.
-pub fn offline_uuid(username: &str) -> String {
-    use md5::{Digest, Md5};
-    let digest = Md5::digest(format!("OfflinePlayer:{}", username).as_bytes());
-    let mut bytes = [0u8; 16];
-    bytes.copy_from_slice(&digest);
-    bytes[6] = (bytes[6] & 0x0f) | 0x30;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    uuid::Uuid::from_bytes(bytes).to_string()
-}
+/// The UUID an offline-mode server assigns this name. Minecraft files a world's advancements
+/// and stats under the player's UUID even in singleplayer, so a UUID that changed every launch
+/// made each session start them over; this one stays the same for the same name, and matches
+/// what servers use for that player. Shared with `server_config` — a hosted server's whitelist
+/// has to agree with the client on exactly this value for the same name.
+pub use crate::server_config::offline_uuid;
 
 async fn download_java_for_launch(
     app_handle: &AppHandle,

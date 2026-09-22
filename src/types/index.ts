@@ -326,6 +326,11 @@ export interface ServerPropertiesSummary {
   levelName: string;
 }
 
+export interface WhitelistEntry {
+  uuid: string;
+  name: string;
+}
+
 /** "starting" covers everything from process launch until the world finishes loading;
  *  "crashed" is an exit nobody asked for, cleared back to "stopped" on the next status read. */
 export type HostedServerState = 'stopped' | 'starting' | 'running' | 'crashed';

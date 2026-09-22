@@ -30,6 +30,10 @@ fn client_for(host: &RemoteHostConfig) -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .add_root_certificate(cert)
         .danger_accept_invalid_hostnames(true)
+        // Probes an otherwise silent connection, so a long-lived one (the log stream) whose
+        // path was dropped by a router or cloud firewall errors out and reconnects instead of
+        // waiting forever on a socket nothing will ever arrive on.
+        .tcp_keepalive(Some(std::time::Duration::from_secs(30)))
         .build()
         .map_err(|e| e.to_string())
 }
@@ -150,6 +154,8 @@ pub async fn remote_agent_prepare(
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct StartBody {
+    loader: String,
+    game_version: String,
     min_ram: u32,
     max_ram: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -165,6 +171,8 @@ struct StartBody {
 #[tauri::command]
 pub async fn remote_agent_start(
     host: RemoteHostConfig,
+    loader: String,
+    game_version: String,
     min_ram: u32,
     max_ram: u32,
     java_bin: Option<String>,
@@ -176,6 +184,8 @@ pub async fn remote_agent_start(
         &host,
         "/v1/start",
         &StartBody {
+            loader,
+            game_version,
             min_ram,
             max_ram,
             java_bin,
@@ -211,6 +221,42 @@ pub async fn remote_agent_get_properties(host: RemoteHostConfig) -> Result<Serve
 #[tauri::command]
 pub async fn remote_agent_set_properties(host: RemoteHostConfig, summary: ServerPropertiesSummary) -> Result<(), String> {
     post_no_content(&host, "/v1/properties", &summary).await
+}
+
+#[tauri::command]
+pub async fn remote_agent_get_whitelist(host: RemoteHostConfig) -> Result<Vec<crate::server_config::WhitelistEntry>, String> {
+    get_json(&host, "/v1/whitelist").await
+}
+
+#[derive(Serialize)]
+struct WhitelistAddBody {
+    name: String,
+}
+
+#[tauri::command]
+pub async fn remote_agent_add_whitelist_player(
+    host: RemoteHostConfig,
+    name: String,
+) -> Result<Vec<crate::server_config::WhitelistEntry>, String> {
+    post_json(&host, "/v1/whitelist", &WhitelistAddBody { name }).await
+}
+
+#[tauri::command]
+pub async fn remote_agent_remove_whitelist_player(
+    host: RemoteHostConfig,
+    name: String,
+) -> Result<Vec<crate::server_config::WhitelistEntry>, String> {
+    let client = client_for(&host)?;
+    let resp = client
+        .delete(format!("{}/v1/whitelist/{}", base_url(&host), name))
+        .bearer_auth(&host.token)
+        .send()
+        .await
+        .map_err(|e| format!("Could not reach the agent: {}", e))?;
+    if !resp.status().is_success() {
+        return Err(error_message(resp).await);
+    }
+    resp.json().await.map_err(|e| e.to_string())
 }
 
 #[derive(Deserialize)]

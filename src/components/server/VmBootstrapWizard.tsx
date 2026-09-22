@@ -211,7 +211,7 @@ export const VmBootstrapWizard: React.FC<VmBootstrapWizardProps> = ({ language, 
               <div className="grid grid-cols-2 gap-3">
                 <input
                   type="text"
-                  placeholder={t.hostServerBootstrapHost || 'VM address (e.g. 140.245.125.66)'}
+                  placeholder={t.hostServerBootstrapHost || 'VM address (e.g. 203.0.113.10)'}
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   className="col-span-2 px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-[var(--accent-color)]"

@@ -3,7 +3,7 @@
 // self-signed certificate, so cert-pinned requests must originate from the Rust backend
 // (see src-tauri/src/remote_agent.rs) rather than this file directly hitting the network.
 import { invokeCommand } from './api';
-import type { HostedServerStatus, ServerPropertiesSummary, BackupInfo, RemoteFileEntry } from '../types';
+import type { HostedServerStatus, ServerPropertiesSummary, BackupInfo, RemoteFileEntry, WhitelistEntry } from '../types';
 
 export interface RemoteHost {
   id: string;
@@ -52,6 +52,10 @@ export interface RemotePrepareRequest {
 }
 
 export interface RemoteStartRequest {
+  /** Checked against what the agent actually has prepared before it starts anything — see
+   *  the agent's own `start` handler for why this can't just be trusted from its own memory. */
+  loader: string;
+  gameVersion: string;
   minRam: number;
   maxRam: number;
   javaBin?: string;
@@ -73,6 +77,8 @@ export const remoteAgent = {
   start: (host: RemoteHost, body: RemoteStartRequest) =>
     invokeCommand<void>('remote_agent_start', {
       host: toHostArg(host),
+      loader: body.loader,
+      gameVersion: body.gameVersion,
       minRam: body.minRam,
       maxRam: body.maxRam,
       javaBin: body.javaBin,
@@ -85,6 +91,15 @@ export const remoteAgent = {
     invokeCommand<ServerPropertiesSummary>('remote_agent_get_properties', { host: toHostArg(host) }),
   setProperties: (host: RemoteHost, summary: ServerPropertiesSummary) =>
     invokeCommand<void>('remote_agent_set_properties', { host: toHostArg(host), summary }),
+  getWhitelist: (host: RemoteHost) =>
+    invokeCommand<WhitelistEntry[]>('remote_agent_get_whitelist', { host: toHostArg(host) }),
+  /** Adds `name` with the offline UUID formula, bypassing the Mojang lookup a console
+   *  `whitelist add` would otherwise make (see server_config::add_to_whitelist for why that
+   *  lookup is the thing to avoid). Returns the whitelist as it now stands. */
+  addWhitelistPlayer: (host: RemoteHost, name: string) =>
+    invokeCommand<WhitelistEntry[]>('remote_agent_add_whitelist_player', { host: toHostArg(host), name }),
+  removeWhitelistPlayer: (host: RemoteHost, name: string) =>
+    invokeCommand<WhitelistEntry[]>('remote_agent_remove_whitelist_player', { host: toHostArg(host), name }),
   sendCommand: (host: RemoteHost, command: string) =>
     invokeCommand<void>('remote_agent_send_command', { host: toHostArg(host), command }),
   /** Uploads whatever mod jars the agent doesn't already have; returns how many were sent. */

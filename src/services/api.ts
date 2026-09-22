@@ -13,8 +13,15 @@ import type {
   P2PHostStatus,
   P2PClientStatus,
   P2PMemberInfo,
+  WhitelistEntry,
 } from '../types';
 import { invoke } from '@tauri-apps/api/core';
+
+// The browser dev preview has no real backend, so the mocked whitelist commands below need
+// somewhere to keep state between calls — otherwise "add" would look like it worked and then
+// the very next "list" would show nothing, which is a confusing way to check the UI actually
+// wires up add/remove correctly.
+let mockWhitelist: WhitelistEntry[] = [];
 
 // Check if running inside Tauri environment
 export const isTauri = () => {
@@ -38,6 +45,9 @@ export const TAURI_COMMANDS = [
   'execute_storage_cleanup',
   'read_server_properties',
   'write_server_properties',
+  'get_whitelist',
+  'add_whitelist_player',
+  'remove_whitelist_player',
   'get_hosted_server_status',
   'prepare_hosted_server',
   'start_hosted_server',
@@ -49,6 +59,9 @@ export const TAURI_COMMANDS = [
   'remote_agent_stop',
   'remote_agent_get_properties',
   'remote_agent_set_properties',
+  'remote_agent_get_whitelist',
+  'remote_agent_add_whitelist_player',
+  'remote_agent_remove_whitelist_player',
   'remote_agent_sync_mods',
   'remote_agent_send_command',
   'remote_agent_start_log_stream',
@@ -1158,6 +1171,31 @@ async function mockCommand<T>(cmd: TauriCommand, args: Record<string, unknown>):
     case 'write_server_properties':
       console.log('Mock write_server_properties:', args);
       return undefined as unknown as T;
+
+    case 'get_whitelist':
+    case 'remote_agent_get_whitelist':
+      return [...mockWhitelist] as unknown as T;
+
+    case 'add_whitelist_player':
+    case 'remote_agent_add_whitelist_player': {
+      const name = (args?.name as string)?.trim();
+      if (!name) throw new Error('Enter a player name.');
+      if (mockWhitelist.some((e) => e.name.toLowerCase() === name.toLowerCase())) {
+        throw new Error(`${name} is already on the whitelist.`);
+      }
+      mockWhitelist = [...mockWhitelist, { uuid: `mock-${name.toLowerCase()}`, name }];
+      return [...mockWhitelist] as unknown as T;
+    }
+
+    case 'remove_whitelist_player':
+    case 'remote_agent_remove_whitelist_player': {
+      const name = args?.name as string;
+      if (!mockWhitelist.some((e) => e.name.toLowerCase() === name?.toLowerCase())) {
+        throw new Error(`${name} is not on the whitelist.`);
+      }
+      mockWhitelist = mockWhitelist.filter((e) => e.name.toLowerCase() !== name.toLowerCase());
+      return [...mockWhitelist] as unknown as T;
+    }
 
     case 'get_hosted_server_status':
       return {

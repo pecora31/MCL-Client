@@ -30,11 +30,12 @@ import {
   Sparkles,
   Clock,
   Shield,
+  X,
 } from 'lucide-react';
 import { invokeCommand, isTauri } from '../../services/api';
 import { openExternalUrl } from '../../services/externalLink';
 import { loadRemoteHosts, saveRemoteHosts, remoteAgent, type RemoteHost } from '../../services/remoteAgent';
-import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus, BackupInfo } from '../../types';
+import type { GameInstance, SystemInfo, ServerPropertiesSummary, HostedServerStatus, BackupInfo, WhitelistEntry } from '../../types';
 import { getTranslation, type Language } from '../../locales/i18n';
 import { CustomSelect, type SelectOption } from '../common/CustomSelect';
 import { RamAllocationField } from '../common/RamAllocationField';
@@ -168,6 +169,10 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   const [error, setError] = useState('');
   const [logs, setLogs] = useState<string[]>([]);
   const [summary, setSummary] = useState<ServerPropertiesSummary>(DEFAULT_PROPERTIES_SUMMARY);
+  const [whitelist, setWhitelist] = useState<WhitelistEntry[]>([]);
+  const [whitelistName, setWhitelistName] = useState('');
+  const [whitelistBusy, setWhitelistBusy] = useState(false);
+  const [whitelistError, setWhitelistError] = useState('');
   const [copied, setCopied] = useState(false);
   const [consoleCommand, setConsoleCommand] = useState('');
   const [isSendingCommand, setIsSendingCommand] = useState(false);
@@ -322,6 +327,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
       }
       if (s.hasJar && !loadedPropertiesForRef.current) {
         loadProperties(s.serverDir);
+        loadWhitelist(s.serverDir);
       }
     } catch (err) {
       if (`${currentHostIdRef.current}:${currentInstanceIdRef.current}` !== requestedFor) return;
@@ -356,6 +362,20 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
     }
   };
 
+  const loadWhitelist = async (serverDir: string) => {
+    const loadedFor = `${selectedHostId}:${selectedId}`;
+    try {
+      const entries = selectedHost
+        ? await remoteAgent.getWhitelist(selectedHost)
+        : await invokeCommand<WhitelistEntry[]>('get_whitelist', { dir: serverDir });
+      if (`${currentHostIdRef.current}:${currentInstanceIdRef.current}` === loadedFor) {
+        setWhitelist(entries);
+      }
+    } catch {
+      // Leave whatever is on screen; the next reload will try again.
+    }
+  };
+
   useEffect(() => {
     setError('');
     statusFetchFailedRef.current = false;
@@ -369,6 +389,8 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
     // fetches the ones belonging to this pair.
     loadedPropertiesForRef.current = '';
     setSummary(DEFAULT_PROPERTIES_SUMMARY);
+    setWhitelist([]);
+    setWhitelistError('');
     refreshStatus();
   }, [selectedId, selectedHostId]);
 
@@ -416,6 +438,7 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
   useEffect(() => {
     if (status?.state !== 'running' || !status.serverDir) return;
     loadProperties(status.serverDir);
+    loadWhitelist(status.serverDir);
   }, [status?.state]);
 
   const refreshBackups = async () => {
@@ -565,7 +588,19 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
     setLogs([]);
     try {
       if (selectedHost) {
-        await remoteAgent.start(selectedHost, { minRam, maxRam, useAikarFlags, gcEngine, autoRestart });
+        await remoteAgent.start(selectedHost, {
+          loader: instance.loader,
+          gameVersion: instance.gameVersion,
+          minRam,
+          maxRam,
+          useAikarFlags,
+          gcEngine,
+          autoRestart,
+        });
+        // A fresh connection for this run: the one opened when this view mounted may have gone
+        // stale during the idle time since, which left the console empty while the server
+        // visibly started. The agent replays what it has already printed to a new connection.
+        remoteAgent.startLogStream(selectedHost, selectedHost.id).catch((err) => setError(String(err)));
       } else {
         // Downloads a Java runtime when this machine has none that fits, the same as starting
         // the game itself does — a hosted server used to be handed a bare "javaw.exe" with no
@@ -623,6 +658,41 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
       setTimeout(() => setIsSavedSuccess(false), 2500);
     } catch (err) {
       setError(String(err));
+    }
+  };
+
+  const handleAddWhitelistPlayer = async () => {
+    if (!status) return;
+    const name = whitelistName.trim();
+    if (!name) return;
+    setWhitelistBusy(true);
+    setWhitelistError('');
+    try {
+      const entries = selectedHost
+        ? await remoteAgent.addWhitelistPlayer(selectedHost, name)
+        : await invokeCommand<WhitelistEntry[]>('add_whitelist_player', { dir: status.serverDir, name });
+      setWhitelist(entries);
+      setWhitelistName('');
+    } catch (err) {
+      setWhitelistError(String(err));
+    } finally {
+      setWhitelistBusy(false);
+    }
+  };
+
+  const handleRemoveWhitelistPlayer = async (name: string) => {
+    if (!status) return;
+    setWhitelistBusy(true);
+    setWhitelistError('');
+    try {
+      const entries = selectedHost
+        ? await remoteAgent.removeWhitelistPlayer(selectedHost, name)
+        : await invokeCommand<WhitelistEntry[]>('remove_whitelist_player', { dir: status.serverDir, name });
+      setWhitelist(entries);
+    } catch (err) {
+      setWhitelistError(String(err));
+    } finally {
+      setWhitelistBusy(false);
     }
   };
 
@@ -1782,6 +1852,63 @@ export const HostServerView: React.FC<HostServerViewProps> = ({
                           onChange={(v) => updateSummary({ whiteList: v })}
                           size="md"
                         />
+                      </div>
+
+                      {/* Whitelisted players */}
+                      <div className="p-4 rounded-xl bg-black/30 border border-white/5">
+                        <div className="text-sm font-semibold text-white">
+                          {t.hostServerWhitelistPlayersTitle || 'Whitelisted players'}
+                        </div>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {t.hostServerWhitelistPlayersHint ||
+                            'Added directly, so a name is never silently rewritten to someone else’s real account.'}
+                        </p>
+                        <div className="flex flex-wrap gap-2 mt-3">
+                          {whitelist.length === 0 && (
+                            <span className="text-xs text-slate-500">
+                              {t.hostServerWhitelistEmpty || 'No one is whitelisted yet.'}
+                            </span>
+                          )}
+                          {whitelist.map((entry) => (
+                            <span
+                              key={entry.name}
+                              className="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white"
+                            >
+                              {entry.name}
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveWhitelistPlayer(entry.name)}
+                                disabled={whitelistBusy}
+                                className="w-4 h-4 flex items-center justify-center rounded-full hover:bg-white/20 disabled:opacity-40 transition-colors"
+                                aria-label={t.hostServerWhitelistRemove || 'Remove'}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                        <div className="flex gap-2 mt-3">
+                          <input
+                            type="text"
+                            value={whitelistName}
+                            onChange={(e) => setWhitelistName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') handleAddWhitelistPlayer();
+                            }}
+                            placeholder={t.hostServerWhitelistPlaceholder || 'Player name'}
+                            disabled={whitelistBusy}
+                            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-black/40 border border-white/10 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-white/30"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddWhitelistPlayer}
+                            disabled={whitelistBusy || !whitelistName.trim()}
+                            className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 border border-white/10 text-sm font-medium text-white disabled:opacity-40 transition-colors"
+                          >
+                            {t.hostServerWhitelistAdd || 'Add'}
+                          </button>
+                        </div>
+                        {whitelistError && <p className="text-xs text-red-400 mt-2">{whitelistError}</p>}
                       </div>
 
                       {/* Port (NO SLIDER) */}

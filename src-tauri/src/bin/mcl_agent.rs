@@ -22,7 +22,7 @@ use axum::http::{header, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::sse::{Event, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post};
 use axum::{Json, Router};
 use axum_server::tls_rustls::RustlsConfig;
 use futures_util::StreamExt;
@@ -35,11 +35,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 
+/// How many console lines a newly connected log stream is replayed.
+const LOG_HISTORY_LINES: usize = 500;
+
 #[derive(Clone)]
 struct AppState {
     data_dir: PathBuf,
     token: String,
     log_tx: broadcast::Sender<String>,
+    /// The most recent console lines. The broadcast channel above only reaches whoever is
+    /// connected at that instant, so a desktop app that connected late (or whose connection had
+    /// silently gone stale) saw an empty console for a server that was visibly starting; a
+    /// new connection is replayed these first. Guarded together with the send so a line can
+    /// never appear both in the replay and again live.
+    log_history: Arc<std::sync::Mutex<std::collections::VecDeque<String>>>,
     /// Kept across calls (rather than built fresh per request) so `refresh_cpu_usage` has a
     /// prior sample to diff against — `sysinfo` reports 0% CPU usage on a brand-new `System`'s
     /// very first refresh, since there is nothing yet to compare it to.
@@ -253,6 +262,11 @@ async fn prepare(State(state): State<Arc<AppState>>, Json(body): Json<PrepareReq
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StartRequest {
+    /// What the caller's currently selected profile actually is, checked against `spec.json`
+    /// before anything is spawned — see the comment on that check in `start` for why this
+    /// exists at all.
+    loader: String,
+    game_version: String,
     min_ram: u32,
     max_ram: u32,
     /// Defaults to whatever java this host has installed for the profile's Minecraft
@@ -273,12 +287,27 @@ struct StartResponse {
 
 async fn start(State(state): State<Arc<AppState>>, Json(body): Json<StartRequest>) -> ApiResult<StartResponse> {
     let spec = read_spec(&state).ok_or_else(|| bad_request("No server prepared yet — call /v1/prepare first."))?;
+    // `spec.json` records whatever was last prepared, completely independent of which profile
+    // is selected in Server Management right now — starting used to trust it blindly, so
+    // switching which profile you're hosting (say Fabric 1.20.1 to NeoForge 1.21.1) without
+    // re-running Prepare first silently started the *old* loader under the *new* profile's
+    // name, with nothing telling you it happened until the console showed the wrong game
+    // version. Caught here instead, before anything is spawned.
+    if spec.loader != body.loader || spec.game_version != body.game_version {
+        return Err(bad_request(format!(
+            "This VM has {} {} prepared, but the selected profile needs {} {}. Run Download & Prepare for this profile first.",
+            spec.loader, spec.game_version, body.loader, body.game_version
+        )));
+    }
     let java_bin = match body.java_bin {
         Some(bin) => bin,
         None => app_lib::java_detector::find_best_java_for_version(&spec.game_version).0,
     };
 
     let log_tx = state.log_tx.clone();
+    let log_history = state.log_history.clone();
+    // A fresh run starts with a fresh console, rather than the previous run's tail.
+    log_history.lock().unwrap_or_else(|e| e.into_inner()).clear();
     server_host::start_server(
         &state.server_dir(),
         &spec.loader,
@@ -291,6 +320,11 @@ async fn start(State(state): State<Arc<AppState>>, Json(body): Json<StartRequest
         body.gc_engine.as_deref(),
         body.auto_restart,
         move |line| {
+            let mut history = log_history.lock().unwrap_or_else(|e| e.into_inner());
+            if history.len() >= LOG_HISTORY_LINES {
+                history.pop_front();
+            }
+            history.push_back(line.clone());
             let _ = log_tx.send(line);
         },
     )
@@ -335,6 +369,36 @@ async fn set_properties(
     let dir = state.server_dir().to_string_lossy().to_string();
     server_config::write_server_properties(&dir, &summary).map_err(server_error)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_whitelist(State(state): State<Arc<AppState>>) -> ApiResult<Vec<server_config::WhitelistEntry>> {
+    let dir = state.server_dir().to_string_lossy().to_string();
+    Ok(Json(server_config::read_whitelist(&dir)))
+}
+
+#[derive(Deserialize)]
+struct WhitelistAddBody {
+    name: String,
+}
+
+async fn add_whitelist(
+    State(state): State<Arc<AppState>>,
+    Json(body): Json<WhitelistAddBody>,
+) -> ApiResult<Vec<server_config::WhitelistEntry>> {
+    let dir = state.server_dir().to_string_lossy().to_string();
+    let entries = server_config::add_to_whitelist(&dir, &body.name).map_err(bad_request)?;
+    let _ = server_host::send_command(&state.server_dir(), "whitelist reload");
+    Ok(Json(entries))
+}
+
+async fn remove_whitelist(
+    State(state): State<Arc<AppState>>,
+    AxumPath(name): AxumPath<String>,
+) -> ApiResult<Vec<server_config::WhitelistEntry>> {
+    let dir = state.server_dir().to_string_lossy().to_string();
+    let entries = server_config::remove_from_whitelist(&dir, &name).map_err(bad_request)?;
+    let _ = server_host::send_command(&state.server_dir(), "whitelist reload");
+    Ok(Json(entries))
 }
 
 #[derive(Serialize)]
@@ -602,11 +666,20 @@ async fn write_file_content(
 }
 
 async fn logs(State(state): State<Arc<AppState>>) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
-    let rx = state.log_tx.subscribe();
-    let stream = tokio_stream::wrappers::BroadcastStream::new(rx)
-        .filter_map(|line| async move { line.ok() })
+    // Subscribing and snapshotting under the history lock, which the writer also holds while
+    // it sends, means every line lands in exactly one of the two.
+    let (replay, rx) = {
+        let history = state.log_history.lock().unwrap_or_else(|e| e.into_inner());
+        (history.iter().cloned().collect::<Vec<_>>(), state.log_tx.subscribe())
+    };
+    let live = tokio_stream::wrappers::BroadcastStream::new(rx).filter_map(|line| async move { line.ok() });
+    let stream = futures_util::stream::iter(replay)
+        .chain(live)
         .map(|line| Ok(Event::default().data(line)));
-    Sse::new(stream)
+    // A quiet stretch (a 400-mod server loading) sends nothing for a while, and a router or
+    // cloud firewall in between drops an idle connection without either end being told — the
+    // console then stays empty until reopened. A comment frame every 15s keeps it alive.
+    Sse::new(stream).keep_alive(axum::response::sse::KeepAlive::new().interval(Duration::from_secs(15)))
 }
 
 async fn health() -> Json<serde_json::Value> {
@@ -728,11 +801,13 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         load_or_create_cert(&data_dir).expect("could not read or create the agent's TLS certificate");
     let cert_path = data_dir.join("agent-cert.pem");
     let (log_tx, _) = broadcast::channel(256);
+    let log_history = Arc::new(std::sync::Mutex::new(std::collections::VecDeque::new()));
     let system = Arc::new(std::sync::Mutex::new(sysinfo::System::new()));
     let state = Arc::new(AppState {
         data_dir,
         token: token.clone(),
         log_tx,
+        log_history,
         system,
         backup_lock: Arc::new(tokio::sync::Mutex::new(())),
     });
@@ -745,6 +820,8 @@ async fn run(shutdown: impl std::future::Future<Output = ()> + Send + 'static) {
         .route("/v1/stop", post(stop))
         .route("/v1/console", post(send_console_command))
         .route("/v1/properties", get(get_properties).post(set_properties))
+        .route("/v1/whitelist", get(get_whitelist).post(add_whitelist))
+        .route("/v1/whitelist/:name", delete(remove_whitelist))
         .route("/v1/mods", get(list_mods))
         .route("/v1/mods/:filename", post(upload_mod))
         .route("/v1/backups", get(list_backups_handler).post(create_backup_now))

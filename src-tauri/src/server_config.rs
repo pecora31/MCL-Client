@@ -4,11 +4,81 @@
 // file, comments included, passes through untouched.
 
 use crate::models::ServerPropertiesSummary;
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
 const FILE_NAME: &str = "server.properties";
+const WHITELIST_FILE_NAME: &str = "whitelist.json";
+
+/// The UUID an offline-mode server derives for a name, with no lookup involved — every offline
+/// login and every entry in `whitelist.json`/`ops.json` on such a server needs exactly this
+/// value, not whatever a Mojang account lookup would return for the same string. Vanilla's own
+/// `whitelist add`/`op` console commands try a Mojang lookup regardless of `online-mode`, and
+/// silently substitute that account's real UUID *and its casing* for any name that happens to
+/// collide with one — the operator never asked for that, and on an offline server the
+/// substituted UUID doesn't match anything a player actually logs in as. Computing it here and
+/// writing the file directly is the only way to sidestep that lookup entirely.
+pub fn offline_uuid(username: &str) -> String {
+    use md5::{Digest, Md5};
+    let digest = Md5::digest(format!("OfflinePlayer:{}", username).as_bytes());
+    let mut bytes = [0u8; 16];
+    bytes.copy_from_slice(&digest);
+    bytes[6] = (bytes[6] & 0x0f) | 0x30;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    uuid::Uuid::from_bytes(bytes).to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct WhitelistEntry {
+    pub uuid: String,
+    pub name: String,
+}
+
+pub fn read_whitelist(dir: &str) -> Vec<WhitelistEntry> {
+    fs::read_to_string(Path::new(dir).join(WHITELIST_FILE_NAME))
+        .ok()
+        .and_then(|raw| serde_json::from_str(&raw).ok())
+        .unwrap_or_default()
+}
+
+fn write_whitelist(dir: &str, entries: &[WhitelistEntry]) -> Result<(), String> {
+    let raw = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
+    fs::write(Path::new(dir).join(WHITELIST_FILE_NAME), raw).map_err(|e| e.to_string())
+}
+
+/// Adds `name` with its offline UUID and returns the updated list. Rejects a name already
+/// present (case-insensitively — the server would end up with two entries for what a player
+/// types as one name) rather than silently duplicating it.
+pub fn add_to_whitelist(dir: &str, name: &str) -> Result<Vec<WhitelistEntry>, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("Enter a player name.".to_string());
+    }
+    if trimmed.chars().any(|c| c.is_whitespace()) {
+        return Err("A player name can't contain spaces.".to_string());
+    }
+    let mut entries = read_whitelist(dir);
+    if entries.iter().any(|e| e.name.eq_ignore_ascii_case(trimmed)) {
+        return Err(format!("{} is already on the whitelist.", trimmed));
+    }
+    entries.push(WhitelistEntry { uuid: offline_uuid(trimmed), name: trimmed.to_string() });
+    write_whitelist(dir, &entries)?;
+    Ok(entries)
+}
+
+pub fn remove_from_whitelist(dir: &str, name: &str) -> Result<Vec<WhitelistEntry>, String> {
+    let mut entries = read_whitelist(dir);
+    let before = entries.len();
+    entries.retain(|e| !e.name.eq_ignore_ascii_case(name));
+    if entries.len() == before {
+        return Err(format!("{} is not on the whitelist.", name));
+    }
+    write_whitelist(dir, &entries)?;
+    Ok(entries)
+}
 
 fn defaults() -> ServerPropertiesSummary {
     // Minecraft's own defaults for a freshly generated server.properties.
@@ -194,6 +264,59 @@ fn apply_updates(raw: &str, updates: &HashMap<String, String>) -> String {
     let mut out = lines.join("\n");
     out.push('\n');
     out
+}
+
+#[cfg(test)]
+mod whitelist_tests {
+    use super::*;
+
+    #[test]
+    fn offline_uuid_matches_the_java_formula() {
+        // Reference values computed the way Java's UUID.nameUUIDFromBytes does it.
+        assert_eq!(offline_uuid("Notch"), "b50ad385-829d-3141-a216-7e7d7539ba7f");
+        assert_ne!(offline_uuid("Rong"), offline_uuid("rong"), "offline servers treat case as distinct");
+    }
+
+    #[test]
+    fn adds_with_the_offline_uuid_never_a_looked_up_one() {
+        let dir = std::env::temp_dir().join("mcl-server-config-test-whitelist-add");
+        let _ = fs::create_dir_all(&dir);
+        let d = dir.to_string_lossy().to_string();
+
+        let entries = add_to_whitelist(&d, "LongOz").unwrap();
+        assert_eq!(entries, vec![WhitelistEntry { uuid: offline_uuid("LongOz"), name: "LongOz".to_string() }]);
+        // Persisted, not just returned.
+        assert_eq!(read_whitelist(&d), entries);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn refuses_a_name_already_on_the_list_case_insensitively() {
+        let dir = std::env::temp_dir().join("mcl-server-config-test-whitelist-dup");
+        let _ = fs::create_dir_all(&dir);
+        let d = dir.to_string_lossy().to_string();
+
+        add_to_whitelist(&d, "Pecora").unwrap();
+        assert!(add_to_whitelist(&d, "pecora").is_err());
+        assert_eq!(read_whitelist(&d).len(), 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn removes_by_name_case_insensitively() {
+        let dir = std::env::temp_dir().join("mcl-server-config-test-whitelist-remove");
+        let _ = fs::create_dir_all(&dir);
+        let d = dir.to_string_lossy().to_string();
+
+        add_to_whitelist(&d, "Panther096").unwrap();
+        let entries = remove_from_whitelist(&d, "panther096").unwrap();
+        assert!(entries.is_empty());
+        assert!(remove_from_whitelist(&d, "Panther096").is_err(), "already gone");
+
+        let _ = fs::remove_dir_all(&dir);
+    }
 }
 
 #[cfg(test)]
