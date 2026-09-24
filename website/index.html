@@ -59,7 +59,7 @@
         <div class="hero-copy">
           <p class="eyebrow" data-i18n="heroEyebrow">Launcher Minecraft cho nhóm bạn</p>
           <h1 data-i18n="heroTitle">Cài mod, chung skin, dựng server. Một launcher cho cả nhóm.</h1>
-          <p class="lead" data-i18n="heroLead">MCL tự cài mod loader và Java, cho cả nhóm thấy skin của nhau trong game, và giúp bạn dựng server trên máy mình hoặc trên VPS. Không quảng cáo, không thu thập dữ liệu.</p>
+          <p class="lead" data-i18n="heroLead">MCL tự cài mod loader và Java, cho cả nhóm thấy skin của nhau trong game, và giúp bạn dựng server trên máy mình, trên VPS, hoặc chỉ cần gửi một mã phòng P2P. Không quảng cáo, không thu thập dữ liệu.</p>
 
           <div class="download" id="download">
             <a class="btn-primary" id="dl-main" href="https://github.com/pecora31/MCL-Client/releases/latest">
@@ -131,6 +131,55 @@
       </div>
     </section>
 
+    <section class="p2p" id="p2p">
+      <div class="wrap p2p-grid">
+        <div class="p2p-copy">
+          <p class="eyebrow" data-i18n="p2pEyebrow">Phòng P2P</p>
+          <h2 data-i18n="p2pTitle">Không có server? Tạo phòng, gửi mã, vào chơi.</h2>
+          <p class="p2p-lead" data-i18n="p2pLead">Mở thế giới của bạn, bấm Tạo phòng rồi gửi mã mời cho bạn bè. MCL tự xuyên NAT để các máy nối thẳng với nhau, nên không cần mở port, không cần Radmin hay Hamachi, cũng không cần thuê VPS.</p>
+          <ul class="p2p-points">
+            <li>
+              <strong data-i18n="p2pPoint1Title">Nhanh như chơi LAN</strong>
+              <span data-i18n="p2pPoint1Body">Dữ liệu đi thẳng giữa các máy. Nếu mạng chặn kết nối thẳng, MCL tự chuyển qua relay để bạn vẫn vào được.</span>
+            </li>
+            <li>
+              <strong data-i18n="p2pPoint2Title">Phòng của bạn, bạn quản</strong>
+              <span data-i18n="p2pPoint2Body">Đặt mật khẩu, khoá phòng khi đủ người, xem ping từng người chơi.</span>
+            </li>
+            <li>
+              <strong data-i18n="p2pPoint3Title">Rớt mạng cũng không sao</strong>
+              <span data-i18n="p2pPoint3Body">Kết nối được mã hoá, kể cả khi đi qua relay, và tự nối lại khi mạng chập chờn.</span>
+            </li>
+          </ul>
+        </div>
+
+        <figure class="p2p-diagram" aria-hidden="true">
+          <svg viewBox="0 0 440 250" role="presentation">
+            <path class="relay-path" d="M92 150 C 120 40, 320 40, 348 150"/>
+            <rect class="relay-box" x="176" y="30" width="88" height="32" rx="8"/>
+            <text class="relay-label" x="220" y="51" text-anchor="middle" data-i18n="p2pDiagRelay">relay</text>
+
+            <line class="direct-path" x1="112" y1="170" x2="328" y2="170"/>
+            <text class="direct-label" x="220" y="160" text-anchor="middle" data-i18n="p2pDiagDirect">nối thẳng</text>
+
+            <g class="pc" transform="translate(40 136)">
+              <rect width="72" height="52" rx="6"/>
+              <rect class="pc-screen" x="6" y="6" width="60" height="34" rx="2"/>
+              <rect class="pc-stand" x="28" y="52" width="16" height="10"/>
+            </g>
+            <text class="pc-label" x="76" y="222" text-anchor="middle" data-i18n="p2pDiagHost">Bạn (chủ phòng)</text>
+
+            <g class="pc" transform="translate(328 136)">
+              <rect width="72" height="52" rx="6"/>
+              <rect class="pc-screen" x="6" y="6" width="60" height="34" rx="2"/>
+              <rect class="pc-stand" x="28" y="52" width="16" height="10"/>
+            </g>
+            <text class="pc-label" x="364" y="222" text-anchor="middle" data-i18n="p2pDiagFriend">Bạn bè</text>
+          </svg>
+        </figure>
+      </div>
+    </section>
+
     <section class="install" id="install">
       <div class="wrap">
         <p class="eyebrow" data-i18n="instEyebrow">Cài đặt</p>
@@ -188,7 +237,7 @@
         </details>
         <details>
           <summary data-i18n="q4">Vì sao bạn bè không vào được server của tôi?</summary>
-          <p><span data-i18n="a4">Tài khoản MCL mặc định là offline, nên server cần tắt online mode. Nếu vẫn không vào được, xem mục khắc phục sự cố.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
+          <p><span data-i18n="a4">Tài khoản MCL mặc định là offline, nên server cần tắt online mode. Nếu lỗi là do bạn bè không kết nối tới được máy bạn, thử tạo phòng P2P: không cần mở port. Vẫn không được thì xem mục khắc phục sự cố.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
         </details>
         <details>
           <summary data-i18n="q5">Game crash hoặc Forge báo lỗi khi cài?</summary>
