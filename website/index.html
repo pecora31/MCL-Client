@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MCL Client</title>
+  <meta name="description" content="Launcher Minecraft cho nhóm bạn: tự cài mod loader, cả nhóm thấy skin của nhau, tự dựng server. Miễn phí, không quảng cáo.">
+  <meta name="theme-color" content="#0c0f10">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="MCL Client">
+  <meta property="og:title" content="MCL Client">
+  <meta property="og:description" content="A Minecraft launcher for friend groups: mod loaders, shared skins, your own server.">
+  <meta property="og:url" content="https://mclclient.pages.dev/">
+  <meta property="og:image" content="https://mclclient.pages.dev/assets/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Silkscreen&display=swap">
+  <link rel="stylesheet" href="/styles.css">
+  <script>
+    // Apply the saved theme before first paint to avoid a flash.
+    try { var t = localStorage.getItem('mcl-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip" href="#main" data-i18n="skip">Bỏ qua điều hướng</a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="/" aria-label="MCL Client">
+        <img src="/assets/logo.png" alt="" width="32" height="32">
+        <span class="wordmark">MCL</span>
+      </a>
+      <nav class="nav-links" aria-label="Main">
+        <a href="#features" data-i18n="navFeatures">Tính năng</a>
+        <a href="#install" data-i18n="navInstall">Cài đặt</a>
+        <a href="#faq" data-i18n="navFaq">Hỏi đáp</a>
+        <a href="https://pecora31.github.io/MCL-Client/vi/" data-doc="" data-i18n="navDocs">Hướng dẫn</a>
+      </nav>
+      <div class="nav-tools">
+        <button class="tool" id="lang-toggle" type="button" aria-label="Switch language">EN</button>
+        <button class="tool" id="theme-toggle" type="button" aria-label="Toggle theme">
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </button>
+        <a class="tool" href="https://github.com/pecora31/MCL-Client" aria-label="GitHub">
+          <svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.72.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.26.45-2.28 1.19-3.09-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.83 1.19 3.09 0 4.41-2.69 5.38-5.26 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow" data-i18n="heroEyebrow">Launcher Minecraft cho nhóm bạn</p>
+          <h1 data-i18n="heroTitle">Cài mod, chung skin, dựng server. Một launcher cho cả nhóm.</h1>
+          <p class="lead" data-i18n="heroLead">MCL tự cài mod loader và Java, cho cả nhóm thấy skin của nhau trong game, và giúp bạn dựng server trên máy mình hoặc trên VPS. Không quảng cáo, không thu thập dữ liệu.</p>
+
+          <div class="download" id="download">
+            <a class="btn-primary" id="dl-main" href="https://github.com/pecora31/MCL-Client/releases/latest">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>
+              <span data-i18n="dlButton">Tải cho Windows</span>
+            </a>
+            <p class="dl-meta mono" id="dl-meta" data-i18n="dlLoading">Windows 10/11 · 64-bit</p>
+            <p class="dl-links">
+              <a id="dl-msi" href="https://github.com/pecora31/MCL-Client/releases/latest" data-i18n="dlMsi">Bản .msi</a>
+              <span aria-hidden="true">·</span>
+              <a id="dl-notes" href="https://github.com/pecora31/MCL-Client/releases/latest" data-i18n="dlNotes">Có gì mới</a>
+              <span aria-hidden="true">·</span>
+              <a href="https://github.com/pecora31/MCL-Client/releases" data-i18n="dlAll">Mọi phiên bản</a>
+            </p>
+            <p class="dl-note" id="dl-os-note" hidden data-i18n="dlOsNote">MCL hiện chỉ có bản cho Windows 10/11. Bạn vẫn có thể tải về để cài trên một máy Windows.</p>
+          </div>
+        </div>
+
+        <figure class="hero-shot">
+          <div class="shot-frame">
+            <img id="hero-shot" src="/assets/screenshot-home.webp"
+                 srcset="/assets/screenshot-home-800.webp 800w, /assets/screenshot-home.webp 1600w"
+                 sizes="(min-width: 900px) 620px, 100vw"
+                 alt="MCL Client home screen with the Play button and a NeoForge 1.21.1 profile" width="1600" height="900" loading="eager">
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <section class="features" id="features">
+      <div class="wrap">
+        <p class="eyebrow" data-i18n="featEyebrow">Tính năng</p>
+        <h2 data-i18n="featTitle">Những thứ bạn bè hay nhờ bạn cài, MCL làm sẵn</h2>
+
+        <div class="feat-grid">
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 7l9 5 9-5-9-5zM3 12l9 5 9-5M3 17l9 5 9-5"/></svg>
+            <h3 data-i18n="f1Title">Profile và mod loader</h3>
+            <p data-i18n="f1Body">Vanilla, Fabric, Forge, NeoForge, Quilt. Chọn phiên bản, MCL tự cài loader và đúng bản Java game cần.</p>
+          </article>
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <h3 data-i18n="f2Title">Tìm và cài mod</h3>
+            <p data-i18n="f2Body">Duyệt mod và modpack trên Modrinth, CurseForge, có cảnh báo xung đột. Kéo thả file .jar cũng được.</p>
+          </article>
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l1 4h3v4h-3v10H7V11H4V7h3l1-4z"/></svg>
+            <h3 data-i18n="f3Title">Skin cho cả nhóm</h3>
+            <p data-i18n="f3Body">Xem skin 3D trong Skin Studio. MCL tự cấu hình CustomSkinLoader để mọi người trên server thấy skin của nhau.</p>
+          </article>
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg>
+            <h3 data-i18n="f4Title">Tự dựng server</h3>
+            <p data-i18n="f4Body">Chạy server ngay trên máy bạn, hoặc quản lý server trên VPS qua MCL Agent: console, whitelist, backup, file.</p>
+          </article>
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg>
+            <h3 data-i18n="f5Title">Server Hub</h3>
+            <p data-i18n="f5Body">Lưu server, xem ping và số người chơi trực tiếp, bấm một lần là vào game.</p>
+          </article>
+          <article class="feat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
+            <h3 data-i18n="f6Title">Chia sẻ modpack</h3>
+            <p data-i18n="f6Body">Gửi cả bộ profile cho bạn bè bằng một mã chia sẻ. Họ dán mã là có đúng bộ mod như bạn.</p>
+          </article>
+        </div>
+
+        <p class="also" data-i18n="featAlso">Cũng có: dọn dẹp bộ nhớ một chạm, tự cập nhật, cờ JVM tối ưu sẵn, 8 ngôn ngữ giao diện.</p>
+      </div>
+    </section>
+
+    <section class="install" id="install">
+      <div class="wrap">
+        <p class="eyebrow" data-i18n="instEyebrow">Cài đặt</p>
+        <h2 data-i18n="instTitle">Từ lúc tải đến lúc vào game</h2>
+
+        <ol class="steps">
+          <li class="step">
+            <span class="step-n mono">1</span>
+            <div>
+              <h3 data-i18n="s1Title">Chạy bộ cài</h3>
+              <p><span data-i18n="s1Body">Mở file vừa tải về:</span> <code class="mono" id="dl-filename">MCL.Client_x64-setup.exe</code></p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-n mono">2</span>
+            <div>
+              <h3 data-i18n="s2Title">Qua cảnh báo SmartScreen</h3>
+              <p data-i18n="s2Body">MCL chưa ký bằng chứng chỉ trả phí nên Windows có thể cảnh báo. Bấm More info (Thêm thông tin), rồi Run anyway (Vẫn chạy).</p>
+              <div class="smartscreen" aria-hidden="true">
+                <div class="ss-title">Windows protected your PC</div>
+                <div class="ss-body">Microsoft Defender SmartScreen prevented an unrecognized app from starting.</div>
+                <div class="ss-link">More info</div>
+                <div class="ss-actions"><span class="ss-btn ss-run">Run anyway</span><span class="ss-btn">Don't run</span></div>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="step-n mono">3</span>
+            <div>
+              <h3 data-i18n="s3Title">Tạo profile và chơi</h3>
+              <p data-i18n="s3Body">Đặt tên người chơi, chọn phiên bản và mod loader, bấm Chơi. Lần đầu MCL sẽ tự tải game và Java.</p>
+            </div>
+          </li>
+        </ol>
+        <p class="more"><a href="https://pecora31.github.io/MCL-Client/vi/getting-started/" data-doc="getting-started/" data-i18n="instMore">Đọc hướng dẫn cài đặt đầy đủ</a></p>
+      </div>
+    </section>
+
+    <section class="faq" id="faq">
+      <div class="wrap narrow">
+        <p class="eyebrow" data-i18n="faqEyebrow">Hỏi đáp</p>
+        <h2 data-i18n="faqTitle">Câu hỏi thường gặp</h2>
+
+        <details>
+          <summary data-i18n="q1">MCL có an toàn không?</summary>
+          <p data-i18n="a1">Mã nguồn công khai trên GitHub, và PRIVACY.md liệt kê mọi kết nối launcher thực hiện. Cảnh báo SmartScreen chỉ xuất hiện vì bộ cài chưa được ký bằng chứng chỉ trả phí.</p>
+        </details>
+        <details>
+          <summary data-i18n="q2">Có mất phí không?</summary>
+          <p data-i18n="a2">Không. MCL miễn phí, không quảng cáo, không cần tạo tài khoản.</p>
+        </details>
+        <details>
+          <summary data-i18n="q3">Có phải tải lại mỗi khi có bản mới không?</summary>
+          <p data-i18n="a3">Không. Launcher tự báo khi có bản mới và cập nhật ngay trong app.</p>
+        </details>
+        <details>
+          <summary data-i18n="q4">Vì sao bạn bè không vào được server của tôi?</summary>
+          <p><span data-i18n="a4">Tài khoản MCL mặc định là offline, nên server cần tắt online mode. Nếu vẫn không vào được, xem mục khắc phục sự cố.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
+        </details>
+        <details>
+          <summary data-i18n="q5">Game crash hoặc Forge báo lỗi khi cài?</summary>
+          <p><span data-i18n="a5">Phần lớn do sai phiên bản Java. Thử đặt Java 21 cho profile đó và tránh các bản snapshot.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
+        </details>
+        <details>
+          <summary data-i18n="q6">Dùng trên macOS hoặc Linux được không?</summary>
+          <p data-i18n="a6">Chưa. Launcher hiện chỉ có bản Windows. Riêng MCL Agent (để host server từ xa) thì chạy trên VPS Linux.</p>
+        </details>
+      </div>
+    </section>
+
+    <section class="community" id="community">
+      <div class="wrap community-inner">
+        <div>
+          <h2 data-i18n="discTitle">Cần giúp? Hỏi trên Discord</h2>
+          <p data-i18n="discBody">Hỏi đáp, báo lỗi, khoe skin và tìm người chơi cùng.</p>
+        </div>
+        <div class="community-actions">
+          <a class="btn-discord" id="discord-link" href="#" aria-disabled="true">
+            <svg viewBox="0 0 24 24" aria-hidden="true" class="fill"><path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.3 18.3 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.7.1 18.2a19.9 19.9 0 0 0 6 3l1.3-2a13 13 0 0 1-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4-2 1 1.3 2a19.8 19.8 0 0 0 6-3c.5-5.2-.9-9.8-3.6-13.8zM8 15.4c-1.2 0-2.2-1.1-2.2-2.4S6.8 10.6 8 10.6s2.2 1.1 2.2 2.4-1 2.4-2.2 2.4zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4z"/></svg>
+            <span id="discord-label" data-i18n="discSoon">Discord sắp mở</span>
+          </a>
+          <a class="btn-ghost" href="https://github.com/pecora31/MCL-Client/issues" data-i18n="discIssues">Báo lỗi trên GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="wrap footer-inner">
+      <div class="footer-brand">
+        <span class="wordmark small">MCL</span>
+        <p data-i18n="footNote">MCL Client không liên kết với Mojang Studios hay Microsoft. Minecraft là thương hiệu của Mojang Synergies AB.</p>
+      </div>
+      <nav class="footer-links" aria-label="Footer">
+        <a href="https://pecora31.github.io/MCL-Client/vi/" data-doc="" data-i18n="navDocs">Hướng dẫn</a>
+        <a href="https://github.com/pecora31/MCL-Client">GitHub</a>
+        <a href="https://github.com/pecora31/MCL-Client/blob/main/PRIVACY.md" data-i18n="footPrivacy">Quyền riêng tư</a>
+        <a href="https://github.com/pecora31/MCL-Client/blob/main/LICENSE" data-i18n="footLicense">Giấy phép GPL-3.0</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script src="/i18n.js"></script>
+  <script src="/main.js"></script>
+</body>
+</html>
