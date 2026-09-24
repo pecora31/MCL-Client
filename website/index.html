@@ -134,12 +134,15 @@
     <section class="p2p" id="p2p">
       <div class="wrap p2p-grid">
         <div class="p2p-copy">
-          <p class="eyebrow" data-i18n="p2pEyebrow">Phòng P2P</p>
+          <div class="p2p-tag">
+            <p class="eyebrow" data-i18n="p2pEyebrow">Phòng P2P</p>
+            <span class="beta mono">Beta</span>
+          </div>
           <h2 data-i18n="p2pTitle">Không có server? Tạo phòng, gửi mã, vào chơi.</h2>
-          <p class="p2p-lead" data-i18n="p2pLead">Mở thế giới của bạn, bấm Tạo phòng rồi gửi mã mời cho bạn bè. MCL tự xuyên NAT để các máy nối thẳng với nhau, nên không cần mở port, không cần Radmin hay Hamachi, cũng không cần thuê VPS.</p>
+          <p class="p2p-lead" data-i18n="p2pLead">Mở thế giới của bạn, bấm Tạo phòng rồi gửi mã mời cho bạn bè. MCL tự xuyên NAT để các máy nối thẳng với nhau, nên không cần mở port hay thuê VPS.</p>
           <ul class="p2p-points">
             <li>
-              <strong data-i18n="p2pPoint1Title">Nhanh như chơi LAN</strong>
+              <strong data-i18n="p2pPoint1Title">Độ trễ gần như chơi LAN</strong>
               <span data-i18n="p2pPoint1Body">Dữ liệu đi thẳng giữa các máy. Nếu mạng chặn kết nối thẳng, MCL tự chuyển qua relay để bạn vẫn vào được.</span>
             </li>
             <li>
@@ -147,10 +150,11 @@
               <span data-i18n="p2pPoint2Body">Đặt mật khẩu, khoá phòng khi đủ người, xem ping từng người chơi.</span>
             </li>
             <li>
-              <strong data-i18n="p2pPoint3Title">Rớt mạng cũng không sao</strong>
-              <span data-i18n="p2pPoint3Body">Kết nối được mã hoá, kể cả khi đi qua relay, và tự nối lại khi mạng chập chờn.</span>
+              <strong data-i18n="p2pPoint3Title">Tự nối lại khi rớt mạng</strong>
+              <span data-i18n="p2pPoint3Body">Kết nối được mã hoá, kể cả khi đi qua relay. Mạng chập chờn thì MCL tự thử kết nối lại.</span>
             </li>
           </ul>
+          <p class="beta-note" data-i18n="p2pBetaNote">Phòng P2P đang ở giai đoạn beta và chưa hoàn thiện. Đôi khi bạn có thể gặp lỗi kết nối hoặc phải tạo lại phòng. Gặp lỗi thì báo giúp trên GitHub hoặc Discord để tính năng sớm ổn định.</p>
         </div>
 
         <figure class="p2p-diagram" aria-hidden="true">
@@ -237,7 +241,7 @@
         </details>
         <details>
           <summary data-i18n="q4">Vì sao bạn bè không vào được server của tôi?</summary>
-          <p><span data-i18n="a4">Tài khoản MCL mặc định là offline, nên server cần tắt online mode. Nếu lỗi là do bạn bè không kết nối tới được máy bạn, thử tạo phòng P2P: không cần mở port. Vẫn không được thì xem mục khắc phục sự cố.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
+          <p><span data-i18n="a4">Tài khoản MCL mặc định là offline, nên server cần tắt online mode. Nếu lỗi là do bạn bè không kết nối tới được máy bạn, thử tạo phòng P2P (beta): không cần mở port. Vẫn không được thì xem mục khắc phục sự cố.</span> <a href="https://pecora31.github.io/MCL-Client/vi/troubleshooting-and-faq/" data-doc="troubleshooting-and-faq/" data-i18n="readMore">Xem hướng dẫn</a></p>
         </details>
         <details>
           <summary data-i18n="q5">Game crash hoặc Forge báo lỗi khi cài?</summary>

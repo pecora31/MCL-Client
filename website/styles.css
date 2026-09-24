@@ -10,6 +10,7 @@
   --grass-bright: #2e9e46;
   --grass-soft: rgba(46, 158, 70, 0.12);
   --dirt: #74482a;
+  --dirt-text: #74482a;
   --on-grass: #ffffff;
   --shadow: 0 18px 40px -24px rgba(18, 40, 25, 0.35);
   --ss-bg: #0f5fa8;
@@ -39,6 +40,7 @@
     --grass-bright: #5cc160;
     --grass-soft: rgba(76, 175, 80, 0.14);
     --dirt: #8a5a36;
+    --dirt-text: #c99468;
     --on-grass: #07140a;
     --shadow: 0 24px 50px -28px rgba(0, 0, 0, 0.8);
     color-scheme: dark;
@@ -56,6 +58,7 @@
   --grass-bright: #5cc160;
   --grass-soft: rgba(76, 175, 80, 0.14);
   --dirt: #8a5a36;
+  --dirt-text: #c99468;
   --on-grass: #07140a;
   --shadow: 0 24px 50px -28px rgba(0, 0, 0, 0.8);
   color-scheme: dark;
@@ -323,4 +326,16 @@ details p { padding: 0 0 20px; color: var(--muted); max-width: 65ch; }
   html { scroll-behavior: auto; }
   .direct-path { animation: none; }
   .btn-primary { transition: none; }
+}
+
+/* Beta marker for the P2P rooms section. */
+.p2p-tag { display: flex; align-items: center; gap: 10px; }
+.p2p-tag .eyebrow { margin-bottom: 0; }
+.beta {
+  font-size: 0.68rem; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--dirt-text); border: 1px solid currentColor; border-radius: 4px; padding: 1px 6px;
+}
+.beta-note {
+  font-size: var(--step--1); color: var(--muted); max-width: 58ch;
+  border-left: 3px solid var(--dirt); padding: 4px 0 4px 12px; margin-top: 4px;
 }
