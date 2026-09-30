@@ -31,6 +31,7 @@
         <a href="#tieu-tien">Tiêu tiền</a>
         <a href="#thuoc-dia">Thuộc địa</a>
         <a href="#gia-ca">Giá cả</a>
+        <a href="#san">Sàn</a>
         <a href="#lo-trinh">Lộ trình</a>
         <a href="#hoi-dap">Hỏi đáp</a>
       </nav>
@@ -259,6 +260,50 @@
       </div>
     </section>
 
+    <section id="san" class="block wrap" aria-labelledby="t10">
+      <div class="block-head">
+        <h2 id="t10">Sàn giao dịch <span class="pill wait">Giai đoạn 3 và 4</span></h2>
+        <p class="muted">Nơi mua bán hàng hóa và cổ phiếu thuộc địa với giá nhảy từng giây. Muốn làm giàu bằng mua đi bán lại, gom hàng rồi xả, hay bán phá giá để đánh úp thị trường đều được. Nhưng thị trường có lực kéo ngược, nên phải giỏi mới thắng.</p>
+      </div>
+      <div class="cards2">
+        <div class="panel"><h3>Đặt lệnh như sàn thật</h3><p>Mỗi mặt hàng (sắt, đồng thau, vàng, lương thực...) và mỗi thuộc địa có sổ lệnh riêng. Có lệnh mua bán ngay, lệnh giới hạn giá, cắt lỗ, chốt lời. <strong>Long</strong> là mua chờ giá lên. <strong>Short</strong> là mượn của ngân hàng bán trước rồi mua lại sau, phải ký quỹ 150% và bị đóng lệnh tự động nếu lỗ quá mức.</p></div>
+        <div class="panel"><h3>Hàng nằm trong kho</h3><p>Bán thì gửi hàng vào kho ngân hàng, mua thì được ghi quyền sở hữu, cần dùng thì rút ra ở quầy. Mua bán cả trăm lần không phải mang vác.</p></div>
+        <div class="panel"><h3>Giá chạy theo tin thật</h3><p>Thuộc địa bị cướp, dân chết, xây xong đại học, dân tăng, báo cáo chi tiêu hằng ngày: giá cổ phiếu phản ứng ngay. Ai theo dõi sát, đoán trước được sẽ có lời.</p></div>
+        <div class="panel"><h3>Luôn có người mua bán</h3><p>Server ít người nên ngân hàng có một bot luôn treo lệnh mua và bán quanh giá trị hợp lý, lúc nào cũng giao dịch được.</p></div>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <h3>Thao túng được, nhưng có giá</h3>
+          <ul>
+            <li><strong>Phí lưu kho</strong> mỗi ngày, ôm hàng chờ giá không miễn phí.</li>
+            <li><strong>Người có máy farm</strong> sẽ bán vào khi bạn đẩy giá quá cao.</li>
+            <li><strong>Bot và dân thuộc địa</strong> mua khi rẻ bất thường, bán khi đắt bất thường.</li>
+            <li><strong>Biên độ ±7% mỗi ngày</strong> như sàn HOSE, có trần và sàn.</li>
+            <li><strong>Giới hạn nắm giữ và bán khống</strong> để không ai úp bô cả server.</li>
+            <li>Nguyên liệu thô luôn có ở kệ giá cố định, không đầu cơ được.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Luật chơi</h3>
+          <ul>
+            <li><strong>Được:</strong> ăn chênh lệch, gom hàng, xả hàng, đặt lệnh lớn hù dọa, tung tin đồn trong chat.</li>
+            <li><strong>Cấm:</strong> tài khoản phụ tự mua tự bán, nhân đôi đồ, lợi dụng lỗi của sàn.</li>
+            <li>Người giao dịch ẩn danh, chỉ thấy giá và khối lượng.</li>
+            <li>Hủy lệnh có phí nhỏ.</li>
+            <li>Thưởng nhiệm vụ, định giá đồ thế chấp và các con số chính thức dùng giá trung bình 7 ngày, nên đẩy giá vài phút không ăn thua.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top:16px"><table class="grid">
+        <thead><tr><th>Theo dõi ở đâu</th><th class="r">Độ trễ</th><th>Để làm gì</th></tr></thead>
+        <tbody>
+          <tr><td>Trong game: chat, thanh hành động, bảng trong cửa hàng</td><td class="r">tức thời</td><td>Nợ sắp hạn, nhiệm vụ gấp, đơn hàng được giao, đấu giá bị vượt</td></tr>
+          <tr><td>Web: biểu đồ nến, sổ lệnh</td><td class="r">vài giây</td><td>Theo dõi giá, đặt cảnh báo</td></tr>
+          <tr><td>Discord bot: /gia, /mua, /ban, cảnh báo, kênh tin tức</td><td class="r">tức thời</td><td>Đặt lệnh và nhận tin khi không ở trong game</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
     <section id="lo-trinh" class="block wrap" aria-labelledby="t7">
       <div class="block-head">
         <h2 id="t7">Lộ trình</h2>
@@ -267,8 +312,8 @@
       <ol class="stages">
         <li class="stage"><span class="stage-num">Giai đoạn 1 · <span class="pill wait">Đang chuẩn bị</span></span><h3>Nền móng</h3><p>Suzuran và menu, vay và điểm tín dụng, nhiệm vụ dễ và vừa, sổ tiết kiệm, đặt hàng và đặt việc, kho mở hàng, dịch vụ, nhu yếu phẩm, bảng giá trong cửa hàng.</p></li>
         <li class="stage"><span class="stage-num">Giai đoạn 2</span><h3>Chợ</h3><p>Kệ hàng từ nhiệm vụ, quầy ký gửi, đấu giá lô đồ hiếm mở hàng, thưởng bằng đồ, giá và lãi suất tự động, góp vốn công trình.</p></li>
-        <li class="stage"><span class="stage-num">Giai đoạn 3</span><h3>Giữ lửa</h3><p>Chuỗi ngày, danh hiệu và bảng vàng, nhiệm vụ may mắn, bộ sưu tập đồ hiếm, báo kinh tế trên bảng tin.</p></li>
-        <li class="stage"><span class="stage-num">Giai đoạn 4</span><h3>Mở rộng</h3><p>Cho thuê đồ, săn boss tập thể, xổ số kiến thiết, bảo hiểm đồ, sàn chứng khoán cho các thuộc địa.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 3</span><h3>Giữ lửa</h3><p>Chuỗi ngày, danh hiệu và bảng vàng, nhiệm vụ may mắn, bộ sưu tập đồ hiếm, báo kinh tế, Discord bot và thông báo tức thời, sàn hàng hóa.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 4</span><h3>Mở rộng</h3><p>Cho thuê đồ, săn boss tập thể, xổ số kiến thiết, bảo hiểm đồ, dân thuộc địa tiêu dùng, cổ phiếu thuộc địa và bán khống, hợp đồng kỳ hạn.</p></li>
       </ol>
     </section>
 

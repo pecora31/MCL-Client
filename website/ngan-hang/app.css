@@ -69,7 +69,9 @@ code { background: var(--surface-2); padding: 1px 5px; border-radius: 4px; }
 .nav-links { display: none; gap: 22px; }
 .nav-links a { text-decoration: none; color: var(--muted); font-weight: 500; font-size: 0.875rem; }
 .nav-links a:hover { color: var(--text); }
-@media (min-width: 760px) { .nav-links { display: flex; } }
+/* ten sections: show the links only where they fit on one line */
+.nav-links a { white-space: nowrap; }
+@media (min-width: 1100px) { .nav-links { display: flex; } }
 .nav-tools { margin-left: auto; }
 .tool { display: inline-flex; align-items: center; justify-content: center; height: 36px; width: 36px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
 .tool:hover { background: var(--surface-2); }
