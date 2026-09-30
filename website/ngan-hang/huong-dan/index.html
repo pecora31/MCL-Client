@@ -86,7 +86,7 @@
           <tr><td><code>/nganhang so</code></td><td>Sổ của bạn: số dư, điểm tín dụng, bậc, khoản vay, nhiệm vụ, tiết kiệm</td></tr>
           <tr><td><code>/nganhang gui</code></td><td>Gửi hết xu đang mang vào tài khoản</td></tr>
           <tr><td><code>/nhiemvu</code></td><td>Bảng nhiệm vụ hôm nay, bấm [Nhận] để nhận</td></tr>
-          <tr><td><code>/nhiemvu cua-toi</code></td><td>Nhiệm vụ đang làm, nộp lấy tiền (70%) hoặc lấy đồ (100%)</td></tr>
+          <tr><td><code>/nhiemvu cua-toi</code></td><td>Nhiệm vụ đang làm, nộp lấy tiền hoặc đồ trong kho cửa hàng (85% giá trị đơn)</td></tr>
           <tr><td><code>/vay</code> · <code>/vay muon 500</code></td><td>Xem hạn mức, vay tiền (lần đầu lãi 0%, hạn 7 ngày)</td></tr>
           <tr><td><code>/vay tra</code> · <code>/vay giahan</code> · <code>/vay nopdo</code></td><td>Trả nợ, gia hạn (từ bậc Bạc, phí 5%), nộp đồ đang cầm để trừ nợ khi trễ hạn</td></tr>
           <tr><td><code>/tietkiem gui 1000</code> · <code>/tietkiem rut 1000</code></td><td>Sổ tiết kiệm, lãi 0,1% mỗi tuần, rút lúc nào cũng được</td></tr>
@@ -97,6 +97,17 @@
           <tr><td><code>/daugia xem</code> · <code>/daugia tra 150</code></td><td>Phiên đấu giá đang mở, trả giá</td></tr>
         </tbody>
       </table></div>
+    </section>
+
+    <section id="vai-tro" class="block wrap" aria-labelledby="t2b">
+      <div class="block-head">
+        <h2 id="t2b">Cửa hàng và Ngân hàng</h2>
+        <p class="muted">Hai vai trò tách riêng như ngoài đời. Mọi mua bán đều qua màn hình của Aru ở quầy chính (bấm chuột phải vào Aru).</p>
+      </div>
+      <div class="split">
+        <div class="panel"><h3>Cửa hàng Bách hóa</h3><p>Một doanh nghiệp do server tự vận hành, có tài khoản riêng ở ngân hàng. Cửa hàng đăng nhiệm vụ, <strong>thu mua mọi món đồ</strong> bạn có (trừ nhu yếu phẩm và xu) với giá 70% giá tham chiếu, rồi bán lại. Món nào bị bán vào quá nhiều thì giá thu mua giảm dần, hàng tồn tự tiêu hao 25% mỗi tuần nên giá hồi lại. Thu nhập bán cho cửa hàng mỗi ngày: 1.000 đ đầu đủ giá, tới 3.000 đ nửa giá, sau đó 25%.</p></div>
+        <div class="panel"><h3>Ngân hàng MCL</h3><p>Chỉ quản lý tiền: tài khoản, tiết kiệm, cho vay (kể cả cho cửa hàng vay khi thiếu vốn), điểm tín dụng. Phần số dư trên 30.000 đ chịu phí 1% mỗi ngày, tiền trong sổ tiết kiệm không bị tính. Làm giàu được, nhưng tiền để yên quá nhiều thì hao dần, nên hãy tiêu, thuê người, gửi tiết kiệm hoặc đầu tư.</p></div>
+      </div>
     </section>
 
     <section id="vay" class="block wrap" aria-labelledby="t2">
@@ -151,7 +162,7 @@
         <li><strong>Tới hạn</strong>: ngân hàng tự trừ vào tài khoản của bạn.</li>
         <li><strong>Chưa đủ tiền</strong>: xin gia hạn một lần (phí 5%) từ bậc Bạc, hoặc trả góp nếu ở bậc Kim cương.</li>
         <li><strong>Vẫn thiếu</strong>: tiền thưởng nhiệm vụ sau này tự trừ nợ trước. Phạt trễ 2% mỗi ngày Minecraft.</li>
-        <li><strong>Quá hạn 7 ngày Minecraft</strong>: khóa vay và khóa mua ở ngân hàng. Bạn được <strong>tự chọn món đồ nộp</strong> cho vừa số nợ theo bảng giá ngân hàng; còn thiếu thì trừ dần mỗi khi bạn bán hàng cho ngân hàng. Chuộc lại đồ được trong 7 ngày Minecraft.</li>
+        <li><strong>Quá hạn 7 ngày Minecraft</strong>: khóa vay cho tới khi trả hết (vẫn mua bán bình thường, mọi khoản thu nhập tự trừ nợ). Bạn được <strong>tự chọn món đồ nộp</strong> cho vừa số nợ theo bảng giá ngân hàng; còn thiếu thì trừ dần mỗi khi bạn bán hàng cho ngân hàng. Chuộc lại đồ được trong 7 ngày Minecraft.</li>
       </ol>
     </section>
 
@@ -171,9 +182,9 @@
         </tbody>
       </table></div>
       <div class="cards3">
-        <div class="panel"><span class="pill">Chọn thưởng</span><h3>Tiền hay đồ</h3><p>Nộp xong bạn chọn nhận <strong>tiền mặt bằng 70% giá trị đơn</strong>, hoặc <strong>một món đồ ngân hàng tạo ra có giá trị bằng đủ 100%</strong>, định giá theo giá mua bán thật trên server. Nhiệm vụ khó nhất còn có phần thưởng độc quyền: danh hiệu, tượng trong cửa hàng, đồ khắc tên.</p></div>
+        <div class="panel"><span class="pill">Chọn thưởng</span><h3>Tiền hay đồ</h3><p>Nhiệm vụ là đơn đặt hàng của <strong>Cửa hàng Bách hóa</strong>. Nộp xong bạn chọn nhận <strong>tiền mặt bằng 85% giá trị đơn</strong>, hoặc <strong>đồ trong kho cửa hàng trị giá đúng bằng số đó</strong>. Đơn gấp và thưởng chuỗi ngày nâng lên, tối đa 95%. Nhiệm vụ khó nhất còn có phần thưởng độc quyền: danh hiệu, tượng trong cửa hàng, đồ khắc tên.</p></div>
         <div class="panel"><span class="pill">Theo bậc</span><h3>Nhiệm vụ lớn cho người uy tín</h3><p>Đồng nhận đơn tới 300 đ, Bạc tới 1.000 đ, Vàng tới 3.000 đ, Kim cương không giới hạn. Số nhiệm vụ nhận cùng lúc lần lượt 2, 3, 4, 5.</p></div>
-        <div class="panel"><span class="pill">Chuỗi ngày</span><h3>Làm đều được thưởng thêm</h3><p>Mỗi ngày Minecraft làm ít nhất một nhiệm vụ thì thưởng tăng dần, tới +25% ở ngày thứ 7. Bỏ một ngày là về lại từ đầu. Thỉnh thoảng có nhiệm vụ may mắn thưởng gấp đôi, gấp ba.</p></div>
+        <div class="panel"><span class="pill">Chuỗi ngày</span><h3>Làm đều được thưởng thêm</h3><p>Mỗi ngày Minecraft làm ít nhất một nhiệm vụ thì thưởng tăng dần (tối đa 95% giá trị đơn). Bỏ một ngày là về lại từ đầu. Lỡ tay nhận nhầm thì mỗi ngày Minecraft được bỏ miễn phí 1 đơn trong 5 phút đầu. Thỉnh thoảng có nhiệm vụ may mắn thưởng gấp đôi, gấp ba.</p></div>
       </div>
       <p class="note">Hàng mua từ ngân hàng không nộp lại vào nhiệm vụ được, và máy tự động không nhận hay nộp nhiệm vụ thay người.</p>
     </section>
