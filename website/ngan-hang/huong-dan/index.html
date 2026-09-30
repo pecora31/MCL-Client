@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ngân hàng MCL</title>
+  <meta name="description" content="Kế hoạch và hướng dẫn hệ thống kinh tế mới của server MCL: vay tiền, điểm tín dụng, nhiệm vụ, chợ đồ hiếm và giá cả theo lạm phát.">
+  <link rel="icon" type="image/png" href="/assets/logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Silkscreen&display=swap">
+  <link rel="stylesheet" href="../app.css">
+  <script>
+    try { var t = localStorage.getItem('mcl-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <a class="skip" href="#tong-quan">Bỏ qua điều hướng</a>
+
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <a class="brand" href="/">
+        <img src="/assets/logo.png" alt="" width="28" height="28">
+        <span class="wordmark small">MCL</span>
+      </a>
+      <nav class="nav-links" aria-label="Các phần">
+        <a href="#tong-quan">Tổng quan</a>
+        <a href="#vay">Vay tiền</a>
+        <a href="#nhiem-vu">Nhiệm vụ</a>
+        <a href="#do-hiem">Đồ hiếm</a>
+        <a href="#tieu-tien">Tiêu tiền</a>
+        <a href="#thuoc-dia">Thuộc địa</a>
+        <a href="#gia-ca">Giá cả</a>
+        <a href="#san">Sàn</a>
+        <a href="#lo-trinh">Lộ trình</a>
+        <a href="#hoi-dap">Hỏi đáp</a>
+      </nav>
+      <div class="nav-tools">
+        <button class="tool" id="theme-toggle" type="button" aria-label="Đổi giao diện sáng tối">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero wrap">
+      <p class="eyebrow">Kinh tế server MCL · kế hoạch và hướng dẫn</p>
+      <h1>Ngân hàng MCL</h1>
+      <p class="lead">Hệ thống kinh tế mới của server: vay tiền khi cần gấp, làm nhiệm vụ để kiếm tiền và uy tín, mua bán đồ hiếm với nhau, và giá cả lên xuống theo đúng lượng tiền trong server. Giao dịch viên là Suzuran ở quầy chính Cửa hàng Bách hóa, phía tây nhà pecora.</p>
+      <p class="status"><span class="pill wait">Đang triển khai</span> Ngân hàng ảo và đấu giá đã chạy, các phần khác mở dần theo Lộ trình. <a href="/ngan-hang/">Xem bảng giá trực tiếp</a></p>
+    </section>
+
+    <section id="tong-quan" class="block wrap" aria-labelledby="t1">
+      <div class="block-head">
+        <h2 id="t1">Tiền đi một vòng</h2>
+        <p class="muted">Không có máy nào cho không tiền. Mỗi đồng trong server đều có hàng thật hoặc một khoản nợ đứng sau, nên tiền không mất giá vô cớ.</p>
+      </div>
+      <ol class="loop">
+        <li><b>Làm nhiệm vụ</b>Giao hàng theo yêu cầu của ngân hàng, nhận tiền hoặc đồ, cộng điểm tín dụng.</li>
+        <li><b>Hàng lên kệ</b>Hàng từ nhiệm vụ được bày bán quanh sảnh cửa hàng.</li>
+        <li><b>Vay để mua</b>Thiếu tiền mà cần gấp thì vay theo hạn mức, mua ngay.</li>
+        <li><b>Trả nợ</b>Trả gốc và lãi. Trả đúng hạn thì uy tín tăng, lần sau vay được nhiều hơn.</li>
+        <li><b>Quay vòng</b>Tiền lãi ngân hàng thu được thành tiền thưởng nhiệm vụ tuần sau.</li>
+      </ol>
+      <div class="split">
+        <div class="panel">
+          <h3>Gặp Suzuran</h3>
+          <p>Bấm vào Suzuran ở quầy giữa sảnh để mở menu:</p>
+          <ul>
+            <li><strong>Vay tiền</strong>: xem hạn mức, vay, trả, xin gia hạn.</li>
+            <li><strong>Nhiệm vụ</strong>: xem bảng việc hôm nay, nhận và nộp.</li>
+            <li><strong>Sổ của tôi</strong>: nợ, điểm tín dụng, sổ tiết kiệm, đơn đặt hàng.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Để nhìn thấy Suzuran</h3>
+          <p>Máy của bạn cần mod <code>touhoulittlemaid-1.5.3</code> và gói model <code>yingbai_arknights_pack</code> trong thư mục <code>tlm_custom_pack</code>. Hồ sơ server trên launcher MCL sẽ được cập nhật để có sẵn hai thứ này. Chưa cài vẫn vào server được, chỉ không thấy đúng dáng nhân vật.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="vay" class="block wrap" aria-labelledby="t2">
+      <div class="block-head">
+        <h2 id="t2">Vay tiền và điểm tín dụng</h2>
+        <p class="muted">Vay để mua thứ cần ngay, không cần giải thích lý do. Người mới bắt đầu ở 300 điểm, bậc Đồng.</p>
+      </div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>Bậc</th><th class="r">Điểm</th><th class="r">Hạn mức</th><th class="r">Lãi 7 ngày</th><th>Quyền lợi</th></tr></thead>
+        <tbody>
+          <tr><td>Khóa</td><td class="r">dưới 200</td><td class="r">0 đ</td><td class="r">-</td><td>Làm nhiệm vụ để gỡ điểm</td></tr>
+          <tr><td>Đồng</td><td class="r">200 - 399</td><td class="r">300 đ</td><td class="r">10%</td><td>Khoản vay đầu tiên lãi 0%</td></tr>
+          <tr><td>Bạc</td><td class="r">400 - 599</td><td class="r">1.000 đ</td><td class="r">9%</td><td>Gia hạn 1 lần mỗi khoản</td></tr>
+          <tr><td>Vàng</td><td class="r">600 - 799</td><td class="r">2.500 đ</td><td class="r">7%</td><td>Đổi đồ hiếm bằng nhiệm vụ, xem hàng mới sớm</td></tr>
+          <tr><td>Kim cương</td><td class="r">từ 800</td><td class="r">5.000 đ</td><td class="r">5%</td><td>Trả góp 3 kỳ, tên trên bảng vàng</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Hạn mức thật là <strong>số nhỏ hơn</strong> giữa hạn mức của bậc và <span class="mono">300 đ + 1,5 × tổng tiền bạn đã trả đúng hạn</span>. Muốn vay lớn thì phải từng vay nhỏ và trả sòng phẳng trước. Khoản trên 1.000 đ cần gửi đồ thế chấp vào kho ngân hàng. Lãi và hạn mức còn thay đổi theo tình hình giá cả (phần Giá cả).</p>
+
+      <div class="split">
+        <div class="panel">
+          <h3>Điểm tín dụng lên xuống thế nào</h3>
+          <div class="table-wrap flat"><table class="grid">
+            <tbody>
+              <tr><td>Trả đúng hạn một khoản vay</td><td class="r good">+15 đến +40</td></tr>
+              <tr><td>Hoàn thành một nhiệm vụ</td><td class="r good">+ 3.000 ÷ (điểm + 100)</td></tr>
+              <tr><td>Chuộc lại đồ bị thu trong 7 ngày</td><td class="r good">+50</td></tr>
+              <tr><td>Trễ hạn, mỗi ngày</td><td class="r bad">−10</td></tr>
+              <tr><td>Nhận nhiệm vụ rồi bỏ dở</td><td class="r bad">−20</td></tr>
+              <tr><td>Vỡ nợ (quá hạn 7 ngày)</td><td class="r bad">−150</td></tr>
+            </tbody>
+          </table></div>
+          <p class="small muted">Điểm từ nhiệm vụ không có trần, cày bao nhiêu cũng được, nhưng càng lên cao mỗi nhiệm vụ cộng càng ít: ở 300 điểm được +7,5, ở 900 điểm còn +3.</p>
+        </div>
+        <div class="panel calc" aria-labelledby="c1">
+          <h3 id="c1">Tính thử</h3>
+          <label for="cur-score">Điểm hiện tại <output id="o-cur-score"></output></label>
+          <input type="range" id="cur-score" min="200" max="1000" step="10" value="300">
+          <p id="quest-need" class="calc-out"></p>
+          <hr>
+          <label for="loan-amt">Số tiền vay <output id="o-loan-amt"></output></label>
+          <input type="range" id="loan-amt" min="50" max="5000" step="50" value="300">
+          <label for="loan-late">Trả trễ <output id="o-loan-late"></output></label>
+          <input type="range" id="loan-late" min="0" max="7" step="1" value="0">
+          <p id="loan-out" class="calc-out"></p>
+        </div>
+      </div>
+
+      <h3 class="sub">Khi chưa trả được</h3>
+      <ol class="steps">
+        <li><strong>Tới hạn</strong>: ngân hàng tự trừ vào tài khoản của bạn.</li>
+        <li><strong>Chưa đủ tiền</strong>: xin gia hạn một lần (phí 5%) từ bậc Bạc, hoặc trả góp nếu ở bậc Kim cương.</li>
+        <li><strong>Vẫn thiếu</strong>: tiền thưởng nhiệm vụ sau này tự trừ nợ trước. Phạt trễ 2% mỗi ngày.</li>
+        <li><strong>Quá hạn 7 ngày</strong>: khóa vay và khóa mua ở ngân hàng. Lần vào game kế tiếp, đồ trong túi được thu vừa đủ số nợ theo bảng giá ngân hàng, có biên bản gửi bạn. Chuộc lại được trong 7 ngày.</li>
+      </ol>
+    </section>
+
+    <section id="nhiem-vu" class="block wrap" aria-labelledby="t3">
+      <div class="block-head">
+        <h2 id="t3">Nhiệm vụ</h2>
+        <p class="muted">Cách chính để kiếm tiền và uy tín. Bảng việc đổi mỗi ngày, rải đều trong ngày chứ không dồn vào một giờ.</p>
+      </div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>Loại</th><th>Ví dụ</th><th class="r">Hạn</th><th>Thưởng</th></tr></thead>
+        <tbody>
+          <tr><td>Dễ</td><td>2 lô than, 3 lô gỗ sồi</td><td class="r">24 giờ</td><td>Theo giá trị đơn</td></tr>
+          <tr><td>Vừa</td><td>2 lô khối đồng thau, 16 phôi thép</td><td class="r">48 giờ</td><td>Theo giá trị đơn</td></tr>
+          <tr><td>Khó</td><td>1 Void Core, 3 xương rồng</td><td class="r">7 ngày</td><td>Theo giá trị đơn, điểm tín dụng gấp đôi</td></tr>
+          <tr><td>Gấp</td><td>5 lô sắt trong 6 giờ, chỉ người đầu tiên</td><td class="r">6 giờ</td><td>Cao hơn thường</td></tr>
+          <tr><td>Công trình</td><td>Góp vật liệu xây ga tàu, đường sắt</td><td class="r">theo dự án</td><td>Chia theo phần đóng góp</td></tr>
+        </tbody>
+      </table></div>
+      <div class="cards3">
+        <div class="panel"><span class="pill">Chọn thưởng</span><h3>Tiền hay đồ</h3><p>Nộp xong bạn chọn nhận <strong>tiền mặt bằng 70% giá trị đơn</strong>, hoặc <strong>một món đồ ngân hàng tạo ra có giá trị bằng đủ 100%</strong>, định giá theo giá mua bán thật trên server. Nhiệm vụ khó nhất còn có phần thưởng độc quyền: danh hiệu, tượng trong cửa hàng, đồ khắc tên.</p></div>
+        <div class="panel"><span class="pill">Theo bậc</span><h3>Nhiệm vụ lớn cho người uy tín</h3><p>Đồng nhận đơn tới 300 đ, Bạc tới 1.000 đ, Vàng tới 3.000 đ, Kim cương không giới hạn. Số nhiệm vụ nhận cùng lúc lần lượt 2, 3, 4, 5.</p></div>
+        <div class="panel"><span class="pill">Chuỗi ngày</span><h3>Làm đều được thưởng thêm</h3><p>Mỗi ngày làm ít nhất một nhiệm vụ thì thưởng tăng dần, tới +25% ở ngày thứ 7. Bỏ một ngày là về lại từ đầu. Thỉnh thoảng có nhiệm vụ may mắn thưởng gấp đôi, gấp ba.</p></div>
+      </div>
+      <p class="note">Hàng mua từ ngân hàng không nộp lại vào nhiệm vụ được, và máy tự động không nhận hay nộp nhiệm vụ thay người.</p>
+    </section>
+
+    <section id="do-hiem" class="block wrap" aria-labelledby="t4">
+      <div class="block-head">
+        <h2 id="t4">Đồ hiếm</h2>
+        <p class="muted">Đồ hiếm không có sẵn trên kệ. Tiền của người muốn mua kéo người đi săn vào việc, còn ngân hàng chỉ đứng giữa giữ tiền và ghép đôi.</p>
+      </div>
+      <div class="cards2">
+        <div class="panel"><span class="pill">Mở giai đoạn 2</span><h3>Bảng đặt hàng</h3><p>Đặt đơn tại Suzuran, ví dụ "cần 1 Void Core, trả 1.500 đ, hạn 7 ngày". Tiền được giữ tạm ngay. Ai giao trước người đó nhận tiền, ngân hàng thu phí 5%. Hết hạn không ai giao thì hoàn tiền. Bảng đặt hàng nhận cả đặt việc (xem phần Tiêu tiền).</p></div>
+        <div class="panel"><span class="pill">Mở giai đoạn 2</span><h3>Quầy ký gửi</h3><p>Gửi bán đồ dư với giá bạn tự đặt, nằm trên kệ trong sảnh, bán được thì nhận tiền sau khi trừ 5%. Bảng trong cửa hàng ghi giá bán gần nhất của từng món để ai cũng biết giá thị trường.</p></div>
+        <div class="panel"><span class="pill">Sau này</span><h3>Cho thuê</h3><p>Vũ khí boss, Elytra, bùa phép thuê theo ngày, đặt cọc cao hơn giá món đồ. Trả đồ thì nhận lại cọc.</p></div>
+        <div class="panel"><span class="pill">Sau này</span><h3>Săn tập thể</h3><p>Ngân hàng mở đoàn săn boss, lo đồ triệu hồi và hậu cần, chiến lợi phẩm chia theo luật định trước.</p></div>
+      </div>
+
+      <h3 class="sub">Lô đồ hiếm mở hàng (đấu giá một lần)</h3>
+      <p class="muted small">Để chợ có hàng ngay từ đầu, ngân hàng đưa ra 33 món đồ hiếm, bán đấu giá một lần duy nhất, giá khởi điểm bằng giá trị thật. Số lượng dựa trên kiểm kê server ngày 30/9.</p>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>Mức</th><th>Món</th><th class="r">Số bán</th><th class="r">Khởi điểm</th></tr></thead>
+        <tbody>
+          <tr><td><span class="pill bad">Không bán</span></td><td>Trứng rồng, thép rồng, tim rồng lửa và băng, Cursium, Void Core, Essence of the Storm, Sol Visage, Earthrend Gauntlet</td><td class="r">0</td><td class="r">qua đặt hàng</td></tr>
+          <tr><td>Hiếm</td><td>Ignitium, Witherite, Enderite, Ancient Metal Ingot</td><td class="r">1 mỗi món</td><td class="r">400 đ</td></tr>
+          <tr><td>Hiếm</td><td>Monstrous Horn, Tectonic Shard, Void Worm Eye</td><td class="r">1 mỗi món</td><td class="r">1.000 đ</td></tr>
+          <tr><td>Hiếm</td><td>Wrought Helm, Ice Crystal</td><td class="r">1 mỗi món</td><td class="r">1.386 đ</td></tr>
+          <tr><td>Hiếm</td><td>Nether Star · Nanh Hydra</td><td class="r">1 mỗi món</td><td class="r">500 · 240 đ</td></tr>
+          <tr><td>Hiếm vừa</td><td>Tim rồng sét · Phylactery Shard</td><td class="r">2 mỗi món</td><td class="r">507 · 300 đ</td></tr>
+          <tr><td>Hiếm vừa</td><td>Mắt Cyclops, Nước mắt Siren, Mắt Cockatrice</td><td class="r">2 mỗi món</td><td class="r">240 đ</td></tr>
+          <tr><td>Hiếm vừa</td><td>Sọ rồng băng, lửa, sét</td><td class="r">2 mỗi món</td><td class="r">474 · 300 · 194 đ</td></tr>
+          <tr><td>Hiếm vừa</td><td>Echo Shard · Heart of the Sea · Vảy rồng đỏ</td><td class="r">2 mỗi món</td><td class="r">120 · 110 · 20 đ</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note"><strong>Ví dụ trứng rồng sét:</strong> cả server chưa có quả nào. Giá gốc tính bằng 2,5 lần công lấy một tim rồng sét (600 đ) là 1.500 đ, nhân phụ phí khan hiếm tối đa ×2, ra khoảng <strong>3.000 đ</strong>. Muốn có thì treo đơn đặt hàng, hoặc từ bậc Vàng tích đủ 3.000 đ giá trị nhiệm vụ để đổi (tối đa 1 quả mỗi tuần cho cả server, và không đổi được khi đang có đơn đặt trứng treo trên bảng).</p>
+    </section>
+
+    <section id="tieu-tien" class="block wrap" aria-labelledby="t5">
+      <div class="block-head">
+        <h2 id="t5">Tiền để làm gì</h2>
+        <p class="muted">Kiếm được tiền mà không có gì để mua thì vô nghĩa. Ngay từ ngày đầu tiền đã có những chỗ tiêu không cần kệ đầy hàng. Đất đai vẫn miễn phí, ai muốn làm gì trên đất của mình thì làm.</p>
+      </div>
+      <div class="cards3">
+        <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Đặt việc</h3><p>Thuê người khác xây, đào, làm hộ: "xây giúp cây cầu, 500 đ". Tiền giữ tạm, xong việc và bạn xác nhận thì người làm nhận tiền.</p></div>
+        <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Sổ tiết kiệm</h3><p>Gửi tiền nhận lãi mỗi tuần, rút lúc nào cũng được. Tiền nằm yên cũng sinh lời.</p></div>
+        <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Kho mở hàng</h3><p>Sáu tuần đầu ngân hàng bán một ít hàng phổ thông, số lượng giảm dần mỗi tuần (100%, 80%, 60%, 40%, 20%, rồi dừng) để nhường chỗ cho hàng của người chơi.</p></div>
+        <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Dịch vụ</h3><p>Quyền dùng máy phát đá tốc độ cao, dịch chuyển tới các ga, thuê cô hầu gái làm quản gia, thuê sạp trong cửa hàng để tự bán hàng.</p></div>
+        <div class="panel"><span class="pill ok">Luôn có</span><h3>Nhu yếu phẩm</h3><p>Nguyên liệu thô luôn có sẵn, giá rẻ: đá cuội, đất, cát, sỏi, đất sét, than, gỗ, thịt sống, táo.</p></div>
+        <div class="panel"><span class="pill">Giai đoạn 2</span><h3>Góp vốn và danh vọng</h3><p>Góp tiền xây đường sắt, nhà ga rồi được chia phí sử dụng. Đặt tên đường, cầu, ga; tượng và danh hiệu trong cửa hàng.</p></div>
+      </div>
+    </section>
+
+    <section id="thuoc-dia" class="block wrap" aria-labelledby="t9">
+      <div class="block-head">
+        <h2 id="t9">Dân thuộc địa tiêu dùng <span class="pill wait">Đang nghiên cứu</span></h2>
+        <p class="muted">Dân MineColonies sẽ thành người mua cuối cùng của nền kinh tế, giống dân trong Anno 1800. Thuộc địa càng đông, dân sống càng tốt thì mua càng nhiều và đòi hàng càng cao cấp. Hàng dân mua bị dùng hết, nên chợ luôn có đầu ra.</p>
+      </div>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>Tầng nhu cầu</th><th>Mở khi</th><th>Ví dụ hàng</th></tr></thead>
+        <tbody>
+          <tr><td>Cơ bản</td><td>Mọi thuộc địa</td><td>Bánh mì, thịt nướng, gỗ, than</td></tr>
+          <tr><td>Tiện nghi</td><td>Nhà cấp 2 trở lên, hạnh phúc từ 6</td><td>Món Farmer's Delight, len, kính, đèn</td></tr>
+          <tr><td>Xa xỉ</td><td>Nhà cấp 3, có quán rượu</td><td>Đồ đồng thau, đồ trang trí Create, sách, rượu</td></tr>
+          <tr><td>Thượng lưu</td><td>Nhà cấp 4-5, có đại học</td><td>Vàng, trang sức, vảy rồng, đồ hiếm</td></tr>
+        </tbody>
+      </table></div>
+      <p class="note">Nhu cầu của dân hiện thành nhiệm vụ ở bảng của Suzuran, ví dụ "Dân Cao Bằng cần 3 lô bánh mì, trả 90 đ". Chủ thuộc địa được chia một phần như tiền thuế. Các con số đang được nghiên cứu, sẽ cập nhật sau.</p>
+    </section>
+
+    <section id="gia-ca" class="block wrap" aria-labelledby="t6">
+      <div class="block-head">
+        <h2 id="t6">Giá cả và lạm phát</h2>
+        <p class="muted">Mỗi tối server so lượng tiền đang lưu hành với lượng hàng thật được làm ra trong tuần. Tiền nhiều hơn hàng thì mọi giá trên bảng tăng, tiền khan thì giá giảm. Bạn sẽ thấy rõ điều đó trên các bảng trong cửa hàng.</p>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <h3>Điều gì làm giá tăng</h3>
+          <ul>
+            <li><strong>Nhiều người vỡ nợ</strong>: tiền đã cho vay ra mà không có hàng đứng sau.</li>
+            <li><strong>Ít người làm nhiệm vụ</strong>: hàng làm ra ít đi.</li>
+          </ul>
+          <h3>Ngân hàng phản ứng thế nào</h3>
+          <ul>
+            <li>Lạm phát cao: tăng lãi suất, siết hạn mức vay, tăng lãi sổ tiết kiệm để mọi người gửi tiền thay vì tiêu.</li>
+            <li>Giá giảm quá: hạ lãi, nới hạn mức.</li>
+            <li>Giá không đổi quá 15% mỗi tuần, để một người phá không làm sập cả server.</li>
+          </ul>
+          <p class="small muted">Bảng tin trong cửa hàng đăng mỗi tuần, ví dụ: "Lạm phát tuần này 8%, lãi suất lên 12%".</p>
+        </div>
+        <div class="panel sim">
+          <h3>Mô phỏng 12 tuần</h3>
+          <div class="chips" role="group" aria-label="Kịch bản">
+            <button type="button" class="chip" id="p-normal" aria-pressed="true">Bình thường</button>
+            <button type="button" class="chip" id="p-default" aria-pressed="false">Nhiều vỡ nợ</button>
+            <button type="button" class="chip" id="p-greedy" aria-pressed="false">Ngân hàng ôm tiền</button>
+          </div>
+          <label for="s-default">Tỉ lệ vỡ nợ <output id="o-default"></output></label>
+          <input type="range" id="s-default" min="0" max="60" step="5">
+          <label for="s-quest">Tiền thưởng nhiệm vụ so với thu tuần trước <output id="o-quest"></output></label>
+          <input type="range" id="s-quest" min="20" max="140" step="10">
+          <canvas id="chart" role="img" aria-label="Chỉ số giá và tiền lưu hành trong 12 tuần"></canvas>
+          <p class="legend"><span><i class="lg price"></i>Chỉ số giá</span><span><i class="lg money"></i>Tiền lưu hành</span></p>
+          <p id="sim-out" class="calc-out"></p>
+          <p class="small muted">Mô hình đơn giản để thấy xu hướng, không phải số liệu thật.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="san" class="block wrap" aria-labelledby="t10">
+      <div class="block-head">
+        <h2 id="t10">Sàn giao dịch <span class="pill wait">Giai đoạn 3 và 4</span></h2>
+        <p class="muted">Nơi mua bán hàng hóa và cổ phiếu thuộc địa với giá nhảy từng giây. Muốn làm giàu bằng mua đi bán lại, gom hàng rồi xả, hay bán phá giá để đánh úp thị trường đều được. Nhưng thị trường có lực kéo ngược, nên phải giỏi mới thắng.</p>
+      </div>
+      <div class="cards2">
+        <div class="panel"><h3>Đặt lệnh như sàn thật</h3><p>Mỗi mặt hàng (sắt, đồng thau, vàng, lương thực...) và mỗi thuộc địa có sổ lệnh riêng. Có lệnh mua bán ngay, lệnh giới hạn giá, cắt lỗ, chốt lời. <strong>Long</strong> là mua chờ giá lên. <strong>Short</strong> là mượn của ngân hàng bán trước rồi mua lại sau, phải ký quỹ 150% và bị đóng lệnh tự động nếu lỗ quá mức.</p></div>
+        <div class="panel"><h3>Hàng nằm trong kho</h3><p>Bán thì gửi hàng vào kho ngân hàng, mua thì được ghi quyền sở hữu, cần dùng thì rút ra ở quầy. Mua bán cả trăm lần không phải mang vác.</p></div>
+        <div class="panel"><h3>Giá chạy theo tin thật</h3><p>Thuộc địa bị cướp, dân chết, xây xong đại học, dân tăng, báo cáo chi tiêu hằng ngày: giá cổ phiếu phản ứng ngay. Ai theo dõi sát, đoán trước được sẽ có lời.</p></div>
+        <div class="panel"><h3>Luôn có người mua bán</h3><p>Server ít người nên ngân hàng có một bot luôn treo lệnh mua và bán quanh giá trị hợp lý, lúc nào cũng giao dịch được.</p></div>
+      </div>
+      <div class="split">
+        <div class="panel">
+          <h3>Thao túng được, nhưng có giá</h3>
+          <ul>
+            <li><strong>Phí lưu kho</strong> mỗi ngày, ôm hàng chờ giá không miễn phí.</li>
+            <li><strong>Người có máy farm</strong> sẽ bán vào khi bạn đẩy giá quá cao.</li>
+            <li><strong>Bot và dân thuộc địa</strong> mua khi rẻ bất thường, bán khi đắt bất thường.</li>
+            <li><strong>Biên độ ±7% mỗi ngày</strong> như sàn HOSE, có trần và sàn.</li>
+            <li><strong>Giới hạn nắm giữ và bán khống</strong> để không ai úp bô cả server.</li>
+            <li>Nguyên liệu thô luôn có ở kệ giá cố định, không đầu cơ được.</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h3>Luật chơi</h3>
+          <ul>
+            <li><strong>Được:</strong> ăn chênh lệch, gom hàng, xả hàng, đặt lệnh lớn hù dọa, tung tin đồn trong chat.</li>
+            <li><strong>Cấm:</strong> tài khoản phụ tự mua tự bán, nhân đôi đồ, lợi dụng lỗi của sàn.</li>
+            <li>Người giao dịch ẩn danh, chỉ thấy giá và khối lượng.</li>
+            <li>Hủy lệnh có phí nhỏ.</li>
+            <li>Thưởng nhiệm vụ, định giá đồ thế chấp và các con số chính thức dùng giá trung bình 7 ngày, nên đẩy giá vài phút không ăn thua.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="table-wrap" style="margin-top:16px"><table class="grid">
+        <thead><tr><th>Theo dõi ở đâu</th><th class="r">Độ trễ</th><th>Để làm gì</th></tr></thead>
+        <tbody>
+          <tr><td>Trong game: chat, thanh hành động, bảng trong cửa hàng</td><td class="r">tức thời</td><td>Nợ sắp hạn, nhiệm vụ gấp, đơn hàng được giao, đấu giá bị vượt</td></tr>
+          <tr><td>Web: biểu đồ nến, sổ lệnh</td><td class="r">vài giây</td><td>Theo dõi giá, đặt cảnh báo</td></tr>
+          <tr><td>Discord bot: /gia, /mua, /ban, cảnh báo, kênh tin tức</td><td class="r">tức thời</td><td>Đặt lệnh và nhận tin khi không ở trong game</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="lo-trinh" class="block wrap" aria-labelledby="t7">
+      <div class="block-head">
+        <h2 id="t7">Lộ trình</h2>
+        <p class="muted">Mở từng phần để kịp sửa theo góp ý. Trạng thái sẽ được cập nhật ở đây.</p>
+      </div>
+      <ol class="stages">
+        <li class="stage"><span class="stage-num">Giai đoạn 1 · <span class="pill wait">Đang chuẩn bị</span></span><h3>Nền móng</h3><p>Suzuran và menu, vay và điểm tín dụng, nhiệm vụ dễ và vừa, sổ tiết kiệm, đặt hàng và đặt việc, kho mở hàng, dịch vụ, nhu yếu phẩm, bảng giá trong cửa hàng.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 2</span><h3>Chợ</h3><p>Kệ hàng từ nhiệm vụ, quầy ký gửi, đấu giá lô đồ hiếm mở hàng, thưởng bằng đồ, giá và lãi suất tự động, góp vốn công trình.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 3</span><h3>Giữ lửa</h3><p>Chuỗi ngày, danh hiệu và bảng vàng, nhiệm vụ may mắn, bộ sưu tập đồ hiếm, báo kinh tế, Discord bot và thông báo tức thời, sàn hàng hóa.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 4</span><h3>Mở rộng</h3><p>Cho thuê đồ, săn boss tập thể, xổ số kiến thiết, bảo hiểm đồ, dân thuộc địa tiêu dùng, cổ phiếu thuộc địa và bán khống, hợp đồng kỳ hạn.</p></li>
+      </ol>
+    </section>
+
+    <section id="hoi-dap" class="block wrap" aria-labelledby="t8">
+      <div class="block-head"><h2 id="t8">Hỏi đáp</h2></div>
+      <div class="faq">
+        <details><summary>Tiền cũ của tôi có mất không?</summary><p>Chưa quyết định. Ý kiến của mọi người sẽ được hỏi trước khi mở giai đoạn 1.</p></details>
+        <details><summary>Không vay có chơi được không?</summary><p>Được. Vay chỉ để mua gấp. Làm nhiệm vụ, bán đồ ký gửi, nhận đặt việc đều kiếm được tiền mà không cần nợ ai.</p></details>
+        <details><summary>Tôi lỡ trễ hạn thì sao?</summary><p>Mỗi ngày trễ trừ 10 điểm và phạt 2% số nợ. Bạn có tới 7 ngày để trả trước khi bị thu đồ, và vẫn chuộc lại đồ được trong 7 ngày sau đó. Thỉnh thoảng sẽ có ngày ân xá giảm phạt.</p></details>
+        <details><summary>Tại sao nhận đồ lại được nhiều hơn nhận tiền?</summary><p>Vì nhận đồ không làm tăng lượng tiền trong server, giúp giữ giá ổn định. Ngân hàng thưởng cho lựa chọn đó.</p></details>
+        <details><summary>Ngân hàng có tự in tiền không?</summary><p>Tiền mới chỉ sinh ra khi có người vay, và biến mất khi khoản vay được trả. Tiền thưởng nhiệm vụ lấy từ tiền lãi ngân hàng thu được tuần trước.</p></details>
+        <details><summary>Có cần làm gì để thấy Suzuran?</summary><p>Cập nhật hồ sơ server trên launcher MCL khi có thông báo, để có mod Touhou Little Maid và gói model. Chưa cài vẫn giao dịch được, chỉ không thấy đúng dáng.</p></details>
+        <details><summary>Góp ý ở đâu?</summary><p>Nhắn thẳng cho pecora trong game hoặc nhóm chat của server. Các con số trên trang đều có thể chỉnh trước khi mở.</p></details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer wrap">
+    <a href="/">MCL Client</a>
+    <a href="/ngan-hang/">Bảng giá trực tiếp</a>
+    <a href="/minecolonies/">Trợ lý MineColonies</a>
+    <span class="muted">Ngân hàng MCL · bản kế hoạch, các con số có thể thay đổi trước khi mở.</span>
+  </footer>
+
+  <script src="../app.js"></script>
+</body>
+</html>
