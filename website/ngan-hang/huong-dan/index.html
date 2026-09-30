@@ -48,7 +48,7 @@
       <p class="eyebrow">Kinh tế server MCL · kế hoạch và hướng dẫn</p>
       <h1>Ngân hàng MCL</h1>
       <p class="lead">Hệ thống kinh tế mới của server: vay tiền khi cần gấp, làm nhiệm vụ để kiếm tiền và uy tín, mua bán đồ hiếm với nhau, và giá cả lên xuống theo đúng lượng tiền trong server. Giao dịch viên là Suzuran ở quầy chính Cửa hàng Bách hóa, phía tây nhà pecora.</p>
-      <p class="status"><span class="pill wait">Đang triển khai</span> Ngân hàng ảo và đấu giá đã chạy, các phần khác mở dần theo Lộ trình. <a href="/ngan-hang/">Xem bảng giá trực tiếp</a></p>
+      <p class="status"><span class="pill ok">Đã mở</span> Vay, nhiệm vụ, tiết kiệm, kho hàng, đặt hàng, đặt việc và đấu giá đã chạy. <a href="#lenh">Xem lệnh</a> · <a href="/ngan-hang/">Xem bảng giá trực tiếp</a></p>
     </section>
 
     <section id="tong-quan" class="block wrap" aria-labelledby="t1">
@@ -78,6 +78,25 @@
           <p>Máy của bạn cần mod <code>touhoulittlemaid-1.5.3</code> và gói model <code>yingbai_arknights_pack</code> trong thư mục <code>tlm_custom_pack</code>. Hồ sơ server trên launcher MCL sẽ được cập nhật để có sẵn hai thứ này. Chưa cài vẫn vào server được, chỉ không thấy đúng dáng nhân vật.</p>
         </div>
       </div>
+      <h3 id="lenh">Lệnh gõ trong game</h3>
+      <p class="muted small">Menu của Suzuran bấm được, nhưng gõ lệnh cũng ra y hệt. Ngày và tuần là thời gian Minecraft (1 ngày = 20 phút). Hạn vay và hạn nhiệm vụ chỉ trôi lúc bạn đang online.</p>
+      <div class="table-wrap"><table class="grid">
+        <thead><tr><th>Lệnh</th><th>Làm gì</th></tr></thead>
+        <tbody>
+          <tr><td><code>/nganhang so</code></td><td>Sổ của bạn: số dư, điểm tín dụng, bậc, khoản vay, nhiệm vụ, tiết kiệm</td></tr>
+          <tr><td><code>/nganhang gui</code></td><td>Gửi hết xu đang mang vào tài khoản</td></tr>
+          <tr><td><code>/nhiemvu</code></td><td>Bảng nhiệm vụ hôm nay, bấm [Nhận] để nhận</td></tr>
+          <tr><td><code>/nhiemvu cua-toi</code></td><td>Nhiệm vụ đang làm, nộp lấy tiền (70%) hoặc lấy đồ (100%)</td></tr>
+          <tr><td><code>/vay</code> · <code>/vay muon 500</code></td><td>Xem hạn mức, vay tiền (lần đầu lãi 0%, hạn 7 ngày)</td></tr>
+          <tr><td><code>/vay tra</code> · <code>/vay giahan</code> · <code>/vay nopdo</code></td><td>Trả nợ, gia hạn (từ bậc Bạc, phí 5%), nộp đồ đang cầm để trừ nợ khi trễ hạn</td></tr>
+          <tr><td><code>/tietkiem gui 1000</code> · <code>/tietkiem rut 1000</code></td><td>Sổ tiết kiệm, lãi 0,1% mỗi tuần, rút lúc nào cũng được</td></tr>
+          <tr><td><code>/cuahang</code></td><td>Kho hàng mở bán theo tuần (khối kim loại, xương rồng...), bấm [Mua 1 lô]</td></tr>
+          <tr><td><code>/dathang tao 16 300 minecraft:diamond</code></td><td>Đặt người chơi khác tìm đồ (gõ <code>tay</code> thay mã đồ để lấy món đang cầm). Tiền giữ tạm, phí 5%</td></tr>
+          <tr><td><code>/dathang</code> · <code>/dathang giao 3</code></td><td>Xem đơn, giao hàng cho đơn số 3 để nhận tiền</td></tr>
+          <tr><td><code>/datviec tao 500 xây giúp cây cầu</code></td><td>Thuê người làm việc, <code>/datviec</code> để xem, nhận và xác nhận xong</td></tr>
+          <tr><td><code>/daugia xem</code> · <code>/daugia tra 150</code></td><td>Phiên đấu giá đang mở, trả giá</td></tr>
+        </tbody>
+      </table></div>
     </section>
 
     <section id="vay" class="block wrap" aria-labelledby="t2">
@@ -199,7 +218,7 @@
         <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Đặt việc</h3><p>Thuê người khác xây, đào, làm hộ: "xây giúp cây cầu, 500 đ". Tiền giữ tạm, xong việc và bạn xác nhận thì người làm nhận tiền.</p></div>
         <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Sổ tiết kiệm</h3><p>Gửi tiền nhận lãi mỗi tuần, rút lúc nào cũng được. Tiền nằm yên cũng sinh lời.</p></div>
         <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Kho mở hàng</h3><p>Trong 30 tuần Minecraft đầu (khoảng 3 ngày thật) ngân hàng bán một ít hàng phổ thông theo lô 16 khối, số lượng giảm dần mỗi tuần để nhường chỗ cho hàng của người chơi. Lịch chi tiết ở bảng giá trực tiếp.</p></div>
-        <div class="panel"><span class="pill ok">Giai đoạn 1</span><h3>Dịch vụ</h3><p>Quyền dùng máy phát đá tốc độ cao, dịch chuyển tới các ga, thuê cô hầu gái làm quản gia, thuê sạp trong cửa hàng để tự bán hàng.</p></div>
+        <div class="panel"><span class="pill wait">Sắp có</span><h3>Dịch vụ</h3><p>Quyền dùng máy phát đá tốc độ cao, dịch chuyển tới các ga, thuê cô hầu gái làm quản gia, thuê sạp trong cửa hàng để tự bán hàng.</p></div>
         <div class="panel"><span class="pill ok">Luôn có</span><h3>Nhu yếu phẩm</h3><p>Nguyên liệu thô luôn có sẵn, giá rẻ: đá cuội, đất, cát, sỏi, đất sét, than, gỗ, thịt sống, táo.</p></div>
         <div class="panel"><span class="pill">Giai đoạn 2</span><h3>Góp vốn và danh vọng</h3><p>Góp tiền xây đường sắt, nhà ga rồi được chia phí sử dụng. Đặt tên đường, cầu, ga; tượng và danh hiệu trong cửa hàng.</p></div>
       </div>
@@ -311,7 +330,7 @@
         <p class="muted">Mở từng phần để kịp sửa theo góp ý. Trạng thái sẽ được cập nhật ở đây.</p>
       </div>
       <ol class="stages">
-        <li class="stage"><span class="stage-num">Giai đoạn 1 · <span class="pill wait">Đang chuẩn bị</span></span><h3>Nền móng</h3><p>Suzuran và menu, vay và điểm tín dụng, nhiệm vụ dễ và vừa, sổ tiết kiệm, đặt hàng và đặt việc, kho mở hàng, dịch vụ, nhu yếu phẩm, bảng giá trong cửa hàng.</p></li>
+        <li class="stage"><span class="stage-num">Giai đoạn 1 · <span class="pill ok">Đang chạy</span></span><h3>Nền móng</h3><p>Suzuran và menu, vay và điểm tín dụng, nhiệm vụ dễ và vừa, sổ tiết kiệm, đặt hàng và đặt việc, kho mở hàng, dịch vụ, nhu yếu phẩm, bảng giá trong cửa hàng.</p></li>
         <li class="stage"><span class="stage-num">Giai đoạn 2</span><h3>Chợ</h3><p>Kệ hàng từ nhiệm vụ, quầy ký gửi, đấu giá lô đồ hiếm mở hàng, thưởng bằng đồ, giá và lãi suất tự động, góp vốn công trình.</p></li>
         <li class="stage"><span class="stage-num">Giai đoạn 3</span><h3>Giữ lửa</h3><p>Chuỗi ngày, danh hiệu và bảng vàng, nhiệm vụ may mắn, bộ sưu tập đồ hiếm, báo kinh tế, Discord bot và thông báo tức thời, sàn hàng hóa.</p></li>
         <li class="stage"><span class="stage-num">Giai đoạn 4</span><h3>Mở rộng</h3><p>Cho thuê đồ, săn boss tập thể, xổ số kiến thiết, bảo hiểm đồ, dân thuộc địa tiêu dùng, cổ phiếu thuộc địa và bán khống, hợp đồng kỳ hạn.</p></li>
