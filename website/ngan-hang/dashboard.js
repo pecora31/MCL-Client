@@ -118,6 +118,15 @@
     $('k-treasury').textContent = money(m.treasury);
     $('k-escrow').textContent = money(m.escrow);
     $('k-accounts').textContent = num(m.accounts);
+    var ec = d.econ || {}, st = d.store || {};
+    if (ec.cpi) {
+      $('k-cpi').textContent = Number(ec.cpi).toFixed(2).replace('.', ',');
+      $('k-cpi-sub').textContent = ec.activeDays ? 'lạm phát kỳ trước ' + (ec.inflation * 100).toFixed(1).replace('.', ',') + '% · dân NPC chi ' + (ec.npcRate * 100).toFixed(2).replace('.', ',') + '% mỗi ngày MC có người' : 'mốc khởi đầu, tính từ khi ngân hàng mở';
+    }
+    if (st.balance != null) {
+      $('k-store').textContent = money(st.balance);
+      $('k-store-sub').textContent = 'nợ ngân hàng ' + money(st.debt || 0) + ' · hàng trong kho ' + money(st.stockValue || 0);
+    }
     $('k-accounts-sub').textContent = m.starterCount ? m.starterCount + ' người nhận tiền khởi đầu' : '';
     var sv = d.server || {};
     $('server-line').textContent = 'Server ' + (sv.state === 'running' ? 'đang chạy' : sv.state === 'unknown' ? 'không rõ' : 'đang tắt') + ' · ' + (sv.online || 0) + '/' + (sv.max || 20) + ' người online';
