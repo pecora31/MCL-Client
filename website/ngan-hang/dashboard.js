@@ -156,10 +156,13 @@
     $('ess-body').innerHTML = (mk.essentials || []).map(function (e) {
       return '<tr><td>' + esc(e.name) + '</td><td class="r">' + e.lot + '</td><td class="r">' + money(e.price) + '</td></tr>';
     }).join('');
-    var cm = mk.commons || { weekShares: [], items: [] };
-    $('commons-head').innerHTML = '<tr><th>Mặt hàng</th><th class="r">Giá mỗi lô</th>' + cm.weekShares.map(function (s, i) { return '<th class="r">Tuần ' + (i + 1) + '</th>'; }).join('') + '</tr>';
+    var cm = mk.commons || { weeks: 30, items: [] };
+    var marks = [1, 5, 10, 15, 20, 25, 30].filter(function (w) { return w <= (cm.weeks || 30); });
+    $('commons-head').innerHTML = '<tr><th>Mặt hàng</th><th class="r">Giá mỗi lô</th><th class="r">Tổng lô</th>' + marks.map(function (w) { return '<th class="r">Tuần ' + w + '</th>'; }).join('') + '<th class="spark-col">30 tuần</th></tr>';
     $('commons-body').innerHTML = (cm.items || []).map(function (it) {
-      return '<tr><td>' + esc(it.name) + ' <span class="muted small">(' + it.lot + ')</span></td><td class="r">' + money(it.price) + '</td>' + cm.weekShares.map(function (s) { return '<td class="r">' + Math.round(it.week1 * s * 10) / 10 + '</td>'; }).join('') + '</tr>';
+      var sch = it.schedule || [], mx = Math.max.apply(null, sch.concat([1]));
+      var bars = '<svg class="spark" viewBox="0 0 130 28" aria-hidden="true">' + sch.map(function (q, i) { var h = q / mx * 24; return '<rect x="' + (i * 130 / sch.length + 0.5).toFixed(1) + '" y="' + (27 - h).toFixed(1) + '" width="' + (130 / sch.length - 1).toFixed(1) + '" height="' + h.toFixed(1) + '" fill="var(--grass)" opacity="0.7"/>'; }).join('') + '</svg>';
+      return '<tr><td>' + esc(it.name) + ' <span class="muted small">(lô ' + it.lot + ')</span></td><td class="r">' + money(it.price) + '</td><td class="r">' + it.totalLots + '</td>' + marks.map(function (w) { return '<td class="r">' + (sch[w - 1] || 0) + '</td>'; }).join('') + '<td>' + bars + '</td></tr>';
     }).join('');
 
     $('col-body').innerHTML = (d.colonies || []).map(function (c) {

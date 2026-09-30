@@ -45,7 +45,7 @@
     }
     var interest = amt * t.rate, fee = amt * 0.02 * late, total = amt + interest + fee;
     var scoreHit = late ? -10 * late : '+15 đến +40';
-    $('loan-out').innerHTML = 'Lãi 7 ngày ' + pct(t.rate) + ': trả <strong>' + money(total) + '</strong>' +
+    $('loan-out').innerHTML = 'Lãi mỗi 7 ngày Minecraft ' + pct(t.rate) + ': trả <strong>' + money(total) + '</strong>' +
       (late ? ' (trong đó phạt trễ ' + money(fee) + ')' : '') + '. Điểm tín dụng: <strong>' + scoreHit + '</strong>.' +
       (amt > 1000 ? ' Khoản này cần đồ thế chấp.' : '');
   }
